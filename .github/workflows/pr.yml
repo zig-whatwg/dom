@@ -1,0 +1,233 @@
+name: PR Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  pr-info:
+    name: PR Information
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: PR Summary
+        run: |
+          echo "# Pull Request Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**PR**: #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Title**: ${{ github.event.pull_request.title }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Author**: @${{ github.event.pull_request.user.login }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch**: ${{ github.head_ref }} → ${{ github.base_ref }}" >> $GITHUB_STEP_SUMMARY
+
+  quick-test:
+    name: Quick Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: '0.15.1'
+
+      - name: Quick build check
+        run: zig build
+
+      - name: Quick test run
+        run: zig build test --summary all
+
+  format-check:
+    name: Code Format Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: '0.15.1'
+
+      - name: Check code formatting
+        run: |
+          # Check if any files need formatting
+          if ! zig fmt --check src/; then
+            echo "❌ Code formatting issues found!"
+            echo ""
+            echo "Please run: zig fmt src/"
+            echo ""
+            exit 1
+          fi
+          echo "✓ Code formatting is correct"
+
+  test-coverage:
+    name: Test Coverage Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: '0.15.1'
+
+      - name: Run tests with verbose output
+        run: |
+          zig build test --summary all 2>&1 | tee test_results.txt
+
+      - name: Analyze test results
+        run: |
+          echo "## Test Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract test count
+          if grep -q "tests passed" test_results.txt; then
+            test_info=$(grep "tests passed" test_results.txt | tail -1)
+            echo "**Results**: $test_info" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          tail -10 test_results.txt >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  memory-safety:
+    name: Memory Safety Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: '0.15.1'
+
+      - name: Check for memory leaks
+        run: |
+          echo "Running memory leak detection..."
+          output=$(zig build test 2>&1)
+          
+          if echo "$output" | grep -i "leak"; then
+            echo "❌ Memory leaks detected!"
+            echo "$output"
+            exit 1
+          fi
+          
+          echo "✓ No memory leaks detected" >> $GITHUB_STEP_SUMMARY
+
+  docs-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for documentation updates
+        run: |
+          # Check if any .zig files changed
+          git fetch origin ${{ github.base_ref }}
+          changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          
+          echo "## Changed Files" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "$changed_files" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          
+          # Check if README needs updating for new features
+          if echo "$changed_files" | grep -q "\.zig$"; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Note**: Zig files were modified. Consider updating README.md if new features were added." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  build-modes:
+    name: Test Build Modes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        optimize: [Debug, ReleaseFast, ReleaseSafe, ReleaseSmall]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: '0.15.1'
+
+      - name: Build with ${{ matrix.optimize }}
+        run: zig build -Doptimize=${{ matrix.optimize }}
+
+  pr-status:
+    name: PR Status Check
+    runs-on: ubuntu-latest
+    needs: [quick-test, format-check, test-coverage, memory-safety, docs-check, build-modes]
+    if: always()
+    
+    steps:
+      - name: Check all jobs
+        run: |
+          echo "# PR Status Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          all_passed=true
+          
+          if [ "${{ needs.quick-test.result }}" != "success" ]; then
+            echo "❌ Quick test failed" >> $GITHUB_STEP_SUMMARY
+            all_passed=false
+          else
+            echo "✅ Quick test passed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.format-check.result }}" != "success" ]; then
+            echo "❌ Format check failed" >> $GITHUB_STEP_SUMMARY
+            all_passed=false
+          else
+            echo "✅ Format check passed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.test-coverage.result }}" != "success" ]; then
+            echo "❌ Test coverage check failed" >> $GITHUB_STEP_SUMMARY
+            all_passed=false
+          else
+            echo "✅ Test coverage passed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.memory-safety.result }}" != "success" ]; then
+            echo "❌ Memory safety check failed" >> $GITHUB_STEP_SUMMARY
+            all_passed=false
+          else
+            echo "✅ Memory safety passed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.docs-check.result }}" != "success" ]; then
+            echo "❌ Documentation check failed" >> $GITHUB_STEP_SUMMARY
+            all_passed=false
+          else
+            echo "✅ Documentation check passed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.build-modes.result }}" != "success" ]; then
+            echo "❌ Build modes check failed" >> $GITHUB_STEP_SUMMARY
+            all_passed=false
+          else
+            echo "✅ All build modes passed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$all_passed" = false ]; then
+            echo "## ❌ Some checks failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "## ✅ All checks passed!" >> $GITHUB_STEP_SUMMARY
+          fi

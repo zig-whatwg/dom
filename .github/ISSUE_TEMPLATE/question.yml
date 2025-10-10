@@ -1,0 +1,59 @@
+name: ❓ Question
+description: Ask a question about usage or implementation
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? We're here to help! Please provide as much context as possible.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Question Category
+      description: What is your question about?
+      options:
+        - API Usage
+        - Memory Management
+        - Performance
+        - WHATWG Spec Compliance
+        - Installation/Setup
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to accomplish?
+      placeholder: I'm trying to...
+    validations:
+      required: false
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Related Code
+      description: If applicable, share the code you're working with
+      render: zig
+    validations:
+      required: false
+
+  - type: textarea
+    id: research
+    attributes:
+      label: What Have You Tried?
+      description: What documentation or resources have you already checked?
+      placeholder: I've looked at README.md, tried...
+    validations:
+      required: false
