@@ -227,6 +227,24 @@ pub fn build(b: *std.Build) void {
     const document_types_demo_step = b.step("run-document-types-demo", "Run DocumentType & ProcessingInstruction demo");
     document_types_demo_step.dependOn(&run_document_types_demo.step);
 
+    // HTML Elements Demo - Shows composition pattern for HTML-specific elements
+    const html_elements_demo = b.addExecutable(.{
+        .name = "html_elements_demo",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/html_elements_demo.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "dom", .module = mod },
+            },
+        }),
+    });
+    b.installArtifact(html_elements_demo);
+
+    const run_html_elements_demo = b.addRunArtifact(html_elements_demo);
+    const html_elements_demo_step = b.step("run-html-demo", "Run HTML elements composition demo");
+    html_elements_demo_step.dependOn(&run_html_elements_demo.step);
+
     // Just like flags, top level steps are also listed in the `--help` menu.
     //
     // The Zig build system is entirely implemented in userland, which means
