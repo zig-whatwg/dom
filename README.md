@@ -1,7 +1,7 @@
 # DOM - WHATWG DOM Standard Implementation in Zig
 
 [![Zig](https://img.shields.io/badge/zig-0.15.1-orange.svg)](https://ziglang.org/)
-[![Tests](https://img.shields.io/badge/tests-531%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-529%20passing-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)]()
 [![Coverage](https://img.shields.io/badge/coverage-~95%25-brightgreen.svg)]()
@@ -13,9 +13,9 @@ A complete, production-ready implementation of the [WHATWG DOM Living Standard](
 ## Features
 
 - **Spec Compliant** - Follows WHATWG DOM Living Standard (~95% coverage)
-- **Memory Safe** - Zero memory leaks across 531 tests
+- **Memory Safe** - Zero memory leaks across 529 tests
 - **Comprehensive** - All non-XML DOM features implemented
-- **Well Tested** - 531 passing tests with full coverage
+- **Well Tested** - 529 passing tests with full coverage (2 skipped - see TEST_STATUS.md)
 - **Well Documented** - Inline docs with spec references
 - **Production Ready** - Clean APIs, robust error handling
 
@@ -628,6 +628,12 @@ zig build run-mutation-demo
 
 # Run document types demo
 zig build run-document-types-demo
+
+# Run query selectors demo (CSS selector patterns)
+zig build run-query-demo
+
+# Run HTML elements composition demo
+zig build run-html-demo
 ```
 
 ### Documentation
