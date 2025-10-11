@@ -14,7 +14,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Zig (master)
         uses: goto-bus-stop/setup-zig@v2
@@ -43,7 +43,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
@@ -75,7 +75,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
@@ -111,7 +111,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check build.zig.zon
         run: |
@@ -144,7 +144,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Zig
         uses: goto-bus-stop/setup-zig@v2
