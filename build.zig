@@ -245,6 +245,24 @@ pub fn build(b: *std.Build) void {
     const html_elements_demo_step = b.step("run-html-demo", "Run HTML elements composition demo");
     html_elements_demo_step.dependOn(&run_html_elements_demo.step);
 
+    // Query Selectors Demo - Shows comprehensive CSS selector usage
+    const query_selectors_demo = b.addExecutable(.{
+        .name = "query_selectors_demo",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/query_selectors_demo.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "dom", .module = mod },
+            },
+        }),
+    });
+    b.installArtifact(query_selectors_demo);
+
+    const run_query_selectors_demo = b.addRunArtifact(query_selectors_demo);
+    const query_selectors_demo_step = b.step("run-query-demo", "Run comprehensive query selectors demo");
+    query_selectors_demo_step.dependOn(&run_query_selectors_demo.step);
+
     // Just like flags, top level steps are also listed in the `--help` menu.
     //
     // The Zig build system is entirely implemented in userland, which means
