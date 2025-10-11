@@ -169,6 +169,71 @@ test {
     std.testing.refAllDecls(@This());
 }
 
+// Advanced selector tests
+test {
+    _ = @import("selector_advanced.test.zig");
+}
+
+// Compound selector tests
+test {
+    _ = @import("selector_compound.test.zig");
+}
+
+// nth-child formula tests
+test {
+    _ = @import("selector_nth.test.zig");
+}
+
+// :has() combinator tests
+test {
+    _ = @import("selector_has_combinator.test.zig");
+}
+
+// :not() selector list tests
+test {
+    _ = @import("selector_not_lists.test.zig");
+}
+
+// Pseudo-element handling tests
+test {
+    _ = @import("selector_pseudo_elements.test.zig");
+}
+
+// :lang() pseudo-class tests
+test {
+    _ = @import("selector_lang.test.zig");
+}
+
+// CSS4 pseudo-class tests (:dir, :focus-within, :focus-visible)
+test {
+    _ = @import("selector_css4.test.zig");
+}
+
+// Form state pseudo-class tests (:enabled, :disabled, :checked, etc.)
+test {
+    _ = @import("selector_forms.test.zig");
+}
+
+// CSS4 form validation pseudo-class tests (:in-range, :out-of-range, :placeholder-shown, :default)
+test {
+    _ = @import("selector_forms_css4.test.zig");
+}
+
+// Link pseudo-class tests (:any-link, :link, :visited, :local-link)
+test {
+    _ = @import("selector_links.test.zig");
+}
+
+// User action pseudo-class tests (:hover, :active, :focus, :target)
+test {
+    _ = @import("selector_user_action.test.zig");
+}
+
+// Custom element pseudo-class tests (:defined)
+test {
+    _ = @import("selector_custom.test.zig");
+}
+
 test "root module imports" {
     // Verify all types are accessible
     _ = RefCounted(i32);

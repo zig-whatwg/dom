@@ -263,6 +263,23 @@ pub fn build(b: *std.Build) void {
     const query_selectors_demo_step = b.step("run-query-demo", "Run comprehensive query selectors demo");
     query_selectors_demo_step.dependOn(&run_query_selectors_demo.step);
 
+    // Benchmark executable
+    const bench_exe = b.addExecutable(.{
+        .name = "benchmarks",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("benchmarks/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "dom", .module = mod },
+            },
+        }),
+    });
+
+    const bench_run = b.addRunArtifact(bench_exe);
+    const bench_step = b.step("bench", "Run performance benchmarks");
+    bench_step.dependOn(&bench_run.step);
+
     // Just like flags, top level steps are also listed in the `--help` menu.
     //
     // The Zig build system is entirely implemented in userland, which means
