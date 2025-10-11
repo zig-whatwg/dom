@@ -81,6 +81,7 @@ pub const SimpleSelector = struct {
     pseudo_args: ?[]const u8 = null,
     attr_operator: AttributeOperator = .exists,
     attr_value: ?[]const u8 = null, // For attribute selectors with values
+    attr_case_insensitive: bool = false, // For [attr=value i] flag
 };
 
 /// Complex selector with combinators
@@ -268,33 +269,44 @@ fn parseAttributeSelector(content: []const u8) !SimpleSelector {
         .value = content,
         .attr_operator = .exists,
         .attr_value = null,
+        .attr_case_insensitive = false,
     };
 
+    // Trim whitespace and check for case-insensitive flag 'i'
+    var trimmed = std.mem.trim(u8, content, " \t\r\n");
+    if (trimmed.len > 0 and trimmed[trimmed.len - 1] == 'i') {
+        // Check if there's a space before the 'i'
+        if (trimmed.len > 1 and std.ascii.isWhitespace(trimmed[trimmed.len - 2])) {
+            result.attr_case_insensitive = true;
+            trimmed = std.mem.trim(u8, trimmed[0 .. trimmed.len - 1], " \t\r\n");
+        }
+    }
+
     // Check for operators and extract value
-    if (std.mem.indexOf(u8, content, "^=")) |idx| {
+    if (std.mem.indexOf(u8, trimmed, "^=")) |idx| {
         result.attr_operator = .starts_with;
-        result.value = content[0..idx];
-        result.attr_value = cleanAttributeValue(content[idx + 2 ..]);
-    } else if (std.mem.indexOf(u8, content, "$=")) |idx| {
+        result.value = trimmed[0..idx];
+        result.attr_value = cleanAttributeValue(trimmed[idx + 2 ..]);
+    } else if (std.mem.indexOf(u8, trimmed, "$=")) |idx| {
         result.attr_operator = .ends_with;
-        result.value = content[0..idx];
-        result.attr_value = cleanAttributeValue(content[idx + 2 ..]);
-    } else if (std.mem.indexOf(u8, content, "*=")) |idx| {
+        result.value = trimmed[0..idx];
+        result.attr_value = cleanAttributeValue(trimmed[idx + 2 ..]);
+    } else if (std.mem.indexOf(u8, trimmed, "*=")) |idx| {
         result.attr_operator = .contains;
-        result.value = content[0..idx];
-        result.attr_value = cleanAttributeValue(content[idx + 2 ..]);
-    } else if (std.mem.indexOf(u8, content, "~=")) |idx| {
+        result.value = trimmed[0..idx];
+        result.attr_value = cleanAttributeValue(trimmed[idx + 2 ..]);
+    } else if (std.mem.indexOf(u8, trimmed, "~=")) |idx| {
         result.attr_operator = .word_match;
-        result.value = content[0..idx];
-        result.attr_value = cleanAttributeValue(content[idx + 2 ..]);
-    } else if (std.mem.indexOf(u8, content, "|=")) |idx| {
+        result.value = trimmed[0..idx];
+        result.attr_value = cleanAttributeValue(trimmed[idx + 2 ..]);
+    } else if (std.mem.indexOf(u8, trimmed, "|=")) |idx| {
         result.attr_operator = .lang_match;
-        result.value = content[0..idx];
-        result.attr_value = cleanAttributeValue(content[idx + 2 ..]);
-    } else if (std.mem.indexOf(u8, content, "=")) |idx| {
+        result.value = trimmed[0..idx];
+        result.attr_value = cleanAttributeValue(trimmed[idx + 2 ..]);
+    } else if (std.mem.indexOf(u8, trimmed, "=")) |idx| {
         result.attr_operator = .equals;
-        result.value = content[0..idx];
-        result.attr_value = cleanAttributeValue(content[idx + 1 ..]);
+        result.value = trimmed[0..idx];
+        result.attr_value = cleanAttributeValue(trimmed[idx + 1 ..]);
     }
 
     return result;
@@ -481,8 +493,6 @@ fn matchesSimpleSelector(node: *const Node, selector: SimpleSelector, allocator:
 
 /// Match attribute selector
 fn matchesAttributeSelector(node: *const Node, selector: SimpleSelector, allocator: std.mem.Allocator) SelectorError!bool {
-    _ = allocator;
-
     const attr_name = selector.value;
     const actual_value = Element.getAttribute(node, attr_name) orelse {
         return selector.attr_operator == .exists and selector.attr_value == null;
@@ -494,6 +504,24 @@ fn matchesAttributeSelector(node: *const Node, selector: SimpleSelector, allocat
     }
 
     const expected_value = selector.attr_value.?;
+
+    // Handle case-insensitive matching
+    if (selector.attr_case_insensitive) {
+        const actual_lower = try std.ascii.allocLowerString(allocator, actual_value);
+        defer allocator.free(actual_lower);
+        const expected_lower = try std.ascii.allocLowerString(allocator, expected_value);
+        defer allocator.free(expected_lower);
+
+        return switch (selector.attr_operator) {
+            .exists => true,
+            .equals => std.mem.eql(u8, actual_lower, expected_lower),
+            .contains => std.mem.indexOf(u8, actual_lower, expected_lower) != null,
+            .starts_with => std.mem.startsWith(u8, actual_lower, expected_lower),
+            .ends_with => std.mem.endsWith(u8, actual_lower, expected_lower),
+            .word_match => hasWord(actual_lower, expected_lower),
+            .lang_match => hasLangPrefix(actual_lower, expected_lower),
+        };
+    }
 
     return switch (selector.attr_operator) {
         .exists => true,
