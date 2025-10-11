@@ -13,11 +13,13 @@
 //! - Multiple selectors (,)
 //! - Complex nested queries
 //!
-//! ## Current Status
+//! ## CSS Selector Support Status
 //!
-//! Simple selectors (classes, IDs, elements, attributes) work correctly.
-//! Some advanced selectors (descendant/child combinators, multiple selectors)
-//! are implemented but may have edge cases - see test results.
+//! **Working ✅:** Simple selectors (element, #id, .class, [attr])
+//! **Not Working ❌:** Combinators (>, space), pseudo-classes, comma lists
+//!
+//! This demo shows both working and non-working selectors to illustrate
+//! the current implementation limits. See test output for results.
 //!
 //! Build and run:
 //!   zig build run-query-demo

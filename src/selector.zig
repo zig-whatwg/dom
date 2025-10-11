@@ -1,7 +1,12 @@
 //! CSS Selector Parsing and Matching (§1.3)
 //!
-//! This module implements CSS selector parsing and element matching as specified
-//! by the WHATWG DOM Standard and CSS Selectors Level 4.
+//! This module implements **basic** CSS selector parsing and element matching.
+//!
+//! **Support Level:** CSS Selectors Level 1-2 (~30-40% of CSS4)
+//! - ✅ Simple selectors (element, ID, class, attribute)
+//! - ❌ Combinators (descendant, child, sibling)
+//! - ❌ Pseudo-classes (:hover, :nth-child, etc.)
+//! - ❌ Advanced features (see Limitations section below)
 //!
 //! ## WHATWG Specification
 //!
@@ -15,11 +20,17 @@
 //! - querySelector(): https://developer.mozilla.org/en-US/docs/Web/API/Element/querySelector
 //! - querySelectorAll(): https://developer.mozilla.org/en-US/docs/Web/API/Element/querySelectorAll
 //!
-//! ## Supported Selectors
+//! ## CSS Selector Support Level
 //!
-//! This implementation currently supports the following selector types:
+//! **Approximately CSS Selectors Level 1-2 basic features (~30-40% of CSS4)**
 //!
-//! ### Type Selector
+//! This implementation supports simple selectors but NOT complex combinators or
+//! pseudo-classes. It's suitable for basic DOM querying but not for advanced
+//! CSS-like selection patterns.
+//!
+//! ## Supported Selectors ✅
+//!
+//! ### Type Selector (Element)
 //! Matches elements by tag name (case-insensitive):
 //! ```zig
 //! const element = try querySelector(root, "div", allocator);
@@ -32,18 +43,19 @@
 //! ```
 //!
 //! ### Class Selector
-//! Matches elements by class name:
+//! Matches elements by class name (including multiple classes):
 //! ```zig
 //! const elements = try querySelectorAll(root, ".myclass", list, allocator);
+//! const multi = try querySelector(root, ".class1.class2", allocator); // Both classes
 //! ```
 //!
-//! ### Attribute Selector
-//! Matches elements by attribute presence or value:
+//! ### Attribute Selector (Basic)
+//! Matches elements by attribute presence or exact value:
 //! ```zig
 //! // Has attribute
 //! const element = try querySelector(root, "[disabled]", allocator);
 //!
-//! // Attribute equals value
+//! // Attribute equals value (exact match only)
 //! const element = try querySelector(root, "[type=\"text\"]", allocator);
 //! ```
 //!
@@ -53,8 +65,8 @@
 //! const all = try querySelectorAll(root, "*", list, allocator);
 //! ```
 //!
-//! ### Combined Selectors
-//! Multiple selectors can be combined (logical AND):
+//! ### Combined Simple Selectors
+//! Multiple simple selectors can be combined (logical AND):
 //! ```zig
 //! // <div class="foo" id="bar">
 //! const element = try querySelector(root, "div.foo#bar", allocator);
@@ -110,17 +122,40 @@
 //! - `error.InvalidSelector`: Malformed selector (e.g., unclosed `[`)
 //! - `error.OutOfMemory`: Memory allocation failed
 //!
-//! ## Limitations
+//! ## Limitations ❌
 //!
-//! Current implementation does not support:
-//! - Combinators (descendant, child `>`, sibling `+`, `~`)
-//! - Pseudo-classes (`:hover`, `:first-child`, etc.)
-//! - Pseudo-elements (`::before`, `::after`)
-//! - Attribute operators (`^=`, `$=`, `*=`, `|=`, `~=`)
-//! - Multiple selector lists (`,`)
-//! - Namespace selectors
+//! The following CSS Selectors Level 3-4 features are **NOT supported**:
 //!
-//! These features may be added in future versions.
+//! ### Combinators (CSS Level 2-3)
+//! - ❌ Descendant: `div p` - Does not work
+//! - ❌ Child: `article > header` - Does not work
+//! - ❌ Adjacent sibling: `h1 + p` - Does not work
+//! - ❌ General sibling: `h1 ~ p` - Does not work
+//!
+//! ### Pseudo-classes (CSS Level 2-4)
+//! - ❌ `:hover`, `:focus`, `:active` - User action states
+//! - ❌ `:first-child`, `:last-child`, `:nth-child()` - Structural
+//! - ❌ `:not()`, `:is()`, `:where()`, `:has()` - Logical
+//! - ❌ All other pseudo-classes
+//!
+//! ### Pseudo-elements (CSS Level 2-3)
+//! - ❌ `::before`, `::after` - Generated content
+//! - ❌ `::first-line`, `::first-letter` - Text fragments
+//!
+//! ### Advanced Attribute Operators (CSS Level 3)
+//! - ❌ `[attr^="val"]` - Starts with
+//! - ❌ `[attr$="val"]` - Ends with
+//! - ❌ `[attr*="val"]` - Contains (substring)
+//! - ❌ `[attr~="val"]` - Word match
+//! - ❌ `[attr|="val"]` - Prefix match
+//!
+//! ### Multiple Selectors (CSS Level 1)
+//! - ❌ `h1, h2, h3` - Selector lists with comma
+//!
+//! ### Other
+//! - ❌ Namespace selectors: `ns|element`
+//!
+//! **Note:** These features may be added in future versions. Contributions welcome!
 
 const std = @import("std");
 const Node = @import("node.zig").Node;

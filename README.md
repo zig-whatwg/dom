@@ -297,14 +297,20 @@ defer html_doc.release();
 const doctype = try impl.createDocumentType("html", "", "");
 defer doctype.release();
 
-// CSS Selectors
-const matches = try dom.Element.matches(element, ".active[data-id='123']");
-const selected = try dom.Element.querySelector(root, "div.container > p");
+// CSS Selectors (Basic Level 1-2 support)
+const matches = try dom.Element.matches(element, ".active");
+const selected = try dom.Element.querySelector(root, "div.container");
+// Note: Combinators (>, +, ~) and pseudo-classes not supported yet
 ```
 
 **Implemented:**
 - `DOMImplementation` - Document creation factory
-- `Selector` - CSS selector matching
+- `Selector` - **Basic** CSS selector matching
+  - ✅ Simple selectors: element, #id, .class, [attr], [attr="val"]
+  - ❌ Combinators: descendant, >, +, ~ (not supported)
+  - ❌ Pseudo-classes: :hover, :nth-child, etc. (not supported)
+  - ❌ Advanced features: comma lists, attribute operators (not supported)
+  - See `src/selector.zig` for full documentation
 
 ## API Documentation
 
