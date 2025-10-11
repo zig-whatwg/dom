@@ -553,7 +553,7 @@ test "CSS Level 3: Empty pseudo-class :empty" {
     _ = try container.appendChild(div2);
 
     // div:empty should match only div1
-    _ = try doc.node.appendChild(div1); // Add to document tree for cleanup
+    _ = try doc.node.appendChild(container); // Add to document tree for cleanup
 
     const result = try Element.querySelector(container, "div:empty");
     try testing.expect(result != null);

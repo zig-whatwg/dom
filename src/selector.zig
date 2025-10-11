@@ -18,6 +18,12 @@ const Element = @import("element.zig").Element;
 // Type Definitions
 // ============================================================================
 
+/// Errors that can occur during selector parsing and matching
+pub const SelectorError = error{
+    InvalidSelector,
+    OutOfMemory,
+};
+
 /// Selector Type Classification
 pub const SelectorType = enum {
     tag,
@@ -245,8 +251,9 @@ fn parseSimpleSelector(selector_str: []const u8, i: *usize) !SimpleSelector {
             i.* += 1;
         }
 
-        // If we parsed something and hit a delimiter, we're done with this simple selector
-        if (i.* > start_i and (i.* >= selector_str.len or isDelimiter(selector_str[i.*]))) {
+        // If we parsed something and hit a combinator, we're done with this simple selector
+        // Note: We continue for compound selectors like div.class or div:hover
+        if (i.* > start_i and (i.* >= selector_str.len or isCombinator(selector_str[i.*]))) {
             break;
         }
     }
@@ -330,6 +337,11 @@ fn isDelimiter(c: u8) bool {
         c == ' ' or c == '>' or c == '+' or c == '~';
 }
 
+/// Check if character is a combinator (ends a simple selector)
+fn isCombinator(c: u8) bool {
+    return c == ' ' or c == '>' or c == '+' or c == '~';
+}
+
 // ============================================================================
 // Matching Functions
 // ============================================================================
@@ -345,7 +357,7 @@ pub fn matches(node: *const Node, selector_str: []const u8, allocator: std.mem.A
 }
 
 /// Match element against parsed complex selector
-fn matchesComplexSelector(node: *const Node, selector: *const ComplexSelector, allocator: std.mem.Allocator) !bool {
+fn matchesComplexSelector(node: *const Node, selector: *const ComplexSelector, allocator: std.mem.Allocator) SelectorError!bool {
     if (selector.parts.len == 0) return false;
 
     // Start from the end of the selector (the element we're testing)
@@ -432,7 +444,7 @@ fn matchesComplexSelector(node: *const Node, selector: *const ComplexSelector, a
 }
 
 /// Match element against simple selector
-fn matchesSimpleSelector(node: *const Node, selector: SimpleSelector, allocator: std.mem.Allocator) !bool {
+fn matchesSimpleSelector(node: *const Node, selector: SimpleSelector, allocator: std.mem.Allocator) SelectorError!bool {
     // First check the base selector type
     const base_match = switch (selector.selector_type) {
         .tag => blk: {
@@ -468,7 +480,7 @@ fn matchesSimpleSelector(node: *const Node, selector: SimpleSelector, allocator:
 }
 
 /// Match attribute selector
-fn matchesAttributeSelector(node: *const Node, selector: SimpleSelector, allocator: std.mem.Allocator) !bool {
+fn matchesAttributeSelector(node: *const Node, selector: SimpleSelector, allocator: std.mem.Allocator) SelectorError!bool {
     _ = allocator;
 
     const attr_name = selector.value;
@@ -515,20 +527,34 @@ fn hasLangPrefix(value: []const u8, prefix: []const u8) bool {
 }
 
 /// Match pseudo-class
-fn matchesPseudoClass(node: *const Node, pseudo: PseudoClass, args: ?[]const u8, allocator: std.mem.Allocator) !bool {
+fn matchesPseudoClass(node: *const Node, pseudo: PseudoClass, args: ?[]const u8, allocator: std.mem.Allocator) SelectorError!bool {
     return switch (pseudo) {
         .none => true,
         .first_child => matchesFirstChild(node),
         .last_child => matchesLastChild(node),
         .nth_child => try matchesNthChild(node, args orelse "1", allocator),
+        .nth_last_child => try matchesNthLastChild(node, args orelse "1", allocator),
+        .nth_of_type => try matchesNthOfType(node, args orelse "1", allocator),
+        .nth_last_of_type => try matchesNthLastOfType(node, args orelse "1", allocator),
         .only_child => matchesOnlyChild(node),
         .first_of_type => matchesFirstOfType(node),
         .last_of_type => matchesLastOfType(node),
         .only_of_type => matchesOnlyOfType(node),
         .empty => matchesEmpty(node),
         .root => node.parent_node == null,
+        .not => try matchesNot(node, args orelse "", allocator),
         else => false, // Not yet implemented
     };
+}
+
+/// Match :not() pseudo-class by negating inner selector
+fn matchesNot(node: *const Node, inner_selector: []const u8, allocator: std.mem.Allocator) SelectorError!bool {
+    // Parse and match the inner selector, then negate
+    var parsed = try parse(allocator, inner_selector);
+    defer parsed.deinit();
+
+    const result = try matchesComplexSelector(node, &parsed, allocator);
+    return !result;
 }
 
 fn matchesFirstChild(node: *const Node) bool {
@@ -643,7 +669,7 @@ fn matchesEmpty(node: *const Node) bool {
     return true;
 }
 
-fn matchesNthChild(node: *const Node, formula: []const u8, allocator: std.mem.Allocator) !bool {
+fn matchesNthChild(node: *const Node, formula: []const u8, allocator: std.mem.Allocator) SelectorError!bool {
     _ = allocator;
 
     const parent = node.parent_node orelse return false;
@@ -659,6 +685,81 @@ fn matchesNthChild(node: *const Node, formula: []const u8, allocator: std.mem.Al
     }
 
     return matchesNthFormula(index, formula);
+}
+
+fn matchesNthLastChild(node: *const Node, formula: []const u8, allocator: std.mem.Allocator) SelectorError!bool {
+    _ = allocator;
+
+    const parent = node.parent_node orelse return false;
+
+    // Count total element children
+    var total: usize = 0;
+    for (parent.child_nodes.items.items) |child_ptr| {
+        const child: *Node = @ptrCast(@alignCast(child_ptr));
+        if (child.node_type == .element_node) {
+            total += 1;
+        }
+    }
+
+    // Get index from the end
+    var index_from_end: usize = 1;
+    var i = parent.child_nodes.items.items.len;
+    while (i > 0) {
+        i -= 1;
+        const child: *Node = @ptrCast(@alignCast(parent.child_nodes.items.items[i]));
+        if (child.node_type == .element_node) {
+            if (child == node) break;
+            index_from_end += 1;
+        }
+    }
+
+    return matchesNthFormula(index_from_end, formula);
+}
+
+fn matchesNthOfType(node: *const Node, formula: []const u8, allocator: std.mem.Allocator) SelectorError!bool {
+    _ = allocator;
+
+    const parent = node.parent_node orelse return false;
+    const data = Element.getData(node);
+
+    // Get index among siblings of same type
+    var index: usize = 1;
+    for (parent.child_nodes.items.items) |child_ptr| {
+        const child: *Node = @ptrCast(@alignCast(child_ptr));
+        if (child.node_type == .element_node) {
+            const child_data = Element.getData(child);
+            if (std.mem.eql(u8, child_data.tag_name, data.tag_name)) {
+                if (child == node) break;
+                index += 1;
+            }
+        }
+    }
+
+    return matchesNthFormula(index, formula);
+}
+
+fn matchesNthLastOfType(node: *const Node, formula: []const u8, allocator: std.mem.Allocator) SelectorError!bool {
+    _ = allocator;
+
+    const parent = node.parent_node orelse return false;
+    const data = Element.getData(node);
+
+    // Get index from end among siblings of same type
+    var index_from_end: usize = 1;
+    var i = parent.child_nodes.items.items.len;
+    while (i > 0) {
+        i -= 1;
+        const child: *Node = @ptrCast(@alignCast(parent.child_nodes.items.items[i]));
+        if (child.node_type == .element_node) {
+            const child_data = Element.getData(child);
+            if (std.mem.eql(u8, child_data.tag_name, data.tag_name)) {
+                if (child == node) break;
+                index_from_end += 1;
+            }
+        }
+    }
+
+    return matchesNthFormula(index_from_end, formula);
 }
 
 fn matchesNthFormula(index: usize, formula: []const u8) bool {
@@ -717,3 +818,10 @@ pub fn querySelectorAll(root: *const Node, selector: []const u8, list: *@import(
         try querySelectorAll(child, selector, list, allocator);
     }
 }
+
+// ============================================================================
+// Backwards Compatibility
+// ============================================================================
+
+/// Backwards compatibility alias - use ComplexSelector instead
+pub const Selector = ComplexSelector;
