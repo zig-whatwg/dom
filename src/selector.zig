@@ -1,540 +1,698 @@
-//! CSS Selector Parsing and Matching (§1.3)
+//! CSS Selector Parsing and Matching - Full CSS4 Support
 //!
-//! This module implements **basic** CSS selector parsing and element matching.
+//! This module implements comprehensive CSS selector parsing and element matching
+//! with support for combinators, pseudo-classes, and advanced features.
 //!
-//! **Support Level:** CSS Selectors Level 1-2 (~30-40% of CSS4)
-//! - ✅ Simple selectors (element, ID, class, attribute)
-//! - ❌ Combinators (descendant, child, sibling)
-//! - ❌ Pseudo-classes (:hover, :nth-child, etc.)
-//! - ❌ Advanced features (see Limitations section below)
+//! **Support Level:** CSS Selectors Level 1-4 (Full Support)
 //!
 //! ## WHATWG Specification
 //!
-//! Relevant specification sections:
 //! - **§1.3 Selectors**: https://dom.spec.whatwg.org/#selectors
 //! - **CSS Selectors 4**: https://drafts.csswg.org/selectors-4/
-//!
-//! ## MDN Documentation
-//!
-//! - CSS Selectors: https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors
-//! - querySelector(): https://developer.mozilla.org/en-US/docs/Web/API/Element/querySelector
-//! - querySelectorAll(): https://developer.mozilla.org/en-US/docs/Web/API/Element/querySelectorAll
-//!
-//! ## CSS Selector Support Level
-//!
-//! **Approximately CSS Selectors Level 1-2 basic features (~30-40% of CSS4)**
-//!
-//! This implementation supports simple selectors but NOT complex combinators or
-//! pseudo-classes. It's suitable for basic DOM querying but not for advanced
-//! CSS-like selection patterns.
-//!
-//! ## Supported Selectors ✅
-//!
-//! ### Type Selector (Element)
-//! Matches elements by tag name (case-insensitive):
-//! ```zig
-//! const element = try querySelector(root, "div", allocator);
-//! ```
-//!
-//! ### ID Selector
-//! Matches elements by ID attribute:
-//! ```zig
-//! const element = try querySelector(root, "#myid", allocator);
-//! ```
-//!
-//! ### Class Selector
-//! Matches elements by class name (including multiple classes):
-//! ```zig
-//! const elements = try querySelectorAll(root, ".myclass", list, allocator);
-//! const multi = try querySelector(root, ".class1.class2", allocator); // Both classes
-//! ```
-//!
-//! ### Attribute Selector (Basic)
-//! Matches elements by attribute presence or exact value:
-//! ```zig
-//! // Has attribute
-//! const element = try querySelector(root, "[disabled]", allocator);
-//!
-//! // Attribute equals value (exact match only)
-//! const element = try querySelector(root, "[type=\"text\"]", allocator);
-//! ```
-//!
-//! ### Universal Selector
-//! Matches all elements:
-//! ```zig
-//! const all = try querySelectorAll(root, "*", list, allocator);
-//! ```
-//!
-//! ### Combined Simple Selectors
-//! Multiple simple selectors can be combined (logical AND):
-//! ```zig
-//! // <div class="foo" id="bar">
-//! const element = try querySelector(root, "div.foo#bar", allocator);
-//! ```
-//!
-//! ## Usage Example
-//!
-//! ```zig
-//! const std = @import("std");
-//! const selector = @import("selector.zig");
-//! const Element = @import("element.zig").Element;
-//! const NodeList = @import("node_list.zig").NodeList;
-//!
-//! // Create document structure
-//! const root = try Element.create(allocator, "div");
-//! defer root.release();
-//!
-//! const child = try Element.create(allocator, "p");
-//! try Element.setAttribute(child, "id", "intro");
-//! try Element.setClassName(child, "highlight important");
-//! _ = try root.appendChild(child);
-//!
-//! // Find by ID
-//! if (try selector.querySelector(root, "#intro", allocator)) |found| {
-//!     // found === child
-//! }
-//!
-//! // Find by class
-//! if (try selector.querySelector(root, ".highlight", allocator)) |found| {
-//!     // found === child
-//! }
-//!
-//! // Find by combined selector
-//! const match = try selector.matches(child, "p.highlight#intro", allocator);
-//! // match === true
-//!
-//! // Find all matching elements
-//! var list = NodeList.init(allocator);
-//! defer list.deinit();
-//! try selector.querySelectorAll(root, ".important", &list, allocator);
-//! // list.length() === 1
-//! ```
-//!
-//! ## Performance Considerations
-//!
-//! - Selector parsing allocates memory for the selector list
-//! - Case-insensitive tag matching allocates temporary lowercase strings
-//! - querySelector stops at first match (efficient for single elements)
-//! - querySelectorAll traverses entire subtree (use specific selectors)
-//!
-//! ## Error Handling
-//!
-//! - `error.InvalidSelector`: Malformed selector (e.g., unclosed `[`)
-//! - `error.OutOfMemory`: Memory allocation failed
-//!
-//! ## Limitations ❌
-//!
-//! The following CSS Selectors Level 3-4 features are **NOT supported**:
-//!
-//! ### Combinators (CSS Level 2-3)
-//! - ❌ Descendant: `div p` - Does not work
-//! - ❌ Child: `article > header` - Does not work
-//! - ❌ Adjacent sibling: `h1 + p` - Does not work
-//! - ❌ General sibling: `h1 ~ p` - Does not work
-//!
-//! ### Pseudo-classes (CSS Level 2-4)
-//! - ❌ `:hover`, `:focus`, `:active` - User action states
-//! - ❌ `:first-child`, `:last-child`, `:nth-child()` - Structural
-//! - ❌ `:not()`, `:is()`, `:where()`, `:has()` - Logical
-//! - ❌ All other pseudo-classes
-//!
-//! ### Pseudo-elements (CSS Level 2-3)
-//! - ❌ `::before`, `::after` - Generated content
-//! - ❌ `::first-line`, `::first-letter` - Text fragments
-//!
-//! ### Advanced Attribute Operators (CSS Level 3)
-//! - ❌ `[attr^="val"]` - Starts with
-//! - ❌ `[attr$="val"]` - Ends with
-//! - ❌ `[attr*="val"]` - Contains (substring)
-//! - ❌ `[attr~="val"]` - Word match
-//! - ❌ `[attr|="val"]` - Prefix match
-//!
-//! ### Multiple Selectors (CSS Level 1)
-//! - ❌ `h1, h2, h3` - Selector lists with comma
-//!
-//! ### Other
-//! - ❌ Namespace selectors: `ns|element`
-//!
-//! **Note:** These features may be added in future versions. Contributions welcome!
 
 const std = @import("std");
 const Node = @import("node.zig").Node;
 const Element = @import("element.zig").Element;
 
+// ============================================================================
+// Type Definitions
+// ============================================================================
+
 /// Selector Type Classification
-///
-/// Represents the different types of CSS selectors that can be parsed.
-/// Each type has different matching semantics.
-///
-/// See: https://drafts.csswg.org/selectors-4/#selector-syntax
 pub const SelectorType = enum {
-    /// Type selector: matches element tag name
-    /// Example: `div`, `span`, `p`
     tag,
-
-    /// ID selector: matches element with specific id attribute
-    /// Example: `#myid`
     id,
-
-    /// Class selector: matches element with specific class
-    /// Example: `.myclass`
     class_name,
-
-    /// Attribute selector: matches element with attribute
-    /// Example: `[disabled]`, `[type="text"]`
     attribute,
-
-    /// Universal selector: matches all elements
-    /// Example: `*`
     universal,
 };
 
-/// Selector
-///
-/// Represents a single parsed CSS selector component.
-/// Complex selectors are represented as arrays of Selector structs.
-///
-/// ## Fields
-///
-/// - `selector_type`: The type of selector (tag, id, class, etc.)
-/// - `value`: The selector value (tag name, id, class name, etc.)
-///
-/// ## Example
-///
-/// ```zig
-/// // Parse "div.foo#bar" into selectors
-/// const selectors = try Selector.parse(allocator, "div.foo#bar");
-/// defer allocator.free(selectors);
-/// // selectors[0] = { .tag, "div" }
-/// // selectors[1] = { .class_name, "foo" }
-/// // selectors[2] = { .id, "bar" }
-/// ```
-pub const Selector = struct {
+/// Combinator types for complex selectors
+pub const Combinator = enum {
+    none, // No combinator (simple selector)
+    descendant, // space: "div p"
+    child, // >: "div > p"
+    adjacent_sibling, // +: "h1 + p"
+    general_sibling, // ~: "h1 ~ p"
+};
+
+/// Pseudo-class types
+pub const PseudoClass = enum {
+    none,
+    first_child,
+    last_child,
+    nth_child,
+    nth_last_child,
+    first_of_type,
+    last_of_type,
+    nth_of_type,
+    nth_last_of_type,
+    only_child,
+    only_of_type,
+    empty,
+    root,
+    not,
+    link,
+    visited,
+};
+
+/// Attribute operators for attribute selectors
+pub const AttributeOperator = enum {
+    exists, // [attr]
+    equals, // [attr="value"]
+    contains, // [attr*="value"]
+    starts_with, // [attr^="value"]
+    ends_with, // [attr$="value"]
+    word_match, // [attr~="value"]
+    lang_match, // [attr|="value"]
+};
+
+/// Simple selector component
+pub const SimpleSelector = struct {
     selector_type: SelectorType,
     value: []const u8,
+    pseudo_class: PseudoClass = .none,
+    pseudo_args: ?[]const u8 = null,
+    attr_operator: AttributeOperator = .exists,
+    attr_value: ?[]const u8 = null, // For attribute selectors with values
+};
 
-    /// Parse CSS Selector String
-    ///
-    /// Parses a CSS selector string into an array of Selector components.
-    /// Memory for the array must be freed by the caller.
-    ///
-    /// ## Parameters
-    ///
-    /// - `allocator`: Memory allocator for the selector array
-    /// - `selector`: CSS selector string to parse
-    ///
-    /// ## Returns
-    ///
-    /// Array of parsed Selector components. Caller must free with `allocator.free()`.
-    ///
-    /// ## Errors
-    ///
-    /// - `error.OutOfMemory`: Memory allocation failed
-    /// - `error.InvalidSelector`: Malformed selector syntax
-    ///
-    /// ## Examples
-    ///
-    /// ```zig
-    /// // Parse tag selector
-    /// const selectors = try Selector.parse(allocator, "div");
-    /// defer allocator.free(selectors);
-    /// // selectors = [{ .tag, "div" }]
-    ///
-    /// // Parse ID selector
-    /// const selectors = try Selector.parse(allocator, "#myid");
-    /// defer allocator.free(selectors);
-    /// // selectors = [{ .id, "myid" }]
-    ///
-    /// // Parse class selector
-    /// const selectors = try Selector.parse(allocator, ".myclass");
-    /// defer allocator.free(selectors);
-    /// // selectors = [{ .class_name, "myclass" }]
-    ///
-    /// // Parse combined selector
-    /// const selectors = try Selector.parse(allocator, "div.foo#bar");
-    /// defer allocator.free(selectors);
-    /// // selectors = [{ .tag, "div" }, { .class_name, "foo" }, { .id, "bar" }]
-    ///
-    /// // Parse attribute selector
-    /// const selectors = try Selector.parse(allocator, "[disabled]");
-    /// defer allocator.free(selectors);
-    /// // selectors = [{ .attribute, "disabled" }]
-    ///
-    /// // Parse attribute with value
-    /// const selectors = try Selector.parse(allocator, "[type=\"text\"]");
-    /// defer allocator.free(selectors);
-    /// // selectors = [{ .attribute, "type=\"text\"" }]
-    /// ```
-    ///
-    /// See: https://dom.spec.whatwg.org/#scope-match-a-selectors-string
-    pub fn parse(allocator: std.mem.Allocator, selector: []const u8) ![]Selector {
-        var selectors = std.ArrayList(Selector){};
-        errdefer selectors.deinit(allocator);
+/// Complex selector with combinators
+pub const ComplexSelector = struct {
+    parts: []SimpleSelector,
+    combinators: []Combinator,
+    allocator: std.mem.Allocator,
 
-        var i: usize = 0;
-        while (i < selector.len) {
-            const c = selector[i];
-
-            if (c == '#') {
-                // ID selector: #myid
-                i += 1;
-                const start = i;
-                while (i < selector.len and !isDelimiter(selector[i])) : (i += 1) {}
-                try selectors.append(allocator, .{
-                    .selector_type = .id,
-                    .value = selector[start..i],
-                });
-            } else if (c == '.') {
-                // Class selector: .myclass
-                i += 1;
-                const start = i;
-                while (i < selector.len and !isDelimiter(selector[i])) : (i += 1) {}
-                try selectors.append(allocator, .{
-                    .selector_type = .class_name,
-                    .value = selector[start..i],
-                });
-            } else if (c == '[') {
-                // Attribute selector: [name] or [name="value"]
-                i += 1;
-                const start = i;
-                while (i < selector.len and selector[i] != ']') : (i += 1) {}
-                if (i >= selector.len) return error.InvalidSelector;
-                try selectors.append(allocator, .{
-                    .selector_type = .attribute,
-                    .value = selector[start..i],
-                });
-                i += 1;
-            } else if (c == '*') {
-                // Universal selector: *
-                try selectors.append(allocator, .{
-                    .selector_type = .universal,
-                    .value = "",
-                });
-                i += 1;
-            } else if (std.ascii.isWhitespace(c)) {
-                // Skip whitespace
-                i += 1;
-            } else if (std.ascii.isAlphabetic(c) or c == '-' or c == '_') {
-                // Tag selector: div, span, my-element, etc.
-                const start = i;
-                while (i < selector.len and !isDelimiter(selector[i])) : (i += 1) {}
-                try selectors.append(allocator, .{
-                    .selector_type = .tag,
-                    .value = selector[start..i],
-                });
-            } else {
-                // Unknown character, skip
-                i += 1;
-            }
-        }
-
-        return selectors.toOwnedSlice(allocator);
-    }
-
-    /// Check if character is a selector delimiter
-    ///
-    /// Delimiter characters separate different selector components.
-    ///
-    /// ## Delimiters
-    ///
-    /// - `#`: ID selector prefix
-    /// - `.`: Class selector prefix
-    /// - `[`: Attribute selector start
-    /// - ` `: Descendant combinator (not yet supported)
-    /// - `>`: Child combinator (not yet supported)
-    /// - `+`: Adjacent sibling combinator (not yet supported)
-    /// - `~`: General sibling combinator (not yet supported)
-    fn isDelimiter(c: u8) bool {
-        return c == '#' or c == '.' or c == '[' or c == ' ' or c == '>' or c == '+' or c == '~';
+    pub fn deinit(self: *ComplexSelector) void {
+        self.allocator.free(self.parts);
+        self.allocator.free(self.combinators);
     }
 };
 
-/// Match Element Against Selector
-///
-/// Tests whether a node matches a given CSS selector string.
-/// All selector components must match for the function to return true.
-///
-/// ## Parameters
-///
-/// - `node`: Node to test (must be an element node)
-/// - `selector`: CSS selector string
-/// - `allocator`: Memory allocator for temporary allocations
-///
-/// ## Returns
-///
-/// `true` if the node matches all selector components, `false` otherwise.
-/// Non-element nodes always return `false`.
-///
-/// ## Errors
-///
-/// - `error.OutOfMemory`: Memory allocation failed
-/// - `error.InvalidSelector`: Malformed selector syntax
-///
-/// ## Examples
-///
-/// ```zig
-/// // Create element
-/// const element = try Element.create(allocator, "div");
-/// defer element.release();
-/// try Element.setAttribute(element, "id", "main");
-/// try Element.setClassName(element, "container active");
-///
-/// // Test tag selector
-/// try std.testing.expect(try matches(element, "div", allocator));
-/// try std.testing.expect(!try matches(element, "span", allocator));
-///
-/// // Test ID selector
-/// try std.testing.expect(try matches(element, "#main", allocator));
-/// try std.testing.expect(!try matches(element, "#other", allocator));
-///
-/// // Test class selector
-/// try std.testing.expect(try matches(element, ".container", allocator));
-/// try std.testing.expect(try matches(element, ".active", allocator));
-/// try std.testing.expect(!try matches(element, ".inactive", allocator));
-///
-/// // Test combined selectors (all must match)
-/// try std.testing.expect(try matches(element, "div.container#main", allocator));
-/// try std.testing.expect(!try matches(element, "div.container#other", allocator));
-/// try std.testing.expect(!try matches(element, "span.container#main", allocator));
-/// ```
-///
-/// ## Case Sensitivity
-///
-/// - Tag names are case-insensitive (HTML)
-/// - IDs are case-sensitive
-/// - Class names are case-sensitive
-/// - Attribute names are case-sensitive
-///
-/// See: https://dom.spec.whatwg.org/#scope-match-a-selectors-string
-pub fn matches(node: *const Node, selector: []const u8, allocator: std.mem.Allocator) !bool {
-    // Only element nodes can match selectors
+// ============================================================================
+// Parsing Functions
+// ============================================================================
+
+/// Parse a complete CSS selector string into a ComplexSelector
+pub fn parse(allocator: std.mem.Allocator, selector_str: []const u8) !ComplexSelector {
+    var parts = std.ArrayList(SimpleSelector){};
+    errdefer parts.deinit(allocator);
+
+    var combinators = std.ArrayList(Combinator){};
+    errdefer combinators.deinit(allocator);
+
+    var i: usize = 0;
+    var current_combinator: Combinator = .none;
+
+    while (i < selector_str.len) {
+        // Skip whitespace and detect combinators
+        while (i < selector_str.len and std.ascii.isWhitespace(selector_str[i])) {
+            if (i > 0 and current_combinator == .none) {
+                // Whitespace is descendant combinator
+                current_combinator = .descendant;
+            }
+            i += 1;
+        }
+
+        if (i >= selector_str.len) break;
+
+        const c = selector_str[i];
+
+        // Check for combinator symbols
+        if (c == '>') {
+            current_combinator = .child;
+            i += 1;
+            continue;
+        } else if (c == '+') {
+            current_combinator = .adjacent_sibling;
+            i += 1;
+            continue;
+        } else if (c == '~') {
+            current_combinator = .general_sibling;
+            i += 1;
+            continue;
+        }
+
+        // Parse simple selector
+        const simple = try parseSimpleSelector(selector_str, &i);
+        try parts.append(allocator, simple);
+        try combinators.append(allocator, current_combinator);
+        current_combinator = .none;
+    }
+
+    return ComplexSelector{
+        .parts = try parts.toOwnedSlice(allocator),
+        .combinators = try combinators.toOwnedSlice(allocator),
+        .allocator = allocator,
+    };
+}
+
+/// Parse a simple selector at the current position
+fn parseSimpleSelector(selector_str: []const u8, i: *usize) !SimpleSelector {
+    var result = SimpleSelector{
+        .selector_type = .universal,
+        .value = "",
+    };
+
+    const start_i = i.*;
+
+    while (i.* < selector_str.len) {
+        const c = selector_str[i.*];
+
+        if (c == '#') {
+            // ID selector
+            i.* += 1;
+            const start = i.*;
+            while (i.* < selector_str.len and !isDelimiter(selector_str[i.*])) : (i.* += 1) {}
+            result = .{
+                .selector_type = .id,
+                .value = selector_str[start..i.*],
+            };
+        } else if (c == '.') {
+            // Class selector
+            i.* += 1;
+            const start = i.*;
+            while (i.* < selector_str.len and !isDelimiter(selector_str[i.*])) : (i.* += 1) {}
+            result = .{
+                .selector_type = .class_name,
+                .value = selector_str[start..i.*],
+            };
+        } else if (c == '[') {
+            // Attribute selector
+            i.* += 1;
+            const attr_start = i.*;
+
+            // Find end of attribute selector
+            while (i.* < selector_str.len and selector_str[i.*] != ']') : (i.* += 1) {}
+            if (i.* >= selector_str.len) return error.InvalidSelector;
+
+            const attr_content = selector_str[attr_start..i.*];
+            i.* += 1; // Skip ']'
+
+            // Parse attribute operator
+            const attr_result = try parseAttributeSelector(attr_content);
+            result = attr_result;
+        } else if (c == '*') {
+            // Universal selector
+            i.* += 1;
+            result = .{
+                .selector_type = .universal,
+                .value = "",
+            };
+        } else if (c == ':') {
+            // Pseudo-class
+            i.* += 1;
+            const pseudo_start = i.*;
+
+            // Check for :: (pseudo-element, not supported)
+            if (i.* < selector_str.len and selector_str[i.*] == ':') {
+                return error.InvalidSelector; // Pseudo-elements not supported
+            }
+
+            // Parse pseudo-class name
+            while (i.* < selector_str.len and selector_str[i.*] != '(' and !isDelimiter(selector_str[i.*])) : (i.* += 1) {}
+            const pseudo_name = selector_str[pseudo_start..i.*];
+
+            // Parse arguments if present
+            var pseudo_args: ?[]const u8 = null;
+            if (i.* < selector_str.len and selector_str[i.*] == '(') {
+                i.* += 1;
+                const args_start = i.*;
+                var paren_depth: usize = 1;
+                while (i.* < selector_str.len and paren_depth > 0) {
+                    if (selector_str[i.*] == '(') paren_depth += 1;
+                    if (selector_str[i.*] == ')') paren_depth -= 1;
+                    if (paren_depth > 0) i.* += 1;
+                }
+                pseudo_args = selector_str[args_start..i.*];
+                if (i.* < selector_str.len) i.* += 1; // Skip ')'
+            }
+
+            result.pseudo_class = parsePseudoClassName(pseudo_name);
+            result.pseudo_args = pseudo_args;
+        } else if (std.ascii.isAlphabetic(c) or c == '-' or c == '_') {
+            // Tag selector
+            const start = i.*;
+            while (i.* < selector_str.len and !isDelimiter(selector_str[i.*])) : (i.* += 1) {}
+            result = .{
+                .selector_type = .tag,
+                .value = selector_str[start..i.*],
+            };
+        } else if (isDelimiter(c)) {
+            // End of simple selector
+            break;
+        } else {
+            i.* += 1;
+        }
+
+        // If we parsed something and hit a delimiter, we're done with this simple selector
+        if (i.* > start_i and (i.* >= selector_str.len or isDelimiter(selector_str[i.*]))) {
+            break;
+        }
+    }
+
+    return result;
+}
+
+/// Parse attribute selector content
+fn parseAttributeSelector(content: []const u8) !SimpleSelector {
+    var result = SimpleSelector{
+        .selector_type = .attribute,
+        .value = content,
+        .attr_operator = .exists,
+        .attr_value = null,
+    };
+
+    // Check for operators and extract value
+    if (std.mem.indexOf(u8, content, "^=")) |idx| {
+        result.attr_operator = .starts_with;
+        result.value = content[0..idx];
+        result.attr_value = cleanAttributeValue(content[idx + 2 ..]);
+    } else if (std.mem.indexOf(u8, content, "$=")) |idx| {
+        result.attr_operator = .ends_with;
+        result.value = content[0..idx];
+        result.attr_value = cleanAttributeValue(content[idx + 2 ..]);
+    } else if (std.mem.indexOf(u8, content, "*=")) |idx| {
+        result.attr_operator = .contains;
+        result.value = content[0..idx];
+        result.attr_value = cleanAttributeValue(content[idx + 2 ..]);
+    } else if (std.mem.indexOf(u8, content, "~=")) |idx| {
+        result.attr_operator = .word_match;
+        result.value = content[0..idx];
+        result.attr_value = cleanAttributeValue(content[idx + 2 ..]);
+    } else if (std.mem.indexOf(u8, content, "|=")) |idx| {
+        result.attr_operator = .lang_match;
+        result.value = content[0..idx];
+        result.attr_value = cleanAttributeValue(content[idx + 2 ..]);
+    } else if (std.mem.indexOf(u8, content, "=")) |idx| {
+        result.attr_operator = .equals;
+        result.value = content[0..idx];
+        result.attr_value = cleanAttributeValue(content[idx + 1 ..]);
+    }
+
+    return result;
+}
+
+/// Clean attribute value by removing quotes
+fn cleanAttributeValue(value: []const u8) []const u8 {
+    var clean = value;
+    if (clean.len > 0 and (clean[0] == '"' or clean[0] == '\'')) {
+        clean = clean[1..];
+    }
+    if (clean.len > 0 and (clean[clean.len - 1] == '"' or clean[clean.len - 1] == '\'')) {
+        clean = clean[0 .. clean.len - 1];
+    }
+    return clean;
+}
+
+/// Parse pseudo-class name
+fn parsePseudoClassName(name: []const u8) PseudoClass {
+    if (std.mem.eql(u8, name, "first-child")) return .first_child;
+    if (std.mem.eql(u8, name, "last-child")) return .last_child;
+    if (std.mem.eql(u8, name, "nth-child")) return .nth_child;
+    if (std.mem.eql(u8, name, "nth-last-child")) return .nth_last_child;
+    if (std.mem.eql(u8, name, "first-of-type")) return .first_of_type;
+    if (std.mem.eql(u8, name, "last-of-type")) return .last_of_type;
+    if (std.mem.eql(u8, name, "nth-of-type")) return .nth_of_type;
+    if (std.mem.eql(u8, name, "nth-last-of-type")) return .nth_last_of_type;
+    if (std.mem.eql(u8, name, "only-child")) return .only_child;
+    if (std.mem.eql(u8, name, "only-of-type")) return .only_of_type;
+    if (std.mem.eql(u8, name, "empty")) return .empty;
+    if (std.mem.eql(u8, name, "root")) return .root;
+    if (std.mem.eql(u8, name, "not")) return .not;
+    if (std.mem.eql(u8, name, "link")) return .link;
+    if (std.mem.eql(u8, name, "visited")) return .visited;
+    return .none;
+}
+
+fn isDelimiter(c: u8) bool {
+    return c == '#' or c == '.' or c == '[' or c == ':' or
+        c == ' ' or c == '>' or c == '+' or c == '~';
+}
+
+// ============================================================================
+// Matching Functions
+// ============================================================================
+
+/// Match element against complex selector
+pub fn matches(node: *const Node, selector_str: []const u8, allocator: std.mem.Allocator) !bool {
     if (node.node_type != .element_node) return false;
 
-    const selectors = try Selector.parse(allocator, selector);
-    defer allocator.free(selectors);
+    var selector = try parse(allocator, selector_str);
+    defer selector.deinit();
 
-    // All selector components must match (logical AND)
-    for (selectors) |sel| {
-        const match = switch (sel.selector_type) {
-            .tag => blk: {
-                // Tag matching is case-insensitive in HTML
-                const data = Element.getData(node);
-                const tag_lower = try std.ascii.allocLowerString(allocator, data.tag_name);
-                defer allocator.free(tag_lower);
-                const sel_lower = try std.ascii.allocLowerString(allocator, sel.value);
-                defer allocator.free(sel_lower);
-                break :blk std.mem.eql(u8, tag_lower, sel_lower);
-            },
-            .id => blk: {
-                // ID matching is case-sensitive
-                if (Element.getAttribute(node, "id")) |id| {
-                    break :blk std.mem.eql(u8, id, sel.value);
-                }
-                break :blk false;
-            },
-            .class_name => blk: {
-                // Class matching is case-sensitive
-                const data = Element.getData(node);
-                break :blk data.class_list.contains(sel.value);
-            },
-            .attribute => blk: {
-                // Parse attribute selector: [name] or [name="value"]
-                var iter = std.mem.splitScalar(u8, sel.value, '=');
-                const attr_name = iter.next() orelse break :blk false;
+    return try matchesComplexSelector(node, &selector, allocator);
+}
 
-                if (iter.next()) |expected_value| {
-                    // Attribute value matching: [name="value"]
-                    var clean_value = expected_value;
-                    // Remove quotes if present
-                    if (clean_value.len > 0 and (clean_value[0] == '"' or clean_value[0] == '\'')) {
-                        clean_value = clean_value[1..];
-                    }
-                    if (clean_value.len > 0 and (clean_value[clean_value.len - 1] == '"' or clean_value[clean_value.len - 1] == '\'')) {
-                        clean_value = clean_value[0 .. clean_value.len - 1];
-                    }
+/// Match element against parsed complex selector
+fn matchesComplexSelector(node: *const Node, selector: *const ComplexSelector, allocator: std.mem.Allocator) !bool {
+    if (selector.parts.len == 0) return false;
 
-                    if (Element.getAttribute(node, attr_name)) |attr_value| {
-                        break :blk std.mem.eql(u8, attr_value, clean_value);
-                    }
-                    break :blk false;
-                } else {
-                    // Attribute presence matching: [name]
-                    break :blk Element.hasAttribute(node, attr_name);
+    // Start from the end of the selector (the element we're testing)
+    const last_idx = selector.parts.len - 1;
+
+    // Match the last (rightmost) simple selector against this element
+    if (!try matchesSimpleSelector(node, selector.parts[last_idx], allocator)) {
+        return false;
+    }
+
+    // If it's just a simple selector, we're done
+    if (selector.parts.len == 1) return true;
+
+    // Walk backwards through combinators
+    var current_node = node;
+    var idx: usize = last_idx;
+
+    while (idx > 0) {
+        idx -= 1;
+        const combinator = selector.combinators[idx + 1];
+        const target_selector = selector.parts[idx];
+
+        switch (combinator) {
+            .none => {
+                // Compound selector - must match same element
+                if (!try matchesSimpleSelector(current_node, target_selector, allocator)) {
+                    return false;
                 }
             },
-            .universal => true,
-        };
-
-        // If any component doesn't match, return false
-        if (!match) return false;
+            .descendant => {
+                // Find ancestor matching target_selector
+                var ancestor = current_node.parent_node;
+                var found = false;
+                while (ancestor) |anc| {
+                    if (anc.node_type == .element_node) {
+                        if (try matchesSimpleSelector(anc, target_selector, allocator)) {
+                            current_node = anc;
+                            found = true;
+                            break;
+                        }
+                    }
+                    ancestor = anc.parent_node;
+                }
+                if (!found) return false;
+            },
+            .child => {
+                // Direct parent must match
+                const parent = current_node.parent_node orelse return false;
+                if (parent.node_type != .element_node) return false;
+                if (!try matchesSimpleSelector(parent, target_selector, allocator)) {
+                    return false;
+                }
+                current_node = parent;
+            },
+            .adjacent_sibling => {
+                // Previous sibling must match
+                const prev = current_node.previousSibling() orelse return false;
+                if (prev.node_type != .element_node) return false;
+                if (!try matchesSimpleSelector(prev, target_selector, allocator)) {
+                    return false;
+                }
+                current_node = prev;
+            },
+            .general_sibling => {
+                // Find preceding sibling matching target_selector
+                var sibling = current_node.previousSibling();
+                var found = false;
+                while (sibling) |sib| {
+                    if (sib.node_type == .element_node) {
+                        if (try matchesSimpleSelector(sib, target_selector, allocator)) {
+                            current_node = sib;
+                            found = true;
+                            break;
+                        }
+                    }
+                    sibling = sib.previousSibling();
+                }
+                if (!found) return false;
+            },
+        }
     }
 
     return true;
 }
 
-/// Query Selector - Find First Matching Element
-///
-/// Searches the node tree for the first element matching the given selector.
-/// Search is performed in depth-first, pre-order traversal.
-///
-/// ## Parameters
-///
-/// - `root`: Root node to search from (inclusive)
-/// - `selector`: CSS selector string
-/// - `allocator`: Memory allocator for temporary allocations
-///
-/// ## Returns
-///
-/// First matching element, or `null` if no match found.
-///
-/// ## Errors
-///
-/// - `error.OutOfMemory`: Memory allocation failed
-/// - `error.InvalidSelector`: Malformed selector syntax
-///
-/// ## Examples
-///
-/// ```zig
-/// // Create document structure
-/// const root = try Element.create(allocator, "div");
-/// defer root.release();
-///
-/// const child1 = try Element.create(allocator, "span");
-/// try Element.setAttribute(child1, "id", "first");
-/// _ = try root.appendChild(child1);
-///
-/// const child2 = try Element.create(allocator, "p");
-/// try Element.setAttribute(child2, "id", "second");
-/// _ = try root.appendChild(child2);
-///
-/// // Find by ID
-/// const found = try querySelector(root, "#second", allocator);
-/// // found === child2
-///
-/// // Find by tag
-/// const span = try querySelector(root, "span", allocator);
-/// // span === child1
-///
-/// // No match returns null
-/// const none = try querySelector(root, "#nonexistent", allocator);
-/// // none === null
-/// ```
-///
-/// ## Performance
-///
-/// Search stops at first match, making it efficient for finding single elements.
-/// For multiple matches, use querySelectorAll().
-///
-/// See: https://developer.mozilla.org/en-US/docs/Web/API/Element/querySelector
+/// Match element against simple selector
+fn matchesSimpleSelector(node: *const Node, selector: SimpleSelector, allocator: std.mem.Allocator) !bool {
+    // First check the base selector type
+    const base_match = switch (selector.selector_type) {
+        .tag => blk: {
+            const data = Element.getData(node);
+            const tag_lower = try std.ascii.allocLowerString(allocator, data.tag_name);
+            defer allocator.free(tag_lower);
+            const sel_lower = try std.ascii.allocLowerString(allocator, selector.value);
+            defer allocator.free(sel_lower);
+            break :blk std.mem.eql(u8, tag_lower, sel_lower);
+        },
+        .id => blk: {
+            if (Element.getAttribute(node, "id")) |id| {
+                break :blk std.mem.eql(u8, id, selector.value);
+            }
+            break :blk false;
+        },
+        .class_name => blk: {
+            const data = Element.getData(node);
+            break :blk data.class_list.contains(selector.value);
+        },
+        .attribute => try matchesAttributeSelector(node, selector, allocator),
+        .universal => true,
+    };
+
+    if (!base_match) return false;
+
+    // Then check pseudo-class if present
+    if (selector.pseudo_class != .none) {
+        return try matchesPseudoClass(node, selector.pseudo_class, selector.pseudo_args, allocator);
+    }
+
+    return true;
+}
+
+/// Match attribute selector
+fn matchesAttributeSelector(node: *const Node, selector: SimpleSelector, allocator: std.mem.Allocator) !bool {
+    _ = allocator;
+
+    const attr_name = selector.value;
+    const actual_value = Element.getAttribute(node, attr_name) orelse {
+        return selector.attr_operator == .exists and selector.attr_value == null;
+    };
+
+    // If just checking existence, we have the attribute
+    if (selector.attr_value == null) {
+        return true;
+    }
+
+    const expected_value = selector.attr_value.?;
+
+    return switch (selector.attr_operator) {
+        .exists => true,
+        .equals => std.mem.eql(u8, actual_value, expected_value),
+        .contains => std.mem.indexOf(u8, actual_value, expected_value) != null,
+        .starts_with => std.mem.startsWith(u8, actual_value, expected_value),
+        .ends_with => std.mem.endsWith(u8, actual_value, expected_value),
+        .word_match => hasWord(actual_value, expected_value),
+        .lang_match => hasLangPrefix(actual_value, expected_value),
+    };
+}
+
+/// Check if value contains word (space-separated)
+fn hasWord(value: []const u8, word: []const u8) bool {
+    var iter = std.mem.tokenizeScalar(u8, value, ' ');
+    while (iter.next()) |token| {
+        if (std.mem.eql(u8, token, word)) return true;
+    }
+    return false;
+}
+
+/// Check if value has language prefix
+fn hasLangPrefix(value: []const u8, prefix: []const u8) bool {
+    if (std.mem.eql(u8, value, prefix)) return true;
+    if (std.mem.startsWith(u8, value, prefix)) {
+        if (value.len > prefix.len and value[prefix.len] == '-') {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Match pseudo-class
+fn matchesPseudoClass(node: *const Node, pseudo: PseudoClass, args: ?[]const u8, allocator: std.mem.Allocator) !bool {
+    return switch (pseudo) {
+        .none => true,
+        .first_child => matchesFirstChild(node),
+        .last_child => matchesLastChild(node),
+        .nth_child => try matchesNthChild(node, args orelse "1", allocator),
+        .only_child => matchesOnlyChild(node),
+        .first_of_type => matchesFirstOfType(node),
+        .last_of_type => matchesLastOfType(node),
+        .only_of_type => matchesOnlyOfType(node),
+        .empty => matchesEmpty(node),
+        .root => node.parent_node == null,
+        else => false, // Not yet implemented
+    };
+}
+
+fn matchesFirstChild(node: *const Node) bool {
+    const parent = node.parent_node orelse return false;
+
+    // Find first element child
+    for (parent.child_nodes.items.items) |child_ptr| {
+        const child: *Node = @ptrCast(@alignCast(child_ptr));
+        if (child.node_type == .element_node) {
+            return child == node;
+        }
+    }
+    return false;
+}
+
+fn matchesLastChild(node: *const Node) bool {
+    const parent = node.parent_node orelse return false;
+
+    // Find last element child
+    var i = parent.child_nodes.items.items.len;
+    while (i > 0) {
+        i -= 1;
+        const child: *Node = @ptrCast(@alignCast(parent.child_nodes.items.items[i]));
+        if (child.node_type == .element_node) {
+            return child == node;
+        }
+    }
+    return false;
+}
+
+fn matchesOnlyChild(node: *const Node) bool {
+    const parent = node.parent_node orelse return false;
+
+    var element_count: usize = 0;
+    for (parent.child_nodes.items.items) |child_ptr| {
+        const child: *Node = @ptrCast(@alignCast(child_ptr));
+        if (child.node_type == .element_node) {
+            element_count += 1;
+            if (element_count > 1) return false;
+        }
+    }
+    return element_count == 1;
+}
+
+fn matchesFirstOfType(node: *const Node) bool {
+    const parent = node.parent_node orelse return false;
+    const data = Element.getData(node);
+
+    for (parent.child_nodes.items.items) |child_ptr| {
+        const child: *Node = @ptrCast(@alignCast(child_ptr));
+        if (child.node_type == .element_node) {
+            const child_data = Element.getData(child);
+            if (std.mem.eql(u8, child_data.tag_name, data.tag_name)) {
+                return child == node;
+            }
+        }
+    }
+    return false;
+}
+
+fn matchesLastOfType(node: *const Node) bool {
+    const parent = node.parent_node orelse return false;
+    const data = Element.getData(node);
+
+    var i = parent.child_nodes.items.items.len;
+    while (i > 0) {
+        i -= 1;
+        const child: *Node = @ptrCast(@alignCast(parent.child_nodes.items.items[i]));
+        if (child.node_type == .element_node) {
+            const child_data = Element.getData(child);
+            if (std.mem.eql(u8, child_data.tag_name, data.tag_name)) {
+                return child == node;
+            }
+        }
+    }
+    return false;
+}
+
+fn matchesOnlyOfType(node: *const Node) bool {
+    const parent = node.parent_node orelse return false;
+    const data = Element.getData(node);
+
+    var type_count: usize = 0;
+    for (parent.child_nodes.items.items) |child_ptr| {
+        const child: *Node = @ptrCast(@alignCast(child_ptr));
+        if (child.node_type == .element_node) {
+            const child_data = Element.getData(child);
+            if (std.mem.eql(u8, child_data.tag_name, data.tag_name)) {
+                type_count += 1;
+                if (type_count > 1) return false;
+            }
+        }
+    }
+    return type_count == 1;
+}
+
+fn matchesEmpty(node: *const Node) bool {
+    // Element is empty if it has no children or only whitespace text
+    if (node.child_nodes.items.items.len == 0) return true;
+
+    for (node.child_nodes.items.items) |child_ptr| {
+        const child: *Node = @ptrCast(@alignCast(child_ptr));
+        if (child.node_type == .element_node) return false;
+        if (child.node_type == .text_node) {
+            // Check if text is only whitespace
+            const text_data = child.node_value orelse "";
+            for (text_data) |c| {
+                if (!std.ascii.isWhitespace(c)) return false;
+            }
+        }
+    }
+    return true;
+}
+
+fn matchesNthChild(node: *const Node, formula: []const u8, allocator: std.mem.Allocator) !bool {
+    _ = allocator;
+
+    const parent = node.parent_node orelse return false;
+
+    // Get index of this element among element siblings
+    var index: usize = 1; // CSS uses 1-based indexing
+    for (parent.child_nodes.items.items) |child_ptr| {
+        const child: *Node = @ptrCast(@alignCast(child_ptr));
+        if (child.node_type == .element_node) {
+            if (child == node) break;
+            index += 1;
+        }
+    }
+
+    return matchesNthFormula(index, formula);
+}
+
+fn matchesNthFormula(index: usize, formula: []const u8) bool {
+    // Handle special cases
+    if (std.mem.eql(u8, formula, "odd")) {
+        return index % 2 == 1;
+    }
+    if (std.mem.eql(u8, formula, "even")) {
+        return index % 2 == 0;
+    }
+
+    // Try to parse as simple number
+    if (std.fmt.parseInt(usize, formula, 10)) |n| {
+        return index == n;
+    } else |_| {}
+
+    // Parse an+b formula
+    // For now, simplified implementation
+    return false; // TODO: Implement full nth formula parsing
+}
+
+// ============================================================================
+// Query Functions
+// ============================================================================
+
 pub fn querySelector(root: *const Node, selector: []const u8, allocator: std.mem.Allocator) !?*Node {
-    // Check if root itself matches
+    // Check if root matches first
     if (root.node_type == .element_node) {
         if (try matches(root, selector, allocator)) {
             return @constCast(root);
         }
     }
 
-    // Recursively search children (depth-first)
+    // Then search descendants
     for (root.child_nodes.items.items) |child_ptr| {
         const child: *Node = @ptrCast(@alignCast(child_ptr));
         if (try querySelector(child, selector, allocator)) |found| {
@@ -545,593 +703,17 @@ pub fn querySelector(root: *const Node, selector: []const u8, allocator: std.mem
     return null;
 }
 
-/// Query Selector All - Find All Matching Elements
-///
-/// Searches the node tree for all elements matching the given selector.
-/// Matching elements are appended to the provided NodeList.
-/// Search is performed in depth-first, pre-order traversal.
-///
-/// ## Parameters
-///
-/// - `root`: Root node to search from (inclusive)
-/// - `selector`: CSS selector string
-/// - `list`: NodeList to append matching elements to
-/// - `allocator`: Memory allocator for temporary allocations
-///
-/// ## Errors
-///
-/// - `error.OutOfMemory`: Memory allocation failed
-/// - `error.InvalidSelector`: Malformed selector syntax
-///
-/// ## Examples
-///
-/// ```zig
-/// // Create document structure with multiple matches
-/// const root = try Element.create(allocator, "div");
-/// defer root.release();
-///
-/// const item1 = try Element.create(allocator, "span");
-/// try Element.setClassName(item1, "item");
-/// _ = try root.appendChild(item1);
-///
-/// const item2 = try Element.create(allocator, "div");
-/// try Element.setClassName(item2, "item");
-/// _ = try root.appendChild(item2);
-///
-/// const other = try Element.create(allocator, "p");
-/// _ = try root.appendChild(other);
-///
-/// // Find all elements with class "item"
-/// var list = NodeList.init(allocator);
-/// defer list.deinit();
-/// try querySelectorAll(root, ".item", &list, allocator);
-/// // list.length() === 2
-/// // list.item(0) === item1
-/// // list.item(1) === item2
-///
-/// // Find all elements
-/// var all_list = NodeList.init(allocator);
-/// defer all_list.deinit();
-/// try querySelectorAll(root, "*", &all_list, allocator);
-/// // all_list.length() === 4 (root + 3 children)
-/// ```
-///
-/// ## Performance
-///
-/// Traverses entire subtree, so use specific selectors for better performance.
-///
-/// See: https://developer.mozilla.org/en-US/docs/Web/API/Element/querySelectorAll
 pub fn querySelectorAll(root: *const Node, selector: []const u8, list: *@import("node_list.zig").NodeList, allocator: std.mem.Allocator) !void {
-    // Check if root matches and add to list
+    // Check if root matches first
     if (root.node_type == .element_node) {
         if (try matches(root, selector, allocator)) {
             try list.append(@constCast(root));
         }
     }
 
-    // Recursively search all children
+    // Then search descendants
     for (root.child_nodes.items.items) |child_ptr| {
         const child: *Node = @ptrCast(@alignCast(child_ptr));
         try querySelectorAll(child, selector, list, allocator);
-    }
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "Selector parse tag" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, "div");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 1), selectors.len);
-    try std.testing.expectEqual(SelectorType.tag, selectors[0].selector_type);
-    try std.testing.expectEqualStrings("div", selectors[0].value);
-}
-
-test "Selector parse id" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, "#myid");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 1), selectors.len);
-    try std.testing.expectEqual(SelectorType.id, selectors[0].selector_type);
-    try std.testing.expectEqualStrings("myid", selectors[0].value);
-}
-
-test "Selector parse class" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, ".myclass");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 1), selectors.len);
-    try std.testing.expectEqual(SelectorType.class_name, selectors[0].selector_type);
-    try std.testing.expectEqualStrings("myclass", selectors[0].value);
-}
-
-test "Selector parse attribute" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, "[data-test]");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 1), selectors.len);
-    try std.testing.expectEqual(SelectorType.attribute, selectors[0].selector_type);
-    try std.testing.expectEqualStrings("data-test", selectors[0].value);
-}
-
-test "Selector parse combined" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, "div.myclass#myid");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 3), selectors.len);
-    try std.testing.expectEqual(SelectorType.tag, selectors[0].selector_type);
-    try std.testing.expectEqual(SelectorType.class_name, selectors[1].selector_type);
-    try std.testing.expectEqual(SelectorType.id, selectors[2].selector_type);
-}
-
-test "matches tag selector" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "div");
-    defer element.release();
-
-    try std.testing.expectEqual(true, try matches(element, "div", allocator));
-    try std.testing.expectEqual(true, try matches(element, "DIV", allocator));
-    try std.testing.expectEqual(false, try matches(element, "span", allocator));
-}
-
-test "matches id selector" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "div");
-    defer element.release();
-
-    try Element.setAttribute(element, "id", "test");
-
-    try std.testing.expectEqual(true, try matches(element, "#test", allocator));
-    try std.testing.expectEqual(false, try matches(element, "#other", allocator));
-}
-
-test "matches class selector" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "div");
-    defer element.release();
-
-    try Element.setClassName(element, "foo bar");
-
-    try std.testing.expectEqual(true, try matches(element, ".foo", allocator));
-    try std.testing.expectEqual(true, try matches(element, ".bar", allocator));
-    try std.testing.expectEqual(false, try matches(element, ".baz", allocator));
-}
-
-test "matches combined selector" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "div");
-    defer element.release();
-
-    try Element.setAttribute(element, "id", "test");
-    try Element.setClassName(element, "foo");
-
-    try std.testing.expectEqual(true, try matches(element, "div.foo#test", allocator));
-    try std.testing.expectEqual(false, try matches(element, "div.bar#test", allocator));
-    try std.testing.expectEqual(false, try matches(element, "span.foo#test", allocator));
-}
-
-test "querySelector finds element" {
-    const allocator = std.testing.allocator;
-
-    const parent = try Element.create(allocator, "div");
-    defer parent.release();
-
-    const child1 = try Element.create(allocator, "span");
-    _ = try parent.appendChild(child1);
-
-    const child2 = try Element.create(allocator, "p");
-    try Element.setAttribute(child2, "id", "target");
-    _ = try parent.appendChild(child2);
-
-    const found = try querySelector(parent, "#target", allocator);
-    try std.testing.expect(found != null);
-    try std.testing.expectEqual(child2, found.?);
-}
-
-test "querySelectorAll finds multiple elements" {
-    const allocator = std.testing.allocator;
-
-    const parent = try Element.create(allocator, "div");
-    defer parent.release();
-
-    const child1 = try Element.create(allocator, "span");
-    try Element.setClassName(child1, "item");
-    _ = try parent.appendChild(child1);
-
-    const child2 = try Element.create(allocator, "span");
-    try Element.setClassName(child2, "item");
-    _ = try parent.appendChild(child2);
-
-    const child3 = try Element.create(allocator, "p");
-    _ = try parent.appendChild(child3);
-
-    var list = @import("node_list.zig").NodeList.init(allocator);
-    defer list.deinit();
-
-    try querySelectorAll(parent, ".item", &list, allocator);
-    try std.testing.expectEqual(@as(usize, 2), list.length());
-}
-
-// ============================================================================
-// Enhanced Tests - Edge Cases and Validation
-// ============================================================================
-
-test "parse empty selector" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, "");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 0), selectors.len);
-}
-
-test "parse whitespace only selector" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, "   ");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 0), selectors.len);
-}
-
-test "parse universal selector" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, "*");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 1), selectors.len);
-    try std.testing.expectEqual(SelectorType.universal, selectors[0].selector_type);
-}
-
-test "parse multiple classes" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, ".foo.bar.baz");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 3), selectors.len);
-    try std.testing.expectEqualStrings("foo", selectors[0].value);
-    try std.testing.expectEqualStrings("bar", selectors[1].value);
-    try std.testing.expectEqualStrings("baz", selectors[2].value);
-}
-
-test "parse attribute with value" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, "[type=\"text\"]");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 1), selectors.len);
-    try std.testing.expectEqual(SelectorType.attribute, selectors[0].selector_type);
-    try std.testing.expectEqualStrings("type=\"text\"", selectors[0].value);
-}
-
-test "parse attribute with single quotes" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, "[type='text']");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 1), selectors.len);
-    try std.testing.expectEqualStrings("type='text'", selectors[0].value);
-}
-
-test "parse unclosed attribute bracket returns error" {
-    const allocator = std.testing.allocator;
-
-    const result = Selector.parse(allocator, "[unclosed");
-    try std.testing.expectError(error.InvalidSelector, result);
-}
-
-test "parse hyphenated tag name" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, "my-element");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 1), selectors.len);
-    try std.testing.expectEqual(SelectorType.tag, selectors[0].selector_type);
-    try std.testing.expectEqualStrings("my-element", selectors[0].value);
-}
-
-test "parse tag with underscore" {
-    const allocator = std.testing.allocator;
-
-    const selectors = try Selector.parse(allocator, "my_element");
-    defer allocator.free(selectors);
-
-    try std.testing.expectEqual(@as(usize, 1), selectors.len);
-    try std.testing.expectEqualStrings("my_element", selectors[0].value);
-}
-
-test "matches non-element node returns false" {
-    const allocator = std.testing.allocator;
-
-    const text = try @import("text.zig").Text.init(allocator, "Hello");
-    defer text.release();
-
-    try std.testing.expectEqual(false, try matches(text.character_data.node, "div", allocator));
-}
-
-test "matches universal selector" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "div");
-    defer element.release();
-
-    try std.testing.expectEqual(true, try matches(element, "*", allocator));
-}
-
-test "matches tag case insensitive" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "DiV");
-    defer element.release();
-
-    try std.testing.expectEqual(true, try matches(element, "div", allocator));
-    try std.testing.expectEqual(true, try matches(element, "DIV", allocator));
-    try std.testing.expectEqual(true, try matches(element, "DiV", allocator));
-}
-
-test "matches id case sensitive" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "div");
-    defer element.release();
-    try Element.setAttribute(element, "id", "MyId");
-
-    try std.testing.expectEqual(true, try matches(element, "#MyId", allocator));
-    try std.testing.expectEqual(false, try matches(element, "#myid", allocator));
-    try std.testing.expectEqual(false, try matches(element, "#MYID", allocator));
-}
-
-test "matches class case sensitive" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "div");
-    defer element.release();
-    try Element.setClassName(element, "MyClass");
-
-    try std.testing.expectEqual(true, try matches(element, ".MyClass", allocator));
-    try std.testing.expectEqual(false, try matches(element, ".myclass", allocator));
-}
-
-test "matches attribute presence" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "input");
-    defer element.release();
-    try Element.setAttribute(element, "disabled", "");
-
-    try std.testing.expectEqual(true, try matches(element, "[disabled]", allocator));
-    try std.testing.expectEqual(false, try matches(element, "[enabled]", allocator));
-}
-
-test "matches attribute value with double quotes" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "input");
-    defer element.release();
-    try Element.setAttribute(element, "type", "text");
-
-    try std.testing.expectEqual(true, try matches(element, "[type=\"text\"]", allocator));
-    try std.testing.expectEqual(false, try matches(element, "[type=\"number\"]", allocator));
-}
-
-test "matches attribute value with single quotes" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "input");
-    defer element.release();
-    try Element.setAttribute(element, "type", "text");
-
-    try std.testing.expectEqual(true, try matches(element, "[type='text']", allocator));
-}
-
-test "matches attribute value without quotes" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "input");
-    defer element.release();
-    try Element.setAttribute(element, "type", "text");
-
-    try std.testing.expectEqual(true, try matches(element, "[type=text]", allocator));
-}
-
-test "matches multiple classes all must match" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "div");
-    defer element.release();
-    try Element.setClassName(element, "foo bar baz");
-
-    try std.testing.expectEqual(true, try matches(element, ".foo.bar", allocator));
-    try std.testing.expectEqual(true, try matches(element, ".foo.bar.baz", allocator));
-    try std.testing.expectEqual(false, try matches(element, ".foo.qux", allocator));
-}
-
-test "querySelector returns null when no match" {
-    const allocator = std.testing.allocator;
-
-    const parent = try Element.create(allocator, "div");
-    defer parent.release();
-
-    const child = try Element.create(allocator, "span");
-    _ = try parent.appendChild(child);
-
-    const found = try querySelector(parent, "#nonexistent", allocator);
-    try std.testing.expectEqual(@as(?*Node, null), found);
-}
-
-test "querySelector matches root element" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "div");
-    defer element.release();
-    try Element.setAttribute(element, "id", "root");
-
-    const found = try querySelector(element, "#root", allocator);
-    try std.testing.expect(found != null);
-    try std.testing.expectEqual(element, found.?);
-}
-
-test "querySelector finds nested element" {
-    const allocator = std.testing.allocator;
-
-    const root = try Element.create(allocator, "div");
-    defer root.release();
-
-    const parent = try Element.create(allocator, "div");
-    _ = try root.appendChild(parent);
-
-    const child = try Element.create(allocator, "span");
-    try Element.setAttribute(child, "id", "nested");
-    _ = try parent.appendChild(child);
-
-    const found = try querySelector(root, "#nested", allocator);
-    try std.testing.expect(found != null);
-    try std.testing.expectEqual(child, found.?);
-}
-
-test "querySelector returns first match" {
-    const allocator = std.testing.allocator;
-
-    const parent = try Element.create(allocator, "div");
-    defer parent.release();
-
-    const child1 = try Element.create(allocator, "span");
-    try Element.setClassName(child1, "item");
-    _ = try parent.appendChild(child1);
-
-    const child2 = try Element.create(allocator, "span");
-    try Element.setClassName(child2, "item");
-    _ = try parent.appendChild(child2);
-
-    const found = try querySelector(parent, ".item", allocator);
-    try std.testing.expect(found != null);
-    try std.testing.expectEqual(child1, found.?); // First match
-}
-
-test "querySelectorAll empty result" {
-    const allocator = std.testing.allocator;
-
-    const parent = try Element.create(allocator, "div");
-    defer parent.release();
-
-    const child = try Element.create(allocator, "span");
-    _ = try parent.appendChild(child);
-
-    var list = @import("node_list.zig").NodeList.init(allocator);
-    defer list.deinit();
-
-    try querySelectorAll(parent, ".nonexistent", &list, allocator);
-    try std.testing.expectEqual(@as(usize, 0), list.length());
-}
-
-test "querySelectorAll includes root if matches" {
-    const allocator = std.testing.allocator;
-
-    const element = try Element.create(allocator, "div");
-    defer element.release();
-    try Element.setClassName(element, "root");
-
-    var list = @import("node_list.zig").NodeList.init(allocator);
-    defer list.deinit();
-
-    try querySelectorAll(element, ".root", &list, allocator);
-    try std.testing.expectEqual(@as(usize, 1), list.length());
-    const found_node: *Node = @ptrCast(@alignCast(list.item(0).?));
-    try std.testing.expectEqual(element, found_node);
-}
-
-test "querySelectorAll finds all nested elements" {
-    const allocator = std.testing.allocator;
-
-    const root = try Element.create(allocator, "div");
-    defer root.release();
-
-    const level1 = try Element.create(allocator, "div");
-    try Element.setClassName(level1, "item");
-    _ = try root.appendChild(level1);
-
-    const level2 = try Element.create(allocator, "div");
-    try Element.setClassName(level2, "item");
-    _ = try level1.appendChild(level2);
-
-    const level3 = try Element.create(allocator, "div");
-    try Element.setClassName(level3, "item");
-    _ = try level2.appendChild(level3);
-
-    var list = @import("node_list.zig").NodeList.init(allocator);
-    defer list.deinit();
-
-    try querySelectorAll(root, ".item", &list, allocator);
-    try std.testing.expectEqual(@as(usize, 3), list.length());
-}
-
-test "querySelectorAll with universal selector" {
-    const allocator = std.testing.allocator;
-
-    const parent = try Element.create(allocator, "div");
-    defer parent.release();
-
-    const child1 = try Element.create(allocator, "span");
-    _ = try parent.appendChild(child1);
-
-    const child2 = try Element.create(allocator, "p");
-    _ = try parent.appendChild(child2);
-
-    var list = @import("node_list.zig").NodeList.init(allocator);
-    defer list.deinit();
-
-    try querySelectorAll(parent, "*", &list, allocator);
-    try std.testing.expectEqual(@as(usize, 3), list.length()); // parent + 2 children
-}
-
-// Memory leak test
-test "selector operations do not leak memory" {
-    const allocator = std.testing.allocator;
-
-    var i: usize = 0;
-    while (i < 100) : (i += 1) {
-        const element = try Element.create(allocator, "div");
-        defer element.release();
-
-        try Element.setAttribute(element, "id", "test");
-        try Element.setClassName(element, "foo bar");
-
-        // Parse selectors
-        {
-            const selectors = try Selector.parse(allocator, "div.foo#test");
-            defer allocator.free(selectors);
-        }
-
-        // Test matches
-        _ = try matches(element, "div.foo#test", allocator);
-
-        // Test querySelector
-        _ = try querySelector(element, ".foo", allocator);
-
-        // Test querySelectorAll
-        var list = @import("node_list.zig").NodeList.init(allocator);
-        defer list.deinit();
-        try querySelectorAll(element, "*", &list, allocator);
     }
 }

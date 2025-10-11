@@ -87,8 +87,8 @@ test "CSS Level 1: Universal selector" {
         allocator.destroy(results);
     }
 
-    // Should match both div and p
-    try testing.expectEqual(@as(usize, 1), results.length());
+    // Should match both div and p (root + descendants)
+    try testing.expectEqual(@as(usize, 2), results.length());
 }
 
 // ============================================================================
