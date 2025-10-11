@@ -32,6 +32,7 @@ test "CSS Level 1: Type selector" {
 
     _ = try div.appendChild(p);
     _ = try div.appendChild(span);
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
 
     // Should match p element
     const result = try Element.querySelector(div, "p");
@@ -47,6 +48,8 @@ test "CSS Level 1: Class selector" {
     const div = try doc.createElement("div");
     try Element.setAttribute(div, "class", "container");
 
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const result = try Element.querySelector(div, ".container");
     try testing.expect(result != null);
     try testing.expect(result.? == div);
@@ -59,6 +62,8 @@ test "CSS Level 1: ID selector" {
 
     const div = try doc.createElement("div");
     try Element.setAttribute(div, "id", "main");
+
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
 
     const result = try Element.querySelector(div, "#main");
     try testing.expect(result != null);
@@ -73,6 +78,8 @@ test "CSS Level 1: Universal selector" {
     const div = try doc.createElement("div");
     const p = try doc.createElement("p");
     _ = try div.appendChild(p);
+
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
 
     const results = try Element.querySelectorAll(div, "*");
     defer {
@@ -102,6 +109,8 @@ test "CSS Level 2: Descendant combinator (space)" {
     _ = try section.appendChild(p);
 
     // div p should match p (descendant at any level)
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const result = try Element.querySelector(div, "div p");
     try testing.expect(result != null);
     try testing.expect(result.? == p);
@@ -122,6 +131,8 @@ test "CSS Level 2: Child combinator (>)" {
     _ = try section.appendChild(p2);
 
     // div > p should match only p1 (direct child)
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const result = try Element.querySelector(div, "div > p");
     try testing.expect(result != null);
     try testing.expect(result.? == p1);
@@ -150,6 +161,8 @@ test "CSS Level 2: Adjacent sibling combinator (+)" {
     _ = try div.appendChild(span);
 
     // h1 + p should match p (immediately follows h1)
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const result = try Element.querySelector(div, "h1 + p");
     try testing.expect(result != null);
     try testing.expect(result.? == p);
@@ -167,6 +180,8 @@ test "CSS Level 2: Attribute presence selector [attr]" {
     const input = try doc.createElement("input");
     try Element.setAttribute(input, "disabled", "");
 
+    _ = try doc.node.appendChild(input); // Add to document tree for cleanup
+
     const result = try Element.querySelector(input, "[disabled]");
     try testing.expect(result != null);
     try testing.expect(result.? == input);
@@ -179,6 +194,8 @@ test "CSS Level 2: Attribute equals selector [attr=value]" {
 
     const input = try doc.createElement("input");
     try Element.setAttribute(input, "type", "text");
+
+    _ = try doc.node.appendChild(input); // Add to document tree for cleanup
 
     const result = try Element.querySelector(input, "[type=\"text\"]");
     try testing.expect(result != null);
@@ -198,6 +215,8 @@ test "CSS Level 2: Attribute word match selector [attr~=value]" {
     try Element.setAttribute(div, "class", "foo bar baz");
 
     // Should match when value is one of the space-separated words
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const result = try Element.querySelector(div, "[class~=\"bar\"]");
     try testing.expect(result != null);
     try testing.expect(result.? == div);
@@ -222,6 +241,8 @@ test "CSS Level 2: First child pseudo-class :first-child" {
     _ = try ul.appendChild(li3);
 
     // li:first-child should match only li1
+    _ = try doc.node.appendChild(ul); // Add to document tree for cleanup
+
     const result = try Element.querySelector(ul, "li:first-child");
     try testing.expect(result != null);
     try testing.expect(result.? == li1);
@@ -236,6 +257,8 @@ test "CSS Level 2: Link pseudo-classes :link and :visited" {
     try Element.setAttribute(a, "href", "https://example.com");
 
     // :link matches unvisited links
+    _ = try doc.node.appendChild(a); // Add to document tree for cleanup
+
     const result = try Element.querySelector(a, ":link");
     try testing.expect(result != null);
 
@@ -262,6 +285,8 @@ test "CSS Level 3: General sibling combinator (~)" {
     _ = try div.appendChild(p2);
 
     // h1 ~ p should match both p elements (all siblings after h1)
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const results = try Element.querySelectorAll(div, "h1 ~ p");
     defer {
         results.deinit();
@@ -277,6 +302,8 @@ test "CSS Level 3: Attribute starts with selector [attr^=value]" {
 
     const a = try doc.createElement("a");
     try Element.setAttribute(a, "href", "https://example.com");
+
+    _ = try doc.node.appendChild(a); // Add to document tree for cleanup
 
     const result = try Element.querySelector(a, "[href^=\"https\"]");
     try testing.expect(result != null);
@@ -294,6 +321,8 @@ test "CSS Level 3: Attribute ends with selector [attr$=value]" {
     const a = try doc.createElement("a");
     try Element.setAttribute(a, "href", "document.pdf");
 
+    _ = try doc.node.appendChild(a); // Add to document tree for cleanup
+
     const result = try Element.querySelector(a, "[href$=\".pdf\"]");
     try testing.expect(result != null);
     try testing.expect(result.? == a);
@@ -309,6 +338,8 @@ test "CSS Level 3: Attribute contains selector [attr*=value]" {
 
     const a = try doc.createElement("a");
     try Element.setAttribute(a, "href", "https://github.com/user/repo");
+
+    _ = try doc.node.appendChild(a); // Add to document tree for cleanup
 
     const result = try Element.querySelector(a, "[href*=\"github\"]");
     try testing.expect(result != null);
@@ -327,6 +358,8 @@ test "CSS Level 3: Attribute language prefix selector [attr|=value]" {
     try Element.setAttribute(p, "lang", "en-US");
 
     // Should match "en" or "en-*"
+    _ = try doc.node.appendChild(p); // Add to document tree for cleanup
+
     const result = try Element.querySelector(p, "[lang|=\"en\"]");
     try testing.expect(result != null);
     try testing.expect(result.? == p);
@@ -349,6 +382,8 @@ test "CSS Level 3: Last child pseudo-class :last-child" {
     _ = try ul.appendChild(li2);
     _ = try ul.appendChild(li3);
 
+    _ = try doc.node.appendChild(ul); // Add to document tree for cleanup
+
     const result = try Element.querySelector(ul, "li:last-child");
     try testing.expect(result != null);
     try testing.expect(result.? == li3);
@@ -369,6 +404,8 @@ test "CSS Level 3: Nth child pseudo-class :nth-child(n)" {
     _ = try ul.appendChild(li3);
 
     // :nth-child(2) should match second child
+    _ = try doc.node.appendChild(ul); // Add to document tree for cleanup
+
     const result = try Element.querySelector(ul, "li:nth-child(2)");
     try testing.expect(result != null);
     try testing.expect(result.? == li2);
@@ -405,6 +442,8 @@ test "CSS Level 3: Nth last child pseudo-class :nth-last-child(n)" {
     _ = try ul.appendChild(li3);
 
     // :nth-last-child(2) should match second from end (li2)
+    _ = try doc.node.appendChild(ul); // Add to document tree for cleanup
+
     const result = try Element.querySelector(ul, "li:nth-last-child(2)");
     try testing.expect(result != null);
     try testing.expect(result.? == li2);
@@ -425,6 +464,8 @@ test "CSS Level 3: First of type pseudo-class :first-of-type" {
     _ = try div.appendChild(p2);
 
     // p:first-of-type should match p1
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const result = try Element.querySelector(div, "p:first-of-type");
     try testing.expect(result != null);
     try testing.expect(result.? == p1);
@@ -445,6 +486,8 @@ test "CSS Level 3: Last of type pseudo-class :last-of-type" {
     _ = try div.appendChild(span);
 
     // p:last-of-type should match p2
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const result = try Element.querySelector(div, "p:last-of-type");
     try testing.expect(result != null);
     try testing.expect(result.? == p2);
@@ -460,6 +503,8 @@ test "CSS Level 3: Only child pseudo-class :only-child" {
     _ = try div.appendChild(p);
 
     // p:only-child should match (it's the only child)
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const result = try Element.querySelector(div, "p:only-child");
     try testing.expect(result != null);
     try testing.expect(result.? == p);
@@ -486,6 +531,8 @@ test "CSS Level 3: Only of type pseudo-class :only-of-type" {
     _ = try div.appendChild(span);
 
     // p:only-of-type should match (only p element)
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const result = try Element.querySelector(div, "p:only-of-type");
     try testing.expect(result != null);
     try testing.expect(result.? == p);
@@ -506,6 +553,8 @@ test "CSS Level 3: Empty pseudo-class :empty" {
     _ = try container.appendChild(div2);
 
     // div:empty should match only div1
+    _ = try doc.node.appendChild(div1); // Add to document tree for cleanup
+
     const result = try Element.querySelector(container, "div:empty");
     try testing.expect(result != null);
     try testing.expect(result.? == div1);
@@ -525,6 +574,8 @@ test "CSS Level 3: Not pseudo-class :not()" {
     _ = try div.appendChild(p2);
 
     // p:not(.special) should match only p2
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const result = try Element.querySelector(div, "p:not(.special)");
     try testing.expect(result != null);
     try testing.expect(result.? == p2);
@@ -544,6 +595,8 @@ test "CSS Level 3: Enabled and disabled pseudo-classes" {
     _ = try form.appendChild(input2);
 
     // input:enabled should match input1
+    _ = try doc.node.appendChild(input1); // Add to document tree for cleanup
+
     const enabled = try Element.querySelector(form, "input:enabled");
     try testing.expect(enabled != null);
     try testing.expect(enabled.? == input1);
@@ -564,6 +617,8 @@ test "CSS Level 3: Checked pseudo-class :checked" {
     try Element.setAttribute(input, "checked", "");
 
     // input:checked should match
+    _ = try doc.node.appendChild(input); // Add to document tree for cleanup
+
     const result = try Element.querySelector(input, ":checked");
     try testing.expect(result != null);
     try testing.expect(result.? == input);
@@ -589,6 +644,8 @@ test "CSS Level 4: Is pseudo-class :is()" {
     _ = try div.appendChild(p);
 
     // :is(h1, h2) should match h1 and h2 but not p
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const results = try Element.querySelectorAll(div, ":is(h1, h2)");
     defer {
         results.deinit();
@@ -611,6 +668,8 @@ test "CSS Level 4: Where pseudo-class :where()" {
     _ = try div.appendChild(p2);
 
     // :where(.intro) p should match paragraphs (where has 0 specificity)
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const results = try Element.querySelectorAll(div, ":where(.intro)");
     defer {
         results.deinit();
@@ -635,6 +694,8 @@ test "CSS Level 4: Has pseudo-class :has()" {
     _ = try container.appendChild(div2);
 
     // div:has(p) should match only div1
+    _ = try doc.node.appendChild(div1); // Add to document tree for cleanup
+
     const result = try Element.querySelector(container, "div:has(p)");
     try testing.expect(result != null);
     try testing.expect(result.? == div1);
@@ -659,6 +720,8 @@ test "CSS Level 4: Multiple selector lists with comma" {
     _ = try div.appendChild(span);
 
     // h1, p should match both h1 and p but not span
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const results = try Element.querySelectorAll(div, "h1, p");
     defer {
         results.deinit();
@@ -676,6 +739,8 @@ test "CSS Level 4: Case-insensitive attribute selector [attr=value i]" {
     try Element.setAttribute(input, "type", "TEXT");
 
     // Should match case-insensitively with 'i' flag
+    _ = try doc.node.appendChild(input); // Add to document tree for cleanup
+
     const result = try Element.querySelector(input, "[type=\"text\" i]");
     try testing.expect(result != null);
     try testing.expect(result.? == input);
@@ -690,6 +755,8 @@ test "CSS Level 4: Any-link pseudo-class :any-link" {
     try Element.setAttribute(a, "href", "https://example.com");
 
     // :any-link matches all links (visited or unvisited)
+    _ = try doc.node.appendChild(a); // Add to document tree for cleanup
+
     const result = try Element.querySelector(a, ":any-link");
     try testing.expect(result != null);
     try testing.expect(result.? == a);
@@ -716,6 +783,8 @@ test "Complex: Multiple combinators" {
     _ = try div.appendChild(p);
 
     // article > div p should match p (child then descendant)
+    _ = try doc.node.appendChild(article); // Add to document tree for cleanup
+
     const result = try Element.querySelector(article, "article > div p");
     try testing.expect(result != null);
     try testing.expect(result.? == p);
@@ -735,6 +804,8 @@ test "Complex: Chained pseudo-classes" {
     _ = try div.appendChild(p2);
 
     // p:first-child:not(.special) should not match (p1 has .special)
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const no_match = try Element.querySelector(div, "p:first-child:not(.special)");
     try testing.expect(no_match == null);
 
@@ -760,6 +831,8 @@ test "Complex: Nested :is() and :not()" {
     _ = try div.appendChild(span);
 
     // :is(h1, p, span):not(.excluded) should match h1 and p but not span
+    _ = try doc.node.appendChild(div); // Add to document tree for cleanup
+
     const results = try Element.querySelectorAll(div, ":is(h1, p, span):not(.excluded)");
     defer {
         results.deinit();
@@ -785,6 +858,8 @@ test "Complex: Attribute and pseudo-class combination" {
     _ = try form.appendChild(input2);
 
     // input[type="text"]:enabled[required] should match input1
+    _ = try doc.node.appendChild(form); // Add to document tree for cleanup
+
     const result = try Element.querySelector(form, "input[type=\"text\"]:enabled[required]");
     try testing.expect(result != null);
     try testing.expect(result.? == input1);
