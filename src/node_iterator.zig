@@ -245,7 +245,7 @@ pub const NodeIterator = struct {
         _ = self;
         const parent = node.parent_node orelse return null;
         const len = parent.child_nodes.length();
-        
+
         var i: usize = 0;
         while (i < len) : (i += 1) {
             const child: *Node = @ptrCast(@alignCast(parent.child_nodes.item(i).?));
@@ -254,7 +254,7 @@ pub const NodeIterator = struct {
                 return next;
             }
         }
-        
+
         return null;
     }
 
@@ -262,7 +262,7 @@ pub const NodeIterator = struct {
         _ = self;
         const parent = node.parent_node orelse return null;
         const len = parent.child_nodes.length();
-        
+
         var i: usize = 0;
         while (i < len) : (i += 1) {
             const child: *Node = @ptrCast(@alignCast(parent.child_nodes.item(i).?));
@@ -271,7 +271,7 @@ pub const NodeIterator = struct {
                 return prev;
             }
         }
-        
+
         return null;
     }
 

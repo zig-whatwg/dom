@@ -104,14 +104,12 @@ pub fn filterNode(node: *Node, what_to_show: u32, filter: ?FilterCallback) u16 {
 // ============================================================================
 
 test "NodeFilter constants" {
-    
     try std.testing.expectEqual(@as(u16, 1), FILTER_ACCEPT);
     try std.testing.expectEqual(@as(u16, 2), FILTER_REJECT);
     try std.testing.expectEqual(@as(u16, 3), FILTER_SKIP);
 }
 
 test "NodeFilter whatToShow constants" {
-    
     try std.testing.expectEqual(@as(u32, 0xFFFFFFFF), SHOW_ALL);
     try std.testing.expectEqual(@as(u32, 0x1), SHOW_ELEMENT);
     try std.testing.expectEqual(@as(u32, 0x4), SHOW_TEXT);
