@@ -662,11 +662,7 @@ fn matchesSelectorComponent(node: *const Node, component: SelectorComponent, all
     const base_match = switch (component.selector_type) {
         .tag => blk: {
             const data = Element.getData(node);
-            const tag_lower = try std.ascii.allocLowerString(allocator, data.tag_name);
-            defer allocator.free(tag_lower);
-            const sel_lower = try std.ascii.allocLowerString(allocator, component.value);
-            defer allocator.free(sel_lower);
-            break :blk std.mem.eql(u8, tag_lower, sel_lower);
+            break :blk std.mem.eql(u8, data.tag_name, component.value);
         },
         .id => blk: {
             if (Element.getAttribute(node, "id")) |id| {

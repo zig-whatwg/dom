@@ -489,7 +489,7 @@ test "DOMImplementation createDocument with element" {
 
     const root_node: *Node = @ptrCast(@alignCast(new_doc.node.child_nodes.item(0).?));
     try std.testing.expect(root_node.node_type == .element_node);
-    try std.testing.expectEqualStrings("HTML", root_node.node_name);
+    try std.testing.expectEqualStrings("html", root_node.node_name);
 }
 
 test "DOMImplementation createDocument with doctype" {
@@ -540,16 +540,16 @@ test "DOMImplementation createHTMLDocument no title" {
     // Second child is html
     const html_node: *Node = @ptrCast(@alignCast(html_doc.node.child_nodes.item(1).?));
     try std.testing.expect(html_node.node_type == .element_node);
-    try std.testing.expectEqualStrings("HTML", html_node.node_name);
+    try std.testing.expectEqualStrings("html", html_node.node_name);
 
     // HTML should have head and body
     try std.testing.expectEqual(@as(usize, 2), html_node.child_nodes.length());
 
     const head_node: *Node = @ptrCast(@alignCast(html_node.child_nodes.item(0).?));
-    try std.testing.expectEqualStrings("HEAD", head_node.node_name);
+    try std.testing.expectEqualStrings("head", head_node.node_name);
 
     const body_node: *Node = @ptrCast(@alignCast(html_node.child_nodes.item(1).?));
-    try std.testing.expectEqualStrings("BODY", body_node.node_name);
+    try std.testing.expectEqualStrings("body", body_node.node_name);
 }
 
 test "DOMImplementation createHTMLDocument with title" {
@@ -574,7 +574,7 @@ test "DOMImplementation createHTMLDocument with title" {
     try std.testing.expectEqual(@as(usize, 1), head_node.child_nodes.length());
 
     const title_node: *Node = @ptrCast(@alignCast(head_node.child_nodes.item(0).?));
-    try std.testing.expectEqualStrings("TITLE", title_node.node_name);
+    try std.testing.expectEqualStrings("title", title_node.node_name);
 
     // Title should have text child
     try std.testing.expectEqual(@as(usize, 1), title_node.child_nodes.length());

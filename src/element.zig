@@ -69,7 +69,7 @@
 //! ## Element Data Structure
 //!
 //! Each element stores:
-//! - **tag_name**: Uppercased element tag (e.g., "DIV", "SPAN")
+//! - **tag_name**: Element tag name (case-preserved as provided)
 //! - **attributes**: NamedNodeMap of attribute name-value pairs
 //! - **class_list**: DOMTokenList automatically synced with class attribute
 //!
@@ -140,7 +140,7 @@
 //! 2. **querySelector** stops at first match (good for single elements)
 //! 3. **querySelectorAll** traverses entire tree (use specific selectors)
 //! 4. **Class list operations** are automatically synced with class attribute
-//! 5. **Tag names** are stored uppercase for case-insensitive matching
+//! 5. **Tag names** are case-preserved as provided (matching is case-sensitive)
 
 const std = @import("std");
 const Node = @import("node.zig").Node;
@@ -158,13 +158,13 @@ const selector = @import("selector.zig");
 ///
 /// ## Fields
 ///
-/// - `tag_name`: Uppercased element tag name (e.g., "DIV", "SPAN")
+/// - `tag_name`: Element tag name (case-preserved as provided)
 /// - `attributes`: NamedNodeMap of element attributes
 /// - `class_list`: DOMTokenList synchronized with class attribute
 ///
 /// ## Memory Layout
 ///
-/// Tag name is heap-allocated and uppercased for case-insensitive matching.
+/// Tag name is heap-allocated and stored exactly as provided (case-sensitive).
 /// Attributes and class list manage their own memory.
 pub const ElementData = struct {
     tag_name: []const u8,
@@ -174,12 +174,12 @@ pub const ElementData = struct {
     /// Initialize Element Data
     ///
     /// Creates a new ElementData with the specified tag name.
-    /// Tag name is automatically uppercased.
+    /// Tag name is stored exactly as provided (case-preserved).
     ///
     /// ## Parameters
     ///
     /// - `allocator`: Memory allocator
-    /// - `tag_name`: Element tag name (will be uppercased)
+    /// - `tag_name`: Element tag name (case-preserved)
     ///
     /// ## Returns
     ///
@@ -194,12 +194,12 @@ pub const ElementData = struct {
     /// ```zig
     /// var data = try ElementData.init(allocator, "div");
     /// defer data.deinit(allocator);
-    /// // data.tag_name === "DIV"
+    /// // data.tag_name === "div" (case-preserved)
     /// ```
     pub fn init(allocator: std.mem.Allocator, tag_name: []const u8) !ElementData {
-        const tag_upper = try std.ascii.allocUpperString(allocator, tag_name);
+        const tag_copy = try allocator.dupe(u8, tag_name);
         return .{
-            .tag_name = tag_upper,
+            .tag_name = tag_copy,
             .attributes = NamedNodeMap.init(allocator),
             .class_list = DOMTokenList.init(allocator),
         };
@@ -228,7 +228,7 @@ pub const Element = struct {
     /// Create Element
     ///
     /// Creates a new element node with the specified tag name.
-    /// Tag name is automatically uppercased for case-insensitive matching.
+    /// Tag name is stored exactly as provided (case-preserved).
     ///
     /// ## Parameters
     ///
@@ -245,6 +245,7 @@ pub const Element = struct {
     ///
     /// ## Examples
     ///
+    /// ### Creating Elements
     /// ```zig
     /// // Create a div element
     /// const div = try Element.create(allocator, "div");
@@ -255,11 +256,11 @@ pub const Element = struct {
     /// defer input.release();
     /// try Element.setAttribute(input, "type", "text");
     ///
-    /// // Tag names are uppercased
-    /// const span = try Element.create(allocator, "span");
+    /// // Tag names are case-preserved
+    /// const span = try Element.create(allocator, "Span");
     /// defer span.release();
     /// const data = Element.getData(span);
-    /// // data.tag_name === "SPAN"
+    /// // data.tag_name === "Span" (case-preserved)
     /// ```
     ///
     /// See: https://dom.spec.whatwg.org/#dom-document-createelement
@@ -738,13 +739,13 @@ pub const Element = struct {
     /// Get Elements By Tag Name
     ///
     /// Searches the subtree for all elements with the specified tag name.
-    /// Tag name matching is case-insensitive.
+    /// Tag name matching is case-sensitive.
     /// Use "*" to match all elements.
     ///
     /// ## Parameters
     ///
     /// - `node`: Root node to search from (inclusive)
-    /// - `tag_name`: Tag name to search for (case-insensitive) or "*"
+    /// - `tag_name`: Tag name to search for (case-sensitive) or "*"
     /// - `list`: NodeList to append matching elements to
     ///
     /// ## Errors
@@ -753,6 +754,7 @@ pub const Element = struct {
     ///
     /// ## Examples
     ///
+    /// ### Finding Elements
     /// ```zig
     /// const root = try Element.create(allocator, "div");
     /// defer root.release();
@@ -766,15 +768,15 @@ pub const Element = struct {
     /// const para = try Element.create(allocator, "p");
     /// _ = try root.appendChild(para);
     ///
-    /// // Find all spans
+    /// // Find all spans (case-sensitive)
     /// var list = NodeList.init(allocator);
     /// defer list.deinit();
     /// try Element.getElementsByTagName(root, "span", &list);
     /// // list.length() === 2
     ///
-    /// // Case insensitive
+    /// // Case sensitive - must match exactly
     /// try Element.getElementsByTagName(root, "SPAN", &list);
-    /// // Still finds both spans
+    /// // list.length() === 0 (no matches, wrong case)
     ///
     /// // Find all elements
     /// try Element.getElementsByTagName(root, "*", &list);
@@ -786,10 +788,8 @@ pub const Element = struct {
         if (node.node_type != .element_node) return;
 
         const data = getData(node);
-        const tag_upper = try std.ascii.allocUpperString(node.allocator, tag_name);
-        defer node.allocator.free(tag_upper);
 
-        if (std.mem.eql(u8, data.tag_name, tag_upper) or std.mem.eql(u8, tag_name, "*")) {
+        if (std.mem.eql(u8, data.tag_name, tag_name) or std.mem.eql(u8, tag_name, "*")) {
             try list.append(@constCast(node));
         }
 
@@ -1511,7 +1511,7 @@ test "Element creation" {
     defer element.release();
 
     const data = Element.getData(element);
-    try std.testing.expectEqualStrings("DIV", data.tag_name);
+    try std.testing.expectEqualStrings("div", data.tag_name);
     try std.testing.expectEqual(NodeType.element_node, element.node_type);
 }
 
@@ -1716,7 +1716,7 @@ test "Element querySelectorAll" {
 // Enhanced Tests - Edge Cases and Additional Coverage
 // ============================================================================
 
-test "Element tag name case insensitive" {
+test "Element tag name case preserved" {
     const allocator = std.testing.allocator;
 
     const lower = try Element.create(allocator, "div");
@@ -1732,10 +1732,10 @@ test "Element tag name case insensitive" {
     const data_upper = Element.getData(upper);
     const data_mixed = Element.getData(mixed);
 
-    // All should be uppercased
-    try std.testing.expectEqualStrings("DIV", data_lower.tag_name);
+    // Case should be preserved exactly as provided
+    try std.testing.expectEqualStrings("div", data_lower.tag_name);
     try std.testing.expectEqualStrings("DIV", data_upper.tag_name);
-    try std.testing.expectEqualStrings("DIV", data_mixed.tag_name);
+    try std.testing.expectEqualStrings("DiV", data_mixed.tag_name);
 }
 
 test "Element multiple attributes" {

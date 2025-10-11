@@ -218,10 +218,10 @@ pub const Document = struct {
     /// > 2. If this is an HTML document, set localName to ASCII lowercase
     /// > 3. Return the result of creating an element
     ///
-    /// This implementation automatically uppercases tag names and sets the owner document.
+    /// This implementation preserves tag name case exactly as provided and sets the owner document.
     ///
     /// ## Parameters
-    /// - `tag_name`: The element's tag name (will be uppercased)
+    /// - `tag_name`: The element's tag name (case-preserved)
     ///
     /// ## Returns
     /// A new element node with the specified tag name.
@@ -624,7 +624,7 @@ pub const Document = struct {
     /// > of all descendant elements whose qualified name matches qualifiedName.
     ///
     /// ## Parameters
-    /// - `tag_name`: The tag name to search for (case-insensitive)
+    /// - `tag_name`: The tag name to search for (case-sensitive)
     ///
     /// ## Returns
     /// A NodeList containing all matching elements.
@@ -1079,7 +1079,7 @@ test "Document createElement" {
     defer element.release();
 
     const data = Element.getData(element);
-    try std.testing.expectEqualStrings("DIV", data.tag_name);
+    try std.testing.expectEqualStrings("div", data.tag_name);
     try std.testing.expectEqual(@as(*anyopaque, @ptrCast(doc)), element.owner_document.?);
 }
 
@@ -1106,7 +1106,7 @@ test "Document createElement - special characters in tag name" {
     defer element.release();
 
     const data = Element.getData(element);
-    try std.testing.expectEqualStrings("MY-CUSTOM-ELEMENT", data.tag_name);
+    try std.testing.expectEqualStrings("my-custom-element", data.tag_name);
 }
 
 test "Document createElement - multiple elements" {
@@ -1128,9 +1128,9 @@ test "Document createElement - multiple elements" {
     const span_data = Element.getData(span);
     const p_data = Element.getData(p);
 
-    try std.testing.expectEqualStrings("DIV", div_data.tag_name);
-    try std.testing.expectEqualStrings("SPAN", span_data.tag_name);
-    try std.testing.expectEqualStrings("P", p_data.tag_name);
+    try std.testing.expectEqualStrings("div", div_data.tag_name);
+    try std.testing.expectEqualStrings("span", span_data.tag_name);
+    try std.testing.expectEqualStrings("p", p_data.tag_name);
 }
 
 test "Document createTextNode" {
