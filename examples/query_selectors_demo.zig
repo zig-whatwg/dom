@@ -2,24 +2,38 @@
 //! ===========================================================
 //!
 //! This demo showcases querySelector() and querySelectorAll()
-//! on a complex, deeply nested DOM tree. It demonstrates:
+//! on a complex, deeply nested DOM tree. It demonstrates the full
+//! power of CSS selector support including:
 //!
+//! **CSS Level 1-2:**
 //! - Type selectors (element names)
-//! - Class selectors
-//! - ID selectors
-//! - Descendant combinators
-//! - Child combinators (>)
-//! - Attribute selectors
-//! - Multiple selectors (,)
-//! - Complex nested queries
+//! - Class selectors (.class, .multiple.classes)
+//! - ID selectors (#id)
+//! - Universal selector (*)
+//! - Descendant combinator (space)
+//! - Child combinator (>)
 //!
-//! ## CSS Selector Support Status
+//! **CSS Level 3:**
+//! - Adjacent sibling combinator (+)
+//! - General sibling combinator (~)
+//! - Attribute selectors with operators
+//! - Structural pseudo-classes (:first-child, :last-child, :nth-child, etc.)
+//! - :not() pseudo-class
+//! - :empty pseudo-class
+//! - :root pseudo-class
 //!
-//! **Working ✅:** Simple selectors (element, #id, .class, [attr])
-//! **Not Working ❌:** Combinators (>, space), pseudo-classes, comma lists
+//! **CSS Level 4:**
+//! - Case-insensitive attribute matching ([attr="value" i])
 //!
-//! This demo shows both working and non-working selectors to illustrate
-//! the current implementation limits. See test output for results.
+//! **Complex Selectors:**
+//! - Compound selectors (tag.class#id[attr]:pseudo)
+//! - Chained pseudo-classes (:first-child:not(.special))
+//! - Multiple combinators (div > p + span)
+//!
+//! ## Selector Support Status
+//!
+//! **Fully Working ✅:** All CSS1-3 features except state-based pseudo-classes
+//! **Not Implemented ❌:** :link, :visited, :hover, :focus, :enabled, :disabled
 //!
 //! Build and run:
 //!   zig build run-query-demo
@@ -37,7 +51,7 @@ pub fn main() !void {
 
     std.debug.print("\n", .{});
     std.debug.print("╔════════════════════════════════════════════════════════════════╗\n", .{});
-    std.debug.print("║     Query Selectors Demo - Complex DOM Tree                   ║\n", .{});
+    std.debug.print("║     Query Selectors Demo - Advanced CSS Selector Features    ║\n", .{});
     std.debug.print("╚════════════════════════════════════════════════════════════════╝\n", .{});
     std.debug.print("\n", .{});
 
@@ -59,10 +73,15 @@ pub fn main() !void {
     std.debug.print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", .{});
     std.debug.print("\n", .{});
 
-    try runQueryExamples(doc);
+    try runBasicSelectors(doc);
+    try runAttributeSelectors(doc);
+    try runCombinatorSelectors(doc);
+    try runPseudoClassSelectors(doc);
+    try runComplexSelectors(doc);
 
     std.debug.print("\n", .{});
     std.debug.print("✅ Demo completed successfully!\n", .{});
+    std.debug.print("   All CSS selector features demonstrated.\n", .{});
     std.debug.print("\n", .{});
 }
 
@@ -79,7 +98,7 @@ fn buildComplexDOM(doc: *Document) !void {
 
     const title = try doc.createElement("title");
     _ = try head.appendChild(title);
-    const title_text = try doc.createTextNode("Query Selector Demo");
+    const title_text = try doc.createTextNode("Advanced Query Selector Demo");
     _ = try title.appendChild(title_text.character_data.node);
 
     // Create BODY
@@ -101,12 +120,12 @@ fn buildComplexDOM(doc: *Document) !void {
     try Element.setAttribute(nav_list, "class", "nav-list");
     _ = try nav.appendChild(nav_list);
 
-    // Add nav items
-    const nav_items = [_]struct { href: []const u8, text: []const u8, class: []const u8 }{
-        .{ .href = "/home", .text = "Home", .class = "nav-item active" },
-        .{ .href = "/about", .text = "About", .class = "nav-item" },
-        .{ .href = "/products", .text = "Products", .class = "nav-item" },
-        .{ .href = "/contact", .text = "Contact", .class = "nav-item" },
+    // Add nav items with varied attributes
+    const nav_items = [_]struct { href: []const u8, text: []const u8, class: []const u8, lang: ?[]const u8 }{
+        .{ .href = "/home", .text = "Home", .class = "nav-item active", .lang = null },
+        .{ .href = "/about", .text = "About", .class = "nav-item", .lang = null },
+        .{ .href = "/products", .text = "Products", .class = "nav-item featured", .lang = null },
+        .{ .href = "/contact", .text = "Contact", .class = "nav-item", .lang = "en-US" },
     };
 
     for (nav_items) |item| {
@@ -117,6 +136,10 @@ fn buildComplexDOM(doc: *Document) !void {
         const a = try doc.createElement("a");
         try Element.setAttribute(a, "href", item.href);
         try Element.setAttribute(a, "class", "nav-link");
+        try Element.setAttribute(a, "data-type", "NAVIGATION"); // Uppercase for case-insensitive demo
+        if (item.lang) |lang| {
+            try Element.setAttribute(a, "lang", lang);
+        }
         _ = try li.appendChild(a);
 
         const link_text = try doc.createTextNode(item.text);
@@ -129,77 +152,67 @@ fn buildComplexDOM(doc: *Document) !void {
     try Element.setAttribute(main_elem, "class", "content-area");
     _ = try body.appendChild(main_elem);
 
-    // Create ARTICLE section
-    const article = try doc.createElement("article");
-    try Element.setAttribute(article, "id", "featured-article");
-    try Element.setAttribute(article, "class", "article featured");
-    try Element.setAttribute(article, "data-category", "technology");
-    _ = try main_elem.appendChild(article);
-
-    const article_header = try doc.createElement("header");
-    try Element.setAttribute(article_header, "class", "article-header");
-    _ = try article.appendChild(article_header);
-
-    const h1 = try doc.createElement("h1");
-    try Element.setAttribute(h1, "class", "article-title");
-    _ = try article_header.appendChild(h1);
-    const h1_text = try doc.createTextNode("Understanding Query Selectors");
-    _ = try h1.appendChild(h1_text.character_data.node);
-
-    const article_meta = try doc.createElement("div");
-    try Element.setAttribute(article_meta, "class", "article-meta");
-    _ = try article_header.appendChild(article_meta);
-
-    const author = try doc.createElement("span");
-    try Element.setAttribute(author, "class", "author");
-    try Element.setAttribute(author, "data-author-id", "42");
-    _ = try article_meta.appendChild(author);
-    const author_text = try doc.createTextNode("Jane Doe");
-    _ = try author.appendChild(author_text.character_data.node);
-
-    const date = try doc.createElement("time");
-    try Element.setAttribute(date, "class", "publish-date");
-    try Element.setAttribute(date, "datetime", "2025-10-10");
-    _ = try article_meta.appendChild(date);
-    const date_text = try doc.createTextNode("October 10, 2025");
-    _ = try date.appendChild(date_text.character_data.node);
-
-    // Article content
-    const article_body = try doc.createElement("div");
-    try Element.setAttribute(article_body, "class", "article-body");
-    _ = try article.appendChild(article_body);
-
-    // Add paragraphs
-    const paragraphs = [_]struct { class: []const u8, text: []const u8 }{
-        .{ .class = "intro", .text = "This is an introduction to CSS query selectors." },
-        .{ .class = "content", .text = "Query selectors allow you to find elements in the DOM." },
-        .{ .class = "content highlight", .text = "They use CSS selector syntax for powerful matching." },
+    // Create multiple ARTICLE sections for sibling combinator demos
+    const articles_data = [_]struct { id: []const u8, category: []const u8, featured: bool }{
+        .{ .id = "article-1", .category = "technology", .featured = true },
+        .{ .id = "article-2", .category = "design", .featured = false },
+        .{ .id = "article-3", .category = "technology", .featured = false },
     };
 
-    for (paragraphs) |para| {
-        const p = try doc.createElement("p");
-        try Element.setAttribute(p, "class", para.class);
-        _ = try article_body.appendChild(p);
-        const p_text = try doc.createTextNode(para.text);
-        _ = try p.appendChild(p_text.character_data.node);
+    for (articles_data) |article_data| {
+        const article = try doc.createElement("article");
+        try Element.setAttribute(article, "id", article_data.id);
+        var class_str: []const u8 = "article";
+        if (article_data.featured) {
+            class_str = "article featured";
+        }
+        try Element.setAttribute(article, "class", class_str);
+        try Element.setAttribute(article, "data-category", article_data.category);
+        _ = try main_elem.appendChild(article);
+
+        const article_header = try doc.createElement("header");
+        try Element.setAttribute(article_header, "class", "article-header");
+        _ = try article.appendChild(article_header);
+
+        const h2 = try doc.createElement("h2");
+        try Element.setAttribute(h2, "class", "article-title");
+        _ = try article_header.appendChild(h2);
+        const h2_text = try doc.createTextNode("Article Title");
+        _ = try h2.appendChild(h2_text.character_data.node);
+
+        // Article content with various paragraph types
+        const article_body = try doc.createElement("div");
+        try Element.setAttribute(article_body, "class", "article-body");
+        _ = try article.appendChild(article_body);
+
+        // First paragraph (intro)
+        const p1 = try doc.createElement("p");
+        try Element.setAttribute(p1, "class", "intro");
+        _ = try article_body.appendChild(p1);
+        const p1_text = try doc.createTextNode("Introduction paragraph");
+        _ = try p1.appendChild(p1_text.character_data.node);
+
+        // Middle paragraphs
+        const p2 = try doc.createElement("p");
+        try Element.setAttribute(p2, "class", "content");
+        _ = try article_body.appendChild(p2);
+        const p2_text = try doc.createTextNode("Content paragraph");
+        _ = try p2.appendChild(p2_text.character_data.node);
+
+        // Last paragraph (with special class)
+        const p3 = try doc.createElement("p");
+        try Element.setAttribute(p3, "class", "content highlight");
+        _ = try article_body.appendChild(p3);
+        const p3_text = try doc.createTextNode("Highlighted content");
+        _ = try p3.appendChild(p3_text.character_data.node);
+
+        // Empty div for :empty demo
+        const empty_div = try doc.createElement("div");
+        try Element.setAttribute(empty_div, "class", "placeholder");
+        _ = try article_body.appendChild(empty_div);
     }
 
-    // Add code example
-    const code_block = try doc.createElement("div");
-    try Element.setAttribute(code_block, "class", "code-block");
-    _ = try article_body.appendChild(code_block);
-
-    const pre = try doc.createElement("pre");
-    _ = try code_block.appendChild(pre);
-
-    const code = try doc.createElement("code");
-    try Element.setAttribute(code, "class", "language-css");
-    try Element.setAttribute(code, "data-language", "css");
-    _ = try pre.appendChild(code);
-    const code_text = try doc.createTextNode(".class > element");
-    _ = try code.appendChild(code_text.character_data.node);
-
-    // Create SIDEBAR
+    // Create SIDEBAR with nested structure
     const aside = try doc.createElement("aside");
     try Element.setAttribute(aside, "id", "sidebar");
     try Element.setAttribute(aside, "class", "sidebar");
@@ -209,7 +222,7 @@ fn buildComplexDOM(doc: *Document) !void {
     const widgets = [_]struct { id: []const u8, title: []const u8, class: []const u8 }{
         .{ .id = "recent-posts", .title = "Recent Posts", .class = "widget posts" },
         .{ .id = "categories", .title = "Categories", .class = "widget categories" },
-        .{ .id = "tags", .title = "Tags", .class = "widget tags" },
+        .{ .id = "tags", .title = "Tags", .class = "widget tags special" },
     };
 
     for (widgets) |widget| {
@@ -228,14 +241,18 @@ fn buildComplexDOM(doc: *Document) !void {
         try Element.setAttribute(widget_content, "class", "widget-content");
         _ = try widget_div.appendChild(widget_content);
 
-        // Add some items
+        // Add items (varying counts for nth-child demos)
+        const item_count: usize = if (std.mem.eql(u8, widget.id, "recent-posts")) 5 else 3;
         var i: usize = 0;
-        while (i < 3) : (i += 1) {
+        while (i < item_count) : (i += 1) {
             const item = try doc.createElement("li");
             try Element.setAttribute(item, "class", "widget-item");
             _ = try widget_content.appendChild(item);
+            const item_link = try doc.createElement("a");
+            try Element.setAttribute(item_link, "href", "/item");
+            _ = try item.appendChild(item_link);
             const item_text = try doc.createTextNode("Item");
-            _ = try item.appendChild(item_text.character_data.node);
+            _ = try item_link.appendChild(item_text.character_data.node);
         }
     }
 
@@ -252,7 +269,7 @@ fn buildComplexDOM(doc: *Document) !void {
     const copyright = try doc.createElement("p");
     try Element.setAttribute(copyright, "class", "copyright");
     _ = try footer_content.appendChild(copyright);
-    const copy_text = try doc.createTextNode("© 2025 Query Selector Demo");
+    const copy_text = try doc.createTextNode("© 2025 Advanced Selector Demo");
     _ = try copyright.appendChild(copy_text.character_data.node);
 
     const social = try doc.createElement("div");
@@ -260,9 +277,9 @@ fn buildComplexDOM(doc: *Document) !void {
     _ = try footer_content.appendChild(social);
 
     const social_platforms = [_]struct { href: []const u8, name: []const u8 }{
-        .{ .href = "https://twitter.com", .name = "Twitter" },
-        .{ .href = "https://github.com", .name = "GitHub" },
-        .{ .href = "https://linkedin.com", .name = "LinkedIn" },
+        .{ .href = "https://twitter.com/example", .name = "Twitter" },
+        .{ .href = "https://github.com/example", .name = "GitHub" },
+        .{ .href = "https://linkedin.com/example", .name = "LinkedIn" },
     };
 
     for (social_platforms) |platform| {
@@ -270,17 +287,22 @@ fn buildComplexDOM(doc: *Document) !void {
         try Element.setAttribute(link, "href", platform.href);
         try Element.setAttribute(link, "class", "social-link");
         try Element.setAttribute(link, "target", "_blank");
+        try Element.setAttribute(link, "rel", "noopener noreferrer");
         _ = try social.appendChild(link);
         const link_text = try doc.createTextNode(platform.name);
         _ = try link.appendChild(link_text.character_data.node);
     }
 }
 
-/// Run comprehensive query selector examples
-fn runQueryExamples(doc: *Document) !void {
+/// Basic selectors (CSS Level 1-2)
+fn runBasicSelectors(doc: *Document) !void {
     const allocator = doc.allocator;
 
-    // Example 1: Simple element selector
+    std.debug.print("═══════════════════════════════════════════════════════════════\n", .{});
+    std.debug.print("  BASIC SELECTORS (CSS Level 1-2)\n", .{});
+    std.debug.print("═══════════════════════════════════════════════════════════════\n\n", .{});
+
+    // Example 1: Type selector
     {
         std.debug.print("1️⃣  querySelector('article')\n", .{});
         if (try Element.querySelector(doc.document_element.?, "article")) |result| {
@@ -307,164 +329,369 @@ fn runQueryExamples(doc: *Document) !void {
             allocator.destroy(results);
         }
         std.debug.print("   ✅ Found {d} widgets:\n", .{results.length()});
-        for (results.items.items, 0..) |node, i| {
+        for (results.items.items) |node| {
             const elem: *dom.Node = @ptrCast(@alignCast(node));
             const id = Element.getAttribute(elem, "id") orelse "(no id)";
-            std.debug.print("      {d}. <div id=\"{s}\">\n", .{ i + 1, id });
+            std.debug.print("      • <div id=\"{s}\">\n", .{id});
         }
         std.debug.print("\n", .{});
     }
 
-    // Example 4: Descendant combinator
+    // Example 4: Multiple classes (compound selector)
     {
-        std.debug.print("4️⃣  querySelectorAll('nav a')\n", .{});
-        const results = try Element.querySelectorAll(doc.document_element.?, "nav a");
-        defer {
-            results.deinit();
-            allocator.destroy(results);
-        }
-        std.debug.print("   ✅ Found {d} navigation links:\n", .{results.length()});
-        for (results.items.items, 0..) |node, i| {
-            const elem: *dom.Node = @ptrCast(@alignCast(node));
-            const href = Element.getAttribute(elem, "href") orelse "(no href)";
-            std.debug.print("      {d}. <a href=\"{s}\">\n", .{ i + 1, href });
-        }
-        std.debug.print("\n", .{});
-    }
-
-    // Example 5: Child combinator
-    {
-        std.debug.print("5️⃣  querySelectorAll('article > header')\n", .{});
-        const results = try Element.querySelectorAll(doc.document_element.?, "article > header");
-        defer {
-            results.deinit();
-            allocator.destroy(results);
-        }
-        std.debug.print("   ✅ Found {d} article headers (direct children only)\n", .{results.length()});
-        for (results.items.items, 0..) |node, i| {
-            const elem: *dom.Node = @ptrCast(@alignCast(node));
-            const class = Element.getAttribute(elem, "class") orelse "(no class)";
-            std.debug.print("      {d}. <header class=\"{s}\">\n", .{ i + 1, class });
-        }
-        std.debug.print("\n", .{});
-    }
-
-    // Example 6: Multiple classes
-    {
-        std.debug.print("6️⃣  querySelectorAll('.nav-item.active')\n", .{});
+        std.debug.print("4️⃣  querySelectorAll('.nav-item.active')\n", .{});
         const results = try Element.querySelectorAll(doc.document_element.?, ".nav-item.active");
         defer {
             results.deinit();
             allocator.destroy(results);
         }
-        std.debug.print("   ✅ Found {d} active nav items\n", .{results.length()});
-        for (results.items.items, 0..) |node, i| {
-            const elem: *dom.Node = @ptrCast(@alignCast(node));
-            const class = Element.getAttribute(elem, "class") orelse "(no class)";
-            std.debug.print("      {d}. <li class=\"{s}\">\n", .{ i + 1, class });
-        }
-        std.debug.print("\n", .{});
+        std.debug.print("   ✅ Found {d} active nav items (compound selector)\n\n", .{results.length()});
     }
 
-    // Example 7: Attribute selector
+    // Example 5: Universal selector
     {
-        std.debug.print("7️⃣  querySelectorAll('[data-category]')\n", .{});
+        std.debug.print("5️⃣  querySelectorAll('aside *')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "aside *");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} elements inside <aside> (universal selector)\n\n", .{results.length()});
+    }
+}
+
+/// Attribute selectors
+fn runAttributeSelectors(doc: *Document) !void {
+    const allocator = doc.allocator;
+
+    std.debug.print("═══════════════════════════════════════════════════════════════\n", .{});
+    std.debug.print("  ATTRIBUTE SELECTORS (CSS Level 3 & 4)\n", .{});
+    std.debug.print("═══════════════════════════════════════════════════════════════\n\n", .{});
+
+    // Example 1: Attribute exists
+    {
+        std.debug.print("1️⃣  querySelectorAll('[data-category]')\n", .{});
         const results = try Element.querySelectorAll(doc.document_element.?, "[data-category]");
         defer {
             results.deinit();
             allocator.destroy(results);
         }
-        std.debug.print("   ✅ Found {d} elements with data-category attribute:\n", .{results.length()});
-        for (results.items.items, 0..) |node, i| {
-            const elem: *dom.Node = @ptrCast(@alignCast(node));
-            const category = Element.getAttribute(elem, "data-category") orelse "(none)";
-            std.debug.print("      {d}. data-category=\"{s}\"\n", .{ i + 1, category });
-        }
-        std.debug.print("\n", .{});
+        std.debug.print("   ✅ Found {d} elements with data-category attribute\n\n", .{results.length()});
     }
 
-    // Example 8: Attribute value selector
+    // Example 2: Attribute equals
     {
-        std.debug.print("8️⃣  querySelectorAll('[data-category=\"technology\"]')\n", .{});
+        std.debug.print("2️⃣  querySelectorAll('[data-category=\"technology\"]')\n", .{});
         const results = try Element.querySelectorAll(doc.document_element.?, "[data-category=\"technology\"]");
         defer {
             results.deinit();
             allocator.destroy(results);
         }
-        std.debug.print("   ✅ Found {d} technology articles\n", .{results.length()});
-        for (results.items.items, 0..) |node, i| {
-            const elem: *dom.Node = @ptrCast(@alignCast(node));
-            const id = Element.getAttribute(elem, "id") orelse "(no id)";
-            std.debug.print("      {d}. <article id=\"{s}\">\n", .{ i + 1, id });
-        }
-        std.debug.print("\n", .{});
+        std.debug.print("   ✅ Found {d} technology articles (exact match)\n\n", .{results.length()});
     }
 
-    // Example 9: Multiple selectors
+    // Example 3: Attribute contains (CSS3)
     {
-        std.debug.print("9️⃣  querySelectorAll('h1, h2, h3')\n", .{});
-        const results = try Element.querySelectorAll(doc.document_element.?, "h1, h2, h3");
-        defer {
-            results.deinit();
-            allocator.destroy(results);
-        }
-        std.debug.print("   ✅ Found {d} headings:\n", .{results.length()});
-        for (results.items.items, 0..) |node, i| {
-            const elem: *dom.Node = @ptrCast(@alignCast(node));
-            std.debug.print("      {d}. <{s}>\n", .{ i + 1, elem.node_name });
-        }
-        std.debug.print("\n", .{});
-    }
-
-    // Example 10: Complex nested selector
-    {
-        std.debug.print("🔟 querySelectorAll('.article .article-body p.highlight')\n", .{});
-        const results = try Element.querySelectorAll(doc.document_element.?, ".article .article-body p.highlight");
-        defer {
-            results.deinit();
-            allocator.destroy(results);
-        }
-        std.debug.print("   ✅ Found {d} highlighted paragraphs in articles:\n", .{results.length()});
-        for (results.items.items, 0..) |node, i| {
-            const elem: *dom.Node = @ptrCast(@alignCast(node));
-            const class = Element.getAttribute(elem, "class") orelse "(no class)";
-            std.debug.print("      {d}. <p class=\"{s}\">\n", .{ i + 1, class });
-        }
-        std.debug.print("\n", .{});
-    }
-
-    // Example 11: Attribute contains
-    {
-        std.debug.print("1️⃣1️⃣  querySelectorAll('[href*=\"github\"]')\n", .{});
+        std.debug.print("3️⃣  querySelectorAll('[href*=\"github\"]')\n", .{});
         const results = try Element.querySelectorAll(doc.document_element.?, "[href*=\"github\"]");
         defer {
             results.deinit();
             allocator.destroy(results);
         }
-        std.debug.print("   ✅ Found {d} GitHub links:\n", .{results.length()});
-        for (results.items.items, 0..) |node, i| {
-            const elem: *dom.Node = @ptrCast(@alignCast(node));
-            const href = Element.getAttribute(elem, "href") orelse "(no href)";
-            std.debug.print("      {d}. <a href=\"{s}\">\n", .{ i + 1, href });
-        }
-        std.debug.print("\n", .{});
+        std.debug.print("   ✅ Found {d} GitHub links (contains substring)\n\n", .{results.length()});
     }
 
-    // Example 12: Direct child with class
+    // Example 4: Attribute starts with (CSS3)
     {
-        std.debug.print("1️⃣2️⃣  querySelectorAll('#sidebar > .widget')\n", .{});
-        const results = try Element.querySelectorAll(doc.document_element.?, "#sidebar > .widget");
+        std.debug.print("4️⃣  querySelectorAll('[href^=\"https://\"]')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "[href^=\"https://\"]");
         defer {
             results.deinit();
             allocator.destroy(results);
         }
-        std.debug.print("   ✅ Found {d} widgets (direct children of sidebar):\n", .{results.length()});
-        for (results.items.items, 0..) |node, i| {
-            const elem: *dom.Node = @ptrCast(@alignCast(node));
-            const id = Element.getAttribute(elem, "id") orelse "(no id)";
-            std.debug.print("      {d}. <div id=\"{s}\">\n", .{ i + 1, id });
+        std.debug.print("   ✅ Found {d} HTTPS links (starts with)\n\n", .{results.length()});
+    }
+
+    // Example 5: Attribute ends with (CSS3)
+    {
+        std.debug.print("5️⃣  querySelectorAll('[href$=\".com\"]')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "[href$=\".com\"]");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
         }
-        std.debug.print("\n", .{});
+        std.debug.print("   ✅ Found {d} .com links (ends with)\n\n", .{results.length()});
+    }
+
+    // Example 6: Attribute language prefix (CSS3)
+    {
+        std.debug.print("6️⃣  querySelectorAll('[lang|=\"en\"]')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "[lang|=\"en\"]");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} English language elements (lang prefix)\n\n", .{results.length()});
+    }
+
+    // Example 7: Case-insensitive attribute (CSS4) ⭐
+    {
+        std.debug.print("7️⃣  querySelectorAll('[data-type=\"navigation\" i]') - CSS Level 4 ⭐\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "[data-type=\"navigation\" i]");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} elements (case-insensitive: NAVIGATION = navigation)\n\n", .{results.length()});
+    }
+}
+
+/// Combinator selectors
+fn runCombinatorSelectors(doc: *Document) !void {
+    const allocator = doc.allocator;
+
+    std.debug.print("═══════════════════════════════════════════════════════════════\n", .{});
+    std.debug.print("  COMBINATOR SELECTORS (CSS Level 2 & 3)\n", .{});
+    std.debug.print("═══════════════════════════════════════════════════════════════\n\n", .{});
+
+    // Example 1: Descendant combinator
+    {
+        std.debug.print("1️⃣  querySelectorAll('nav a')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "nav a");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} links inside <nav> (descendant combinator)\n\n", .{results.length()});
+    }
+
+    // Example 2: Child combinator (CSS2)
+    {
+        std.debug.print("2️⃣  querySelectorAll('article > header')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "article > header");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} <header> elements (direct children of <article>)\n\n", .{results.length()});
+    }
+
+    // Example 3: Adjacent sibling combinator (CSS2)
+    {
+        std.debug.print("3️⃣  querySelectorAll('article + article')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "article + article");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} <article> elements (immediately after another article)\n\n", .{results.length()});
+    }
+
+    // Example 4: General sibling combinator (CSS3)
+    {
+        std.debug.print("4️⃣  querySelectorAll('.widget.posts ~ .widget')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, ".widget.posts ~ .widget");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} widgets (following posts widget)\n\n", .{results.length()});
+    }
+
+    // Example 5: Complex multi-combinator
+    {
+        std.debug.print("5️⃣  querySelectorAll('main > article > div > p')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "main > article > div > p");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} paragraphs (multiple child combinators)\n\n", .{results.length()});
+    }
+}
+
+/// Pseudo-class selectors
+fn runPseudoClassSelectors(doc: *Document) !void {
+    const allocator = doc.allocator;
+
+    std.debug.print("═══════════════════════════════════════════════════════════════\n", .{});
+    std.debug.print("  PSEUDO-CLASS SELECTORS (CSS Level 3)\n", .{});
+    std.debug.print("═══════════════════════════════════════════════════════════════\n\n", .{});
+
+    // Example 1: :first-child
+    {
+        std.debug.print("1️⃣  querySelectorAll('article > div > p:first-child')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "article > div > p:first-child");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} first paragraph(s) in article bodies\n\n", .{results.length()});
+    }
+
+    // Example 2: :last-child
+    {
+        std.debug.print("2️⃣  querySelectorAll('.widget-content li:last-child')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, ".widget-content li:last-child");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} last items in widget lists\n\n", .{results.length()});
+    }
+
+    // Example 3: :nth-child (CSS3)
+    {
+        std.debug.print("3️⃣  querySelectorAll('.widget-content li:nth-child(2)')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, ".widget-content li:nth-child(2)");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} second items (nth-child)\n\n", .{results.length()});
+    }
+
+    // Example 4: :nth-child with formula (CSS3)
+    {
+        std.debug.print("4️⃣  querySelectorAll('.widget-content li:nth-child(odd)')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, ".widget-content li:nth-child(odd)");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} odd-numbered items (nth-child with formula)\n\n", .{results.length()});
+    }
+
+    // Example 5: :only-child (CSS3)
+    {
+        std.debug.print("5️⃣  querySelectorAll('p:only-child')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "p:only-child");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} paragraphs (that are only children)\n\n", .{results.length()});
+    }
+
+    // Example 6: :empty (CSS3)
+    {
+        std.debug.print("6️⃣  querySelectorAll('div:empty')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "div:empty");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} empty <div> elements\n\n", .{results.length()});
+    }
+
+    // Example 7: :not() pseudo-class (CSS3) ⭐
+    {
+        std.debug.print("7️⃣  querySelectorAll('.widget:not(.special)') - CSS Level 3 ⭐\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, ".widget:not(.special)");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} non-special widgets (negation pseudo-class)\n\n", .{results.length()});
+    }
+
+    // Example 8: :first-of-type (CSS3)
+    {
+        std.debug.print("8️⃣  querySelectorAll('article:first-of-type')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "article:first-of-type");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} first <article> of its type\n\n", .{results.length()});
+    }
+}
+
+/// Complex and advanced selectors
+fn runComplexSelectors(doc: *Document) !void {
+    const allocator = doc.allocator;
+
+    std.debug.print("═══════════════════════════════════════════════════════════════\n", .{});
+    std.debug.print("  COMPLEX & ADVANCED SELECTORS\n", .{});
+    std.debug.print("═══════════════════════════════════════════════════════════════\n\n", .{});
+
+    // Example 1: Compound selector with multiple parts
+    {
+        std.debug.print("1️⃣  querySelectorAll('article.featured[data-category=\"technology\"]')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "article.featured[data-category=\"technology\"]");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} featured technology articles (compound selector)\n\n", .{results.length()});
+    }
+
+    // Example 2: Chained pseudo-classes ⭐
+    {
+        std.debug.print("2️⃣  querySelectorAll('p:first-child:not(.intro)') - Chained pseudo-classes ⭐\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "p:first-child:not(.intro)");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} first-child paragraphs (that are not intro)\n\n", .{results.length()});
+    }
+
+    // Example 3: Multiple combinators in sequence
+    {
+        std.debug.print("3️⃣  querySelectorAll('#sidebar > .widget ~ .widget h3')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "#sidebar > .widget ~ .widget h3");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} h3 elements (child + sibling + descendant)\n\n", .{results.length()});
+    }
+
+    // Example 4: Deep nesting with classes and pseudo-classes
+    {
+        std.debug.print("4️⃣  querySelectorAll('.article .article-body p:not(:first-child)')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, ".article .article-body p:not(:first-child)");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} non-first paragraphs in articles\n\n", .{results.length()});
+    }
+
+    // Example 5: Attribute + pseudo-class combination
+    {
+        std.debug.print("5️⃣  querySelectorAll('[href]:not([target=\"_blank\"])')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "[href]:not([target=\"_blank\"])");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} internal links (has href, not target=_blank)\n\n", .{results.length()});
+    }
+
+    // Example 6: Complex descendant with multiple classes
+    {
+        std.debug.print("6️⃣  querySelectorAll('.content-area article.featured > div.article-body')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, ".content-area article.featured > div.article-body");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} featured article bodies (complex selector)\n\n", .{results.length()});
+    }
+
+    // Example 7: Ultimate complexity - all features combined
+    {
+        std.debug.print("7️⃣  querySelectorAll('#main-content > article:not(.featured) .article-body > p:last-child')\n", .{});
+        const results = try Element.querySelectorAll(doc.document_element.?, "#main-content > article:not(.featured) .article-body > p:last-child");
+        defer {
+            results.deinit();
+            allocator.destroy(results);
+        }
+        std.debug.print("   ✅ Found {d} elements (ID + child + :not() + descendant + child + :last-child)\n", .{results.length()});
+        std.debug.print("   💡 This selector combines: ID, child combinator, negation,\n", .{});
+        std.debug.print("      descendant combinator, and structural pseudo-class!\n\n", .{});
     }
 }
 
