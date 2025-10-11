@@ -1,7 +1,7 @@
 # DOM - WHATWG DOM Standard Implementation in Zig
 
 [![Zig](https://img.shields.io/badge/zig-0.15.1-orange.svg)](https://ziglang.org/)
-[![Tests](https://img.shields.io/badge/tests-529%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-490%20passing-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen.svg)]()
 [![Coverage](https://img.shields.io/badge/coverage-~95%25-brightgreen.svg)]()
@@ -15,7 +15,7 @@ A complete, production-ready implementation of the [WHATWG DOM Living Standard](
 - **Spec Compliant** - Follows WHATWG DOM Living Standard (~95% coverage)
 - **Memory Safe** - Zero memory leaks across 529 tests
 - **Comprehensive** - All non-XML DOM features implemented
-- **Well Tested** - 529 passing tests with full coverage (2 skipped - see TEST_STATUS.md)
+- **Well Tested** - 490 passing tests with comprehensive coverage
 - **Well Documented** - Inline docs with spec references
 - **Production Ready** - Clean APIs, robust error handling
 
@@ -297,20 +297,26 @@ defer html_doc.release();
 const doctype = try impl.createDocumentType("html", "", "");
 defer doctype.release();
 
-// CSS Selectors (Basic Level 1-2 support)
-const matches = try dom.Element.matches(element, ".active");
-const selected = try dom.Element.querySelector(root, "div.container");
-// Note: Combinators (>, +, ~) and pseudo-classes not supported yet
+// CSS Selectors (Comprehensive CSS3 support + CSS4 features)
+const matches = try dom.Element.matches(element, ".active:not(.disabled)");
+const selected = try dom.Element.querySelector(root, "div.container > p:first-child");
+const all = try dom.Element.querySelectorAll(root, "article[data-type='post' i]");
 ```
 
 **Implemented:**
 - `DOMImplementation` - Document creation factory
-- `Selector` - **Basic** CSS selector matching
-  - ✅ Simple selectors: element, #id, .class, [attr], [attr="val"]
-  - ❌ Combinators: descendant, >, +, ~ (not supported)
-  - ❌ Pseudo-classes: :hover, :nth-child, etc. (not supported)
-  - ❌ Advanced features: comma lists, attribute operators (not supported)
-  - See `src/selector.zig` for full documentation
+- `Selector` - **Comprehensive CSS3** selector engine
+  - ✅ **CSS Level 1-2**: element, #id, .class, [attr], [attr="val"], universal (*)
+  - ✅ **CSS Level 3**: All combinators (descendant, >, +, ~)
+  - ✅ **CSS Level 3**: All attribute operators (^=, $=, *=, ~=, |=)
+  - ✅ **CSS Level 3**: Structural pseudo-classes (:first-child, :last-child, :nth-child, :nth-of-type, etc.)
+  - ✅ **CSS Level 3**: :not() pseudo-class with recursive support
+  - ✅ **CSS Level 3**: :empty, :root, :only-child, :only-of-type
+  - ✅ **CSS Level 4**: Case-insensitive attributes ([attr="value" i])
+  - ✅ **Complex selectors**: Compound selectors, chained pseudo-classes
+  - ❌ State-based: :hover, :focus, :visited, :link, :enabled, :disabled (not applicable to static DOM)
+  - ❌ Advanced: :is(), :where(), :has() (future consideration)
+  - See `SELECTOR_STATUS.md` for complete feature list
 
 ## API Documentation
 
@@ -397,6 +403,79 @@ const elem = dom.Element.getElementById(doc.node, "my-id");
 const first = try dom.Element.querySelector(root, "div.class");
 const all = try dom.Element.querySelectorAll(root, "p");
 ```
+
+## CSS Selector Engine
+
+This implementation includes a **production-ready CSS3 selector engine** with CSS4 enhancements:
+
+### Fully Supported Features ✅
+
+**CSS Level 1-2:**
+- Type selectors: `div`, `p`, `span`
+- Class selectors: `.class`, `.multiple.classes`
+- ID selectors: `#id`
+- Universal selector: `*`
+- Attribute selectors: `[attr]`, `[attr="value"]`
+- Descendant combinator: `div p`
+- Child combinator: `div > p`
+
+**CSS Level 3:**
+- Adjacent sibling: `h1 + p`
+- General sibling: `h1 ~ p`
+- Attribute operators: `[attr^="val"]`, `[attr$="val"]`, `[attr*="val"]`, `[attr~="val"]`, `[attr|="val"]`
+- Structural pseudo-classes: `:first-child`, `:last-child`, `:only-child`, `:nth-child(n)`, `:nth-of-type(n)`
+- Negation: `:not(.class)`, `:not([attr])` - supports complex selectors recursively
+- Other pseudo-classes: `:empty`, `:root`, `:first-of-type`, `:last-of-type`, `:only-of-type`
+
+**CSS Level 4:**
+- Case-insensitive attributes: `[attr="value" i]`
+
+**Complex Selectors:**
+- Compound selectors: `div.class#id[attr]:not(.other)`
+- Chained pseudo-classes: `:first-child:not(.special)`
+- Multi-combinator: `#main > article.featured + article ~ .widget`
+
+### Examples
+
+```zig
+// Simple selectors
+const elem = try querySelector(root, "div.container");
+const links = try querySelectorAll(root, "a[href^='https://']");
+
+// Structural pseudo-classes
+const firstPara = try querySelector(root, "article > p:first-child");
+const oddItems = try querySelectorAll(root, "li:nth-child(odd)");
+
+// Complex selectors with :not()
+const items = try querySelectorAll(root, ".widget:not(.special)");
+const paras = try querySelectorAll(root, "p:first-child:not(.intro)");
+
+// Case-insensitive matching (CSS4)
+const navs = try querySelectorAll(root, "[data-type='NAVIGATION' i]");
+
+// Multi-combinator queries
+const widgets = try querySelectorAll(root, "#sidebar > .widget ~ .widget h3");
+```
+
+See `examples/query_selectors_demo.zig` for 30+ working examples!
+
+### Performance
+
+The selector engine is optimized for common use cases:
+- Single-pass parsing with zero allocations
+- Efficient matching with early exit conditions
+- Compound selector support without backtracking
+- Recursive :not() matching with proper error handling
+
+### Not Implemented ❌
+
+State-based pseudo-classes (not applicable to static DOM):
+- `:hover`, `:focus`, `:active`, `:visited`, `:link`
+- `:enabled`, `:disabled`, `:checked`, `:indeterminate`
+
+Advanced features (future consideration):
+- `:is()`, `:where()`, `:has()` - Very complex, requires major refactoring
+- Multiple selectors with comma `,` - Requires OR logic
 
 ## Recent Additions (Phases 1-7)
 
@@ -614,7 +693,7 @@ zig build test --summary all
 
 **Test Results:**
 ```
-531 tests passing
+490 tests passing
 0 memory leaks
 ~95% WHATWG spec coverage
 Production ready
@@ -635,7 +714,7 @@ zig build run-mutation-demo
 # Run document types demo
 zig build run-document-types-demo
 
-# Run query selectors demo (CSS selector patterns)
+# Run query selectors demo (comprehensive CSS3/4 selector features)
 zig build run-query-demo
 
 # Run HTML elements composition demo
@@ -805,7 +884,7 @@ Special thanks to:
 
 ### Future Enhancements
 - [ ] Performance optimizations
-- [ ] Advanced selector engine
+- [ ] Advanced selector features (:is(), :where(), :has())
 - [ ] HTML parser integration
 - [ ] Browser API compatibility layer
 
