@@ -531,27 +531,23 @@ This implementation follows the [WHATWG DOM Living Standard](https://dom.spec.wh
 
 ## Documentation
 
-### 📚 Core (Start Here)
-- **[README.md](README.md)** - This document (main documentation)
-- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** - Current project status and features
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
+### Building API Documentation
 
-### 📊 Performance
-- **[PERFORMANCE_ANALYSIS.md](PERFORMANCE_ANALYSIS.md)** - Standard benchmark analysis (20 tests)
-- **[STRESS_TEST_RESULTS.md](STRESS_TEST_RESULTS.md)** - Large-scale benchmarks (1k-10k nodes)
-- **[BENCHMARKS_COMPLETE.md](BENCHMARKS_COMPLETE.md)** - Quick benchmark reference
+Generate complete API documentation from inline comments:
 
-### 🎯 CSS Selectors
-- **[SELECTOR_STATUS.md](SELECTOR_STATUS.md)** - Complete CSS3/CSS4 feature status
-- **[SELECTOR_ROADMAP.md](SELECTOR_ROADMAP.md)** - Selector implementation roadmap
-- **[PSEUDO_CLASSES_REFERENCE.md](PSEUDO_CLASSES_REFERENCE.md)** - CSS4 pseudo-class quick reference
-- **[FORM_SELECTORS_QUICK_REF.md](FORM_SELECTORS_QUICK_REF.md)** - Form selector quick reference
-- **[PSEUDO_ELEMENT_HANDLING.md](PSEUDO_ELEMENT_HANDLING.md)** - Pseudo-element implementation details
+```bash
+# Generate documentation in HTML format
+zig build docs
 
-### 📝 Development
-- **[RESUME_NEXT_SESSION.md](RESUME_NEXT_SESSION.md)** - How to resume development (most comprehensive)
-- **[SESSION_10_FINAL.md](SESSION_10_FINAL.md)** - Latest session summary (stress tests)
-- **[SESSION_9_SUMMARY.md](SESSION_9_SUMMARY.md)** - Previous session (CSS4 completion)
+# Documentation will be available at:
+# zig-out/docs/index.html
+```
+
+The generated documentation includes:
+- Complete API reference for all public types and functions
+- Inline code examples from doc comments
+- Cross-referenced types and links
+- WHATWG DOM spec references
 
 ## Contributing
 
