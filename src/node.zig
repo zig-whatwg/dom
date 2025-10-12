@@ -55,6 +55,139 @@ const EventTarget = @import("event_target.zig").EventTarget;
 const Event = @import("event.zig").Event;
 const NodeList = @import("node_list.zig").NodeList;
 
+// ============================================================================
+// Security Limits Configuration
+// ============================================================================
+
+/// Security limits to prevent DoS attacks and resource exhaustion.
+/// These limits can be adjusted based on application requirements.
+pub const SecurityLimits = struct {
+    /// Maximum DOM tree depth to prevent stack overflow attacks (P0)
+    /// Default: 1000 levels
+    pub const max_tree_depth: usize = 1000;
+
+    /// Maximum reference count to prevent overflow (P0)
+    /// Default: 1 million references
+    pub const max_ref_count: usize = 1_000_000;
+
+    /// Maximum tag name length to prevent memory exhaustion (P2)
+    /// Default: 256 characters (reasonable for XML/HTML)
+    pub const max_tag_name_length: usize = 256;
+
+    /// Maximum attribute name length (P2)
+    /// Default: 256 characters
+    pub const max_attribute_name_length: usize = 256;
+
+    /// Maximum attribute value length (P2)
+    /// Default: 64KB (reasonable for data attributes)
+    pub const max_attribute_value_length: usize = 65536;
+
+    /// Maximum text content length per operation (P2)
+    /// Default: 1MB (reasonable for content)
+    pub const max_text_content_length: usize = 1_048_576;
+
+    /// Maximum children per node to prevent wide tree attacks (P1)
+    /// Default: 10,000 children per node
+    pub const max_children_per_node: usize = 10_000;
+
+    /// Maximum total nodes per document to prevent memory exhaustion (P1)
+    /// Default: 100,000 nodes per document
+    pub const max_nodes_per_document: usize = 100_000;
+
+    /// Maximum attributes per element to prevent attribute explosion (P1)
+    /// Default: 1,000 attributes per element
+    pub const max_attributes_per_element: usize = 1_000;
+
+    /// Maximum event listeners per target to prevent listener accumulation (P1)
+    /// Default: 1,000 listeners per target
+    pub const max_listeners_per_target: usize = 1_000;
+};
+
+/// Errors related to security limit violations
+pub const SecurityError = error{
+    /// Tree depth exceeds maximum allowed depth
+    MaxTreeDepthExceeded,
+
+    /// Reference count would overflow
+    RefCountOverflow,
+
+    /// Reference count would underflow (released too many times)
+    RefCountUnderflow,
+
+    /// Circular reference detected in DOM tree
+    CircularReferenceDetected,
+
+    /// Tag name exceeds maximum length
+    TagNameTooLong,
+
+    /// Attribute name exceeds maximum length
+    AttributeNameTooLong,
+
+    /// Attribute value exceeds maximum length
+    AttributeValueTooLong,
+
+    /// Text content exceeds maximum length
+    TextContentTooLong,
+
+    /// Too many children in a single node (P1)
+    TooManyChildren,
+
+    /// Too many nodes in document (P1)
+    TooManyNodes,
+
+    /// Too many attributes on an element (P1)
+    TooManyAttributes,
+
+    /// Too many event listeners on a target (P1)
+    TooManyListeners,
+};
+
+// ============================================================================
+// Security Event Logging (P2)
+// ============================================================================
+
+/// Security event types for logging and monitoring
+pub const SecurityEventType = enum {
+    ref_count_overflow_attempt,
+    ref_count_underflow_attempt,
+    circular_reference_detected,
+    max_tree_depth_exceeded,
+    max_children_exceeded,
+    max_nodes_exceeded,
+    max_attributes_exceeded,
+    tag_name_too_long,
+    attribute_name_too_long,
+    attribute_value_too_long,
+    text_content_too_long,
+};
+
+/// Security event details
+pub const SecurityEvent = struct {
+    event_type: SecurityEventType,
+    node_type: ?NodeType,
+    node_name: ?[]const u8,
+    message: []const u8,
+    timestamp: i64,
+};
+
+/// Optional security event callback for logging/monitoring
+/// Applications can set this to log security violations
+pub var security_event_callback: ?*const fn (event: SecurityEvent) void = null;
+
+/// Log a security event (P2)
+fn logSecurityEvent(event_type: SecurityEventType, node_type: ?NodeType, node_name: ?[]const u8, message: []const u8) void {
+    if (security_event_callback) |callback| {
+        const event = SecurityEvent{
+            .event_type = event_type,
+            .node_type = node_type,
+            .node_name = node_name,
+            .message = message,
+            .timestamp = std.time.milliTimestamp(),
+        };
+        callback(event);
+    }
+}
+
 /// NodeType enumeration defines the type of a Node object.
 ///
 /// ## Overview
@@ -409,6 +542,11 @@ pub const Node = struct {
     ///
     /// * Reference Counting Pattern: https://en.wikipedia.org/wiki/Reference_counting
     pub fn retain(self: *Self) void {
+        // P0 Security Fix: Prevent reference count overflow
+        if (self.ref_count >= SecurityLimits.max_ref_count) {
+            logSecurityEvent(.ref_count_overflow_attempt, self.node_type, self.node_name, "Reference count overflow detected - potential DoS attack or reference leak");
+            @panic("Reference count overflow detected - potential DoS attack or reference leak");
+        }
         self.ref_count += 1;
     }
 
@@ -459,6 +597,11 @@ pub const Node = struct {
     ///
     /// * Reference Counting Pattern: https://en.wikipedia.org/wiki/Reference_counting
     pub fn release(self: *Self) void {
+        // P0 Security Fix: Prevent reference count underflow
+        if (self.ref_count == 0) {
+            logSecurityEvent(.ref_count_underflow_attempt, self.node_type, self.node_name, "Reference count underflow detected - node released too many times");
+            @panic("Reference count underflow detected - node released too many times");
+        }
         self.ref_count -= 1;
         if (self.ref_count == 0) {
             while (self.child_nodes.length() > 0) {
@@ -663,43 +806,64 @@ pub const Node = struct {
     }
 
     /// Returns true if this node has any children, false otherwise.
+    pub fn hasChildNodes(self: *const Self) bool {
+        return self.child_nodes.length() > 0;
+    }
+
+    /// Checks if adding new_child would create a circular reference.
     ///
-    /// ## Overview
+    /// ## Security (P0)
     ///
-    /// A convenience method to check if a node has children without needing to
-    /// access the childNodes list directly.
+    /// Detects cycles by checking if new_child is an ancestor of self.
+    /// This prevents circular DOM structures that would cause memory leaks.
+    ///
+    /// ## Parameters
+    ///
+    /// - `new_child`: The node to check
     ///
     /// ## Returns
     ///
-    /// - `true` if the node has one or more children
-    /// - `false` if the node has no children
+    /// true if adding new_child would create a cycle, false otherwise
     ///
     /// ## Examples
     ///
     /// ```zig
     /// const parent = try Node.init(allocator, .element_node, "div");
-    /// defer parent.release();
-    ///
-    /// const has_children_before = parent.hasChildNodes();
-    /// // has_children_before == false
-    ///
     /// const child = try Node.init(allocator, .element_node, "span");
     /// _ = try parent.appendChild(child);
     ///
-    /// const has_children_after = parent.hasChildNodes();
-    /// // has_children_after == true
+    /// // This would create a cycle: child -> parent -> child
+    /// const would_cycle = try child.wouldCreateCycle(parent);
+    /// // would_cycle == true
     /// ```
-    ///
-    /// ## Specification Compliance
-    ///
-    /// Implements WHATWG DOM Standard §4.4 Node.hasChildNodes().
-    ///
-    /// ## Reference
-    ///
-    /// * WHATWG DOM Standard: https://dom.spec.whatwg.org/#dom-node-haschildnodes
-    /// * MDN Web Docs: https://developer.mozilla.org/en-US/docs/Web/API/Node/hasChildNodes
-    pub fn hasChildNodes(self: *const Self) bool {
-        return self.child_nodes.length() > 0;
+    fn wouldCreateCycle(self: *const Self, new_child: *const Node) !bool {
+        // If new_child is self, that's a direct cycle
+        if (self == new_child) {
+            return true;
+        }
+
+        // Check if self is a descendant of new_child
+        // by walking up new_child's ancestor chain
+        var ancestor = new_child.parent_node;
+        var depth: usize = 0;
+
+        while (ancestor) |anc| {
+            // P0 Security: Prevent infinite loop from existing cycles
+            depth += 1;
+            if (depth > SecurityLimits.max_tree_depth) {
+                // If we've walked too far, there's likely already a cycle
+                return SecurityError.MaxTreeDepthExceeded;
+            }
+
+            if (anc == self) {
+                // self is an ancestor of new_child, so adding new_child
+                // as a child of self would create a cycle
+                return true;
+            }
+            ancestor = anc.parent_node;
+        }
+
+        return false;
     }
 
     /// Adds a node to the end of the list of children of this node.
@@ -768,6 +932,19 @@ pub const Node = struct {
     /// * WHATWG DOM Standard: https://dom.spec.whatwg.org/#dom-node-appendchild
     /// * MDN Web Docs: https://developer.mozilla.org/en-US/docs/Web/API/Node/appendChild
     pub fn appendChild(self: *Self, new_child: *Node) !*Node {
+        // P0 Security Fix: Detect circular references before adding child
+        // This prevents memory leaks from circular DOM structures
+        if (try self.wouldCreateCycle(new_child)) {
+            logSecurityEvent(.circular_reference_detected, self.node_type, self.node_name, "Circular reference detected in appendChild");
+            return SecurityError.CircularReferenceDetected;
+        }
+
+        // P1 Security Fix: Limit number of children per node (wide tree attack)
+        if (self.child_nodes.length() >= SecurityLimits.max_children_per_node) {
+            logSecurityEvent(.max_children_exceeded, self.node_type, self.node_name, "Max children per node exceeded");
+            return SecurityError.TooManyChildren;
+        }
+
         if (new_child.parent_node) |old_parent| {
             new_child.retain(); // Retain before removing to prevent deallocation
             _ = try old_parent.removeChild(new_child);
@@ -855,6 +1032,16 @@ pub const Node = struct {
     pub fn insertBefore(self: *Self, new_child: *Node, ref_child: ?*Node) !*Node {
         if (ref_child == null) {
             return try self.appendChild(new_child);
+        }
+
+        // P0 Security Fix: Detect circular references before adding child
+        if (try self.wouldCreateCycle(new_child)) {
+            return SecurityError.CircularReferenceDetected;
+        }
+
+        // P1 Security Fix: Limit number of children per node
+        if (self.child_nodes.length() >= SecurityLimits.max_children_per_node) {
+            return SecurityError.TooManyChildren;
         }
 
         const ref = ref_child.?;
@@ -948,6 +1135,11 @@ pub const Node = struct {
     /// * WHATWG DOM Standard: https://dom.spec.whatwg.org/#dom-node-replacechild
     /// * MDN Web Docs: https://developer.mozilla.org/en-US/docs/Web/API/Node/replaceChild
     pub fn replaceChild(self: *Self, new_child: *Node, old_child: *Node) !*Node {
+        // P0 Security Fix: Detect circular references before replacing child
+        if (try self.wouldCreateCycle(new_child)) {
+            return SecurityError.CircularReferenceDetected;
+        }
+
         var index: ?usize = null;
         for (self.child_nodes.items.items, 0..) |child_ptr, i| {
             const child: *Node = @ptrCast(@alignCast(child_ptr));
@@ -1342,6 +1534,16 @@ pub const Node = struct {
     /// * WHATWG DOM Standard: https://dom.spec.whatwg.org/#dom-node-clonenode
     /// * MDN Web Docs: https://developer.mozilla.org/en-US/docs/Web/API/Node/cloneNode
     pub fn cloneNode(self: *const Self, deep: bool) !*Node {
+        return self.cloneNodeWithDepth(deep, 0);
+    }
+
+    /// Internal helper for cloneNode with depth tracking (P0 Security)
+    fn cloneNodeWithDepth(self: *const Self, deep: bool, current_depth: usize) !*Node {
+        // P0 Security Fix: Prevent stack overflow from deep trees
+        if (current_depth >= SecurityLimits.max_tree_depth) {
+            return SecurityError.MaxTreeDepthExceeded;
+        }
+
         const clone = try Node.init(self.allocator, self.node_type, self.node_name);
 
         if (self.node_value) |value| {
@@ -1351,7 +1553,7 @@ pub const Node = struct {
         if (deep) {
             for (self.child_nodes.items.items) |child_ptr| {
                 const child: *Node = @ptrCast(@alignCast(child_ptr));
-                const child_clone = try child.cloneNode(true);
+                const child_clone = try child.cloneNodeWithDepth(true, current_depth + 1);
                 _ = try clone.appendChild(child_clone);
             }
         }
@@ -1419,6 +1621,17 @@ pub const Node = struct {
     /// * WHATWG DOM Standard: https://dom.spec.whatwg.org/#dom-node-normalize
     /// * MDN Web Docs: https://developer.mozilla.org/en-US/docs/Web/API/Node/normalize
     pub fn normalize(self: *Self) void {
+        self.normalizeWithDepth(0);
+    }
+
+    /// Internal helper for normalize with depth tracking (P0 Security)
+    fn normalizeWithDepth(self: *Self, current_depth: usize) void {
+        // P0 Security Fix: Prevent stack overflow from deep trees
+        if (current_depth >= SecurityLimits.max_tree_depth) {
+            // Silently stop recursion at max depth to match normalize's void return
+            return;
+        }
+
         var i: usize = 0;
         while (i < self.child_nodes.length()) {
             const child_ptr = self.child_nodes.item(i) orelse {
@@ -1457,7 +1670,7 @@ pub const Node = struct {
                     _ = self.removeChild(next) catch break;
                 }
             } else {
-                child.normalize();
+                child.normalizeWithDepth(current_depth + 1);
             }
 
             i += 1;
@@ -1994,6 +2207,16 @@ pub const Node = struct {
     ///
     /// - `OutOfMemory`: If growing the list fails
     fn collectTextContent(self: *const Self, allocator: std.mem.Allocator, parts: *std.ArrayList([]const u8)) !void {
+        return self.collectTextContentWithDepth(allocator, parts, 0);
+    }
+
+    /// Internal helper for collectTextContent with depth tracking (P0 Security)
+    fn collectTextContentWithDepth(self: *const Self, allocator: std.mem.Allocator, parts: *std.ArrayList([]const u8), current_depth: usize) !void {
+        // P0 Security Fix: Prevent stack overflow from deep trees
+        if (current_depth >= SecurityLimits.max_tree_depth) {
+            return SecurityError.MaxTreeDepthExceeded;
+        }
+
         if (self.node_type == .text_node or self.node_type == .comment_node) {
             if (self.node_value) |value| {
                 try parts.append(allocator, value);
@@ -2002,7 +2225,7 @@ pub const Node = struct {
 
         for (self.child_nodes.items.items) |child_ptr| {
             const child: *Node = @ptrCast(@alignCast(child_ptr));
-            try child.collectTextContent(allocator, parts);
+            try child.collectTextContentWithDepth(allocator, parts, current_depth + 1);
         }
     }
 

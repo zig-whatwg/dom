@@ -141,6 +141,43 @@ const NodeFilter = @import("node_filter.zig");
 ///
 /// See: https://dom.spec.whatwg.org/#interface-document
 /// See: https://developer.mozilla.org/en-US/docs/Web/API/Document
+/// Document-level resource quotas for security (P2)
+pub const ResourceQuota = struct {
+    /// Current number of nodes in document
+    node_count: usize = 0,
+
+    /// Maximum nodes allowed (from SecurityLimits)
+    max_nodes: usize,
+
+    /// Track if quota enforcement is enabled
+    enabled: bool = true,
+
+    pub fn init() ResourceQuota {
+        return .{
+            .node_count = 0,
+            .max_nodes = @import("node.zig").SecurityLimits.max_nodes_per_document,
+            .enabled = true,
+        };
+    }
+
+    pub fn canAllocateNode(self: *const ResourceQuota) bool {
+        if (!self.enabled) return true;
+        return self.node_count < self.max_nodes;
+    }
+
+    pub fn incrementNodes(self: *ResourceQuota) void {
+        if (self.enabled) {
+            self.node_count += 1;
+        }
+    }
+
+    pub fn decrementNodes(self: *ResourceQuota) void {
+        if (self.enabled and self.node_count > 0) {
+            self.node_count -= 1;
+        }
+    }
+};
+
 pub const Document = struct {
     const Self = @This();
 
@@ -153,6 +190,9 @@ pub const Document = struct {
 
     /// Allocator for memory management
     allocator: std.mem.Allocator,
+
+    /// Resource quota tracking (P2)
+    quota: ResourceQuota,
 
     /// Initialize a new Document.
     ///
@@ -188,7 +228,10 @@ pub const Document = struct {
             .node = try Node.init(allocator, .document_node, "#document"),
             .document_element = null,
             .allocator = allocator,
+            .quota = ResourceQuota.init(),
         };
+        // Document node itself counts as 1 node
+        self.quota.incrementNodes();
         return self;
     }
 
@@ -260,8 +303,14 @@ pub const Document = struct {
     /// - Appended to the document tree (managed by the tree)
     /// - Explicitly released with `node.release()`
     pub fn createElement(self: *Self, tag_name: []const u8) !*Node {
+        // P2 Security Fix: Check document resource quota
+        if (!self.quota.canAllocateNode()) {
+            return @import("node.zig").SecurityError.TooManyNodes;
+        }
+
         const element = try Element.create(self.allocator, tag_name);
         element.owner_document = self;
+        self.quota.incrementNodes();
         return element;
     }
 
@@ -314,8 +363,14 @@ pub const Document = struct {
     /// The returned text node must be either appended to the document tree
     /// or explicitly released.
     pub fn createTextNode(self: *Self, data: []const u8) !*Text {
+        // P2 Security Fix: Check document resource quota
+        if (!self.quota.canAllocateNode()) {
+            return @import("node.zig").SecurityError.TooManyNodes;
+        }
+
         const text = try Text.init(self.allocator, data);
         text.character_data.node.owner_document = self;
+        self.quota.incrementNodes();
         return text;
     }
 
@@ -1089,11 +1144,9 @@ test "Document createElement - empty tag name" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const element = try doc.createElement("");
-    defer element.release();
-
-    const data = Element.getData(element);
-    try std.testing.expectEqualStrings("", data.tag_name);
+    // P1 Security Fix: Empty tag names are now rejected for security
+    const result = doc.createElement("");
+    try std.testing.expectError(error.InvalidCharacter, result);
 }
 
 test "Document createElement - special characters in tag name" {

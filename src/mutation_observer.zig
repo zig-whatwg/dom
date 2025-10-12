@@ -9,6 +9,17 @@ const std = @import("std");
 const Node = @import("node.zig").Node;
 const MutationRecord = @import("mutation_record.zig").MutationRecord;
 
+// ============================================================================
+// Security Limits (P2)
+// ============================================================================
+
+/// MutationObserver queue limits to prevent memory exhaustion
+pub const MutationObserverLimits = struct {
+    /// Maximum number of pending mutation records in queue
+    /// Default: 10,000 records (reasonable for most use cases)
+    pub const max_queue_size: usize = 10_000;
+};
+
 /// Options for observing mutations
 pub const MutationObserverInit = struct {
     /// Observe child list mutations
@@ -238,7 +249,21 @@ pub const MutationObserver = struct {
     /// ## Parameters
     ///
     /// - `record`: MutationRecord to queue
+    ///
+    /// ## Security (P2)
+    ///
+    /// Limits queue size to prevent memory exhaustion from rapid mutations.
+    /// When limit is reached, oldest records are dropped (FIFO).
     pub fn queueRecord(self: *Self, record: *MutationRecord) !void {
+        // P2 Security Fix: Limit queue size to prevent memory exhaustion
+        if (self.record_queue.items.len >= MutationObserverLimits.max_queue_size) {
+            // Drop oldest record to make room (FIFO)
+            if (self.record_queue.items.len > 0) {
+                const oldest = self.record_queue.orderedRemove(0);
+                oldest.deinit();
+            }
+        }
+
         try self.record_queue.append(self.allocator, record);
     }
 

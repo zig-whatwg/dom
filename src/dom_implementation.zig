@@ -71,7 +71,7 @@ pub const DOMImplementationError = error{
     InvalidCharacter,
     Namespace,
     OutOfMemory,
-};
+} || @import("node.zig").SecurityError;
 
 /// DOMImplementation provides document creation methods
 ///

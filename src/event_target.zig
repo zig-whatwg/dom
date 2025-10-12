@@ -30,9 +30,25 @@ const EventPhase = @import("event.zig").EventPhase;
 /// ## Reference
 ///
 /// * WHATWG DOM Standard: https://dom.spec.whatwg.org/#concept-event-listener
+///
+/// ## Security Note (P2)
+///
+/// **Callback Lifetime**: The callback function pointer must remain valid for the
+/// lifetime of the listener. If the callback references external state (via closure or
+/// context), that state must also remain valid. Failure to ensure this can lead to
+/// use-after-free vulnerabilities.
+///
+/// **Best Practices**:
+/// - Use static or global functions when possible
+/// - If using closures, ensure captured state outlives the listener
+/// - Call removeEventListener() before freeing any callback context
+/// - For Zig: Avoid capturing stack-allocated data in callbacks
 pub const EventListener = struct {
     /// The callback function to invoke when the event occurs.
     /// Must be a function that accepts a single Event pointer parameter.
+    ///
+    /// **SAFETY**: This function pointer must remain valid for the lifetime
+    /// of the event listener. See EventListener documentation for details.
     callback: *const fn (event: *Event) void,
 
     /// If true, the listener will be invoked during the capture phase.
@@ -420,6 +436,14 @@ pub const EventTarget = struct {
         callback: *const fn (event: *Event) void,
         options: AddEventListenerOptions,
     ) !void {
+        // P1 Security Fix: Limit number of listeners per target
+        const SecurityLimits = @import("node.zig").SecurityLimits;
+        const SecurityError = @import("node.zig").SecurityError;
+
+        if (self.listeners.items.len >= SecurityLimits.max_listeners_per_target) {
+            return SecurityError.TooManyListeners;
+        }
+
         // Create the event listener with the specified options
         const listener = EventListener{
             .callback = callback,

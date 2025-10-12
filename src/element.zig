@@ -151,6 +151,134 @@ const DOMTokenList = @import("dom_token_list.zig").DOMTokenList;
 const NodeList = @import("node_list.zig").NodeList;
 const selector = @import("selector.zig");
 
+// Import security limits and errors
+const SecurityLimits = @import("node.zig").SecurityLimits;
+const SecurityError = @import("node.zig").SecurityError;
+
+// ============================================================================
+// Input Validation (P1 Security)
+// ============================================================================
+
+/// Validates a tag name according to XML naming rules and security limits.
+///
+/// ## Security (P1)
+///
+/// Prevents:
+/// - Memory exhaustion from extremely long tag names
+/// - Injection attacks from special characters
+/// - Parser confusion from invalid characters
+///
+/// ## Parameters
+///
+/// - `tag_name`: The tag name to validate
+///
+/// ## Returns
+///
+/// error.TagNameTooLong if exceeds max length
+/// error.InvalidCharacter if contains invalid characters
+///
+/// ## Valid Characters
+///
+/// - First character: Letter, underscore, or colon
+/// - Subsequent characters: Letter, digit, dot, hyphen, underscore, or colon
+/// - No control characters or null bytes
+fn validateTagName(tag_name: []const u8) !void {
+    // P2 Security: Length limit
+    if (tag_name.len == 0) {
+        return error.InvalidCharacter;
+    }
+    if (tag_name.len > SecurityLimits.max_tag_name_length) {
+        return SecurityError.TagNameTooLong;
+    }
+
+    // P1 Security: Check for null bytes and control characters
+    for (tag_name) |c| {
+        if (c == 0 or c < 32) {
+            return error.InvalidCharacter;
+        }
+    }
+
+    // XML naming rules (relaxed for HTML compatibility)
+    // First character
+    const first = tag_name[0];
+    if (!isNameStartChar(first)) {
+        return error.InvalidCharacter;
+    }
+
+    // Subsequent characters
+    for (tag_name[1..]) |c| {
+        if (!isNameChar(c)) {
+            return error.InvalidCharacter;
+        }
+    }
+}
+
+/// Check if character is valid as first character of XML name
+fn isNameStartChar(c: u8) bool {
+    return (c >= 'A' and c <= 'Z') or
+        (c >= 'a' and c <= 'z') or
+        c == '_' or
+        c == ':';
+}
+
+/// Check if character is valid in XML name (after first character)
+fn isNameChar(c: u8) bool {
+    return isNameStartChar(c) or
+        (c >= '0' and c <= '9') or
+        c == '-' or
+        c == '.';
+}
+
+/// Validates an attribute name according to XML naming rules and security limits.
+///
+/// ## Security (P1)
+///
+/// Same validation as tag names to prevent similar attacks.
+fn validateAttributeName(attr_name: []const u8) !void {
+    if (attr_name.len == 0) {
+        return error.InvalidCharacter;
+    }
+    if (attr_name.len > SecurityLimits.max_attribute_name_length) {
+        return SecurityError.AttributeNameTooLong;
+    }
+
+    // Check for null bytes and control characters
+    for (attr_name) |c| {
+        if (c == 0 or c < 32) {
+            return error.InvalidCharacter;
+        }
+    }
+
+    // XML naming rules
+    if (!isNameStartChar(attr_name[0])) {
+        return error.InvalidCharacter;
+    }
+
+    for (attr_name[1..]) |c| {
+        if (!isNameChar(c)) {
+            return error.InvalidCharacter;
+        }
+    }
+}
+
+/// Validates an attribute value for security limits.
+///
+/// ## Security (P2)
+///
+/// Prevents memory exhaustion from extremely long attribute values.
+fn validateAttributeValue(attr_value: []const u8) !void {
+    if (attr_value.len > SecurityLimits.max_attribute_value_length) {
+        return SecurityError.AttributeValueTooLong;
+    }
+
+    // Check for null bytes
+    for (attr_value) |c| {
+        if (c == 0) {
+            return error.InvalidCharacter;
+        }
+    }
+}
+
 /// Element Data
 ///
 /// Internal data structure storing element-specific information.
@@ -197,6 +325,7 @@ pub const ElementData = struct {
     /// // data.tag_name === "div" (case-preserved)
     /// ```
     pub fn init(allocator: std.mem.Allocator, tag_name: []const u8) !ElementData {
+        // Note: Tag name is validated in Element.create() before calling this
         const tag_copy = try allocator.dupe(u8, tag_name);
         return .{
             .tag_name = tag_copy,
@@ -265,7 +394,11 @@ pub const Element = struct {
     ///
     /// See: https://dom.spec.whatwg.org/#dom-document-createelement
     pub fn create(allocator: std.mem.Allocator, tag_name: []const u8) !*Node {
+        // P1 Security Fix: Validate tag name before allocation to prevent memory leak on error
+        try validateTagName(tag_name);
+
         const element_data_ptr = try allocator.create(ElementData);
+        errdefer allocator.destroy(element_data_ptr);
         element_data_ptr.* = try ElementData.init(allocator, tag_name);
 
         const node = try Node.init(allocator, .element_node, element_data_ptr.tag_name);
@@ -376,10 +509,18 @@ pub const Element = struct {
     ///
     /// See: https://dom.spec.whatwg.org/#dom-element-setattribute
     pub fn setAttribute(node: *Node, name: []const u8, value: []const u8) !void {
+        // P1 Security Fix: Validate attribute name and value
+        try validateAttributeName(name);
+        try validateAttributeValue(value);
+
         const data = getData(node);
         if (data.attributes.getNamedItem(name)) |existing| {
             try existing.setValue(value);
         } else {
+            // P1 Security Fix: Limit number of attributes per element
+            if (data.attributes.length() >= SecurityLimits.max_attributes_per_element) {
+                return SecurityError.TooManyAttributes;
+            }
             const attr = try Attr.init(node.allocator, name, value);
             _ = try data.attributes.setNamedItem(attr);
         }

@@ -14,6 +14,29 @@ const std = @import("std");
 const Node = @import("node.zig").Node;
 const Element = @import("element.zig").Element;
 
+// Import security limits from node module
+const SecurityLimits = @import("node.zig").SecurityLimits;
+const SecurityError = @import("node.zig").SecurityError;
+
+// ============================================================================
+// Selector Security Limits (P1)
+// ============================================================================
+
+/// CSS Selector complexity limits to prevent DoS attacks
+pub const SelectorComplexityLimits = struct {
+    /// Maximum selector string length (P2)
+    pub const max_selector_length: usize = 10_000; // 10KB
+
+    /// Maximum nesting depth for pseudo-classes like :not(), :is(), :has()
+    pub const max_pseudo_nesting_depth: usize = 10;
+
+    /// Maximum number of selector components in a compound selector
+    pub const max_compound_components: usize = 50;
+
+    /// Maximum number of simple selectors in a complex selector
+    pub const max_complex_parts: usize = 20;
+};
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -22,6 +45,9 @@ const Element = @import("element.zig").Element;
 pub const SelectorError = error{
     InvalidSelector,
     OutOfMemory,
+    SelectorTooLong,
+    SelectorTooComplex,
+    PseudoNestingTooDeep,
 };
 
 /// Selector Type Classification
@@ -213,6 +239,11 @@ pub fn parseGroup(allocator: std.mem.Allocator, selector_str: []const u8) !Selec
 /// Parse a complete CSS selector string into a ComplexSelector
 /// For single selectors without commas. Use parseGroup() for comma-separated selectors.
 pub fn parse(allocator: std.mem.Allocator, selector_str: []const u8) !ComplexSelector {
+    // P1 Security Fix: Validate selector length
+    if (selector_str.len > SelectorComplexityLimits.max_selector_length) {
+        return SelectorError.SelectorTooLong;
+    }
+
     var parts = std.ArrayList(SimpleSelector){};
     errdefer parts.deinit(allocator);
 
@@ -223,6 +254,10 @@ pub fn parse(allocator: std.mem.Allocator, selector_str: []const u8) !ComplexSel
     var current_combinator: Combinator = .none;
 
     while (i < selector_str.len) {
+        // P1 Security Fix: Limit number of selector parts
+        if (parts.items.len >= SelectorComplexityLimits.max_complex_parts) {
+            return SelectorError.SelectorTooComplex;
+        }
         // Skip whitespace and detect combinators
         while (i < selector_str.len and std.ascii.isWhitespace(selector_str[i])) {
             if (i > 0 and current_combinator == .none) {
@@ -1889,6 +1924,21 @@ pub fn querySelector(root: *const Node, selector: []const u8, allocator: std.mem
 }
 
 pub fn querySelectorAll(root: *const Node, selector: []const u8, list: *@import("node_list.zig").NodeList, allocator: std.mem.Allocator) !void {
+    // P1 Security Fix: Validate selector length
+    if (selector.len > SelectorComplexityLimits.max_selector_length) {
+        return SelectorError.SelectorTooLong;
+    }
+
+    return querySelectorAllWithDepth(root, selector, list, allocator, 0);
+}
+
+/// Internal helper for querySelectorAll with depth tracking (P0 Security)
+fn querySelectorAllWithDepth(root: *const Node, selector: []const u8, list: *@import("node_list.zig").NodeList, allocator: std.mem.Allocator, current_depth: usize) !void {
+    // P0 Security Fix: Prevent stack overflow from deep trees
+    if (current_depth >= SecurityLimits.max_tree_depth) {
+        return SecurityError.MaxTreeDepthExceeded;
+    }
+
     // Check if root matches first
     if (root.node_type == .element_node) {
         if (try matches(root, selector, allocator)) {
@@ -1899,7 +1949,7 @@ pub fn querySelectorAll(root: *const Node, selector: []const u8, list: *@import(
     // Then search descendants
     for (root.child_nodes.items.items) |child_ptr| {
         const child: *Node = @ptrCast(@alignCast(child_ptr));
-        try querySelectorAll(child, selector, list, allocator);
+        try querySelectorAllWithDepth(child, selector, list, allocator, current_depth + 1);
     }
 }
 
