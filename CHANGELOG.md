@@ -38,7 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Node.childNodes property** returning live NodeList per WebIDL spec
 - **Node.getOwnerDocument()** typed accessor returning `?*Document`
 - **Document.documentElement property** returning root element
-- 72 comprehensive tests with zero memory leaks across all node types
+- **Tree validation module** with WHATWG pre-insert/replace/remove validity checking
+- **Tree helpers module** for traversal, text collection, and connected state propagation
+- Circular reference detection for tree operations (prevents inserting ancestor into descendant)
+- Document constraint validation for element/doctype insertion rules
+- 86 comprehensive tests with zero memory leaks across all node types (Phase 1 + 2A complete)
 - Deep Phase 1 analysis vs WHATWG DOM spec in `summaries/analysis/PHASE1_DEEP_ANALYSIS.md`
 - WebIDL compliance analysis in `summaries/analysis/PHASE1_WEBIDL_COMPLIANCE.md`
 - Architecture documentation in `summaries/ARCHITECTURE.md`

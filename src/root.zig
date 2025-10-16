@@ -44,6 +44,13 @@ pub const MutationObserver = @import("rare_data.zig").MutationObserver;
 pub const EventCallback = @import("rare_data.zig").EventCallback;
 pub const MutationCallback = @import("rare_data.zig").MutationCallback;
 
+// Export NodeList collection
+pub const NodeList = @import("node_list.zig").NodeList;
+
+// Export validation and helpers (internal)
+pub const validation = @import("validation.zig");
+pub const tree_helpers = @import("tree_helpers.zig");
+
 test {
     // Run tests from all modules
     std.testing.refAllDecls(@This());
@@ -53,4 +60,7 @@ test {
     _ = @import("comment.zig");
     _ = @import("document.zig");
     _ = @import("rare_data.zig");
+    _ = @import("node_list.zig");
+    _ = @import("validation.zig");
+    _ = @import("tree_helpers.zig");
 }
