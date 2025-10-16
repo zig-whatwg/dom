@@ -1132,35 +1132,52 @@ pub fn createElement(
 
 ### README.md Updates
 
+**CRITICAL: Update README.md after completing each phase.**
+
 **Update README.md whenever:**
-1. Adding new public API
-2. Changing existing API (especially breaking changes)
-3. Adding new features
-4. Updating version numbers or test counts
-5. Changing performance characteristics
+1. Completing a phase (Phase 1, Phase 2, etc.)
+2. Adding new public API
+3. Changing existing API (especially breaking changes)
+4. Adding new features
+5. Updating test count badges
 
-```markdown
-## GOOD README Updates:
+**After Each Phase:**
 
-After adding Unicode support:
-1. Update feature list:
-   - ✅ **Unicode Support** - Full XML 1.1 compliant Unicode names
+1. **Update "WHATWG DOM Compliance" section**:
+   - Mark completed APIs with ✅
+   - Add newly implemented APIs to the phase section
+   - Update phase status (Complete/Next/Future)
+   - Keep WebIDL compliance list accurate
 
-2. Add usage section:
-   ## Unicode Support
-   
-   Full XML 1.1 §2.3 compliant Unicode support...
-   
-   ### Examples
-   ```zig
-   const café = try doc.createElement("café");
+2. **Update test count badge**:
+   ```markdown
+   [![Tests](https://img.shields.io/badge/tests-72%20passing-brightgreen.svg)]()
    ```
 
-3. Update test count badges:
-   [![Tests](https://img.shields.io/badge/tests-786%20passing-brightgreen.svg)]()
+3. **Update phase status line**:
+   ```markdown
+   **Status**: Phase 2 Complete ✅ | Production Ready | WebIDL Compliant
+   ```
 
-4. Update roadmap:
-   - [x] Full Unicode support for element and attribute names
+4. **Move completed phase to "Complete" and update "Next"**:
+   ```markdown
+   ### ✅ Phase 1 - Core Nodes (Complete)
+   ### ✅ Phase 2 - Tree Manipulation (Complete)  
+   ### 🚧 Phase 3 - Advanced Features (Next)
+   ```
+
+**Example: After Phase 2**
+
+```markdown
+### Phase 2 - Tree Manipulation (Complete)
+
+**Node Interface** - Tree modification operations
+- ✅ `appendChild(node)` - Append child to parent
+- ✅ `insertBefore(node, child)` - Insert node before reference
+- ✅ `removeChild(child)` - Remove child from parent
+- ✅ `replaceChild(node, child)` - Replace child with new node
+- ✅ `textContent` property - Get/set descendant text content
+- ✅ `contains(other)` - Check if node is descendant
 ```
 
 ### Documentation Files
