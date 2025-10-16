@@ -42,7 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tree helpers module** for traversal, text collection, and connected state propagation
 - Circular reference detection for tree operations (prevents inserting ancestor into descendant)
 - Document constraint validation for element/doctype insertion rules
-- 86 comprehensive tests with zero memory leaks across all node types (Phase 1 + 2A complete)
+- **Tree manipulation APIs**: appendChild(), insertBefore(), removeChild(), replaceChild() per WHATWG §4.2.4
+- Automatic connected state propagation when nodes inserted/removed from tree
+- Document node always marked as connected per WHATWG spec
+- Children cleanup in Element.deinit() and Document.deinitInternal()
+- 100 comprehensive tests (Phase 1 + 2A + 2B core APIs complete)
 - Deep Phase 1 analysis vs WHATWG DOM spec in `summaries/analysis/PHASE1_DEEP_ANALYSIS.md`
 - WebIDL compliance analysis in `summaries/analysis/PHASE1_WEBIDL_COMPLIANCE.md`
 - Architecture documentation in `summaries/ARCHITECTURE.md`

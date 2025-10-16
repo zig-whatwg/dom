@@ -407,6 +407,16 @@ pub const Element = struct {
         // Clean up rare data if allocated
         elem.node.deinitRareData();
 
+        // Release all children
+        var current = elem.node.first_child;
+        while (current) |child| {
+            const next = child.next_sibling;
+            child.parent_node = null;
+            child.setHasParent(false);
+            child.release(); // Release parent's ownership
+            current = next;
+        }
+
         elem.attributes.deinit();
         elem.node.allocator.destroy(elem);
     }

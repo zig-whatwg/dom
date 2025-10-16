@@ -147,8 +147,8 @@ pub const Node = struct {
     const MAX_REF_COUNT: u32 = REF_COUNT_MASK;
 
     // === Flag bit positions ===
-    const FLAG_IS_CONNECTED: u8 = 1 << 0;
-    const FLAG_IS_IN_SHADOW_TREE: u8 = 1 << 1;
+    pub const FLAG_IS_CONNECTED: u8 = 1 << 0;
+    pub const FLAG_IS_IN_SHADOW_TREE: u8 = 1 << 1;
 
     /// Initializes a new Node with ref_count = 1.
     ///
@@ -397,6 +397,179 @@ pub const Node = struct {
         return null;
     }
 
+    // === Tree manipulation methods ===
+
+    /// Inserts node before child in this node's children.
+    ///
+    /// Implements WHATWG DOM Node.insertBefore() per §4.2.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] Node insertBefore(Node node, Node? child);
+    /// ```
+    ///
+    /// ## Algorithm
+    /// 1. Validate insertion with ensurePreInsertValidity
+    /// 2. Adjust reference child if inserting before self
+    /// 3. Insert node (handles DocumentFragment expansion)
+    /// 4. Return inserted node
+    ///
+    /// ## Parameters
+    /// - `node`: Node to insert (can be DocumentFragment)
+    /// - `child`: Reference child to insert before (null = append)
+    ///
+    /// ## Returns
+    /// The inserted node
+    ///
+    /// ## Errors
+    /// - `error.HierarchyRequestError`: Invalid parent/child relationship
+    /// - `error.NotFoundError`: Reference child not found in children
+    /// - `error.OutOfMemory`: Failed to allocate during insertion
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-insertbefore
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:2449
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("div");
+    /// defer parent.node.release();
+    ///
+    /// const child1 = try doc.createElement("span");
+    /// defer child1.node.release();
+    ///
+    /// const child2 = try doc.createElement("p");
+    /// defer child2.node.release();
+    ///
+    /// _ = try parent.node.appendChild(&child1.node);
+    /// _ = try parent.node.insertBefore(&child2.node, &child1.node);
+    /// // Order is now: child2, child1
+    /// ```
+    pub fn insertBefore(
+        self: *Node,
+        node: *Node,
+        child: ?*Node,
+    ) !*Node {
+        return try preInsert(node, self, child);
+    }
+
+    /// Appends node to this node's children.
+    ///
+    /// Implements WHATWG DOM Node.appendChild() per §4.2.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] Node appendChild(Node node);
+    /// ```
+    ///
+    /// ## Returns
+    /// The appended node
+    ///
+    /// ## Errors
+    /// Same as insertBefore()
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-appendchild
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:2450
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("div");
+    /// defer parent.node.release();
+    ///
+    /// const child = try doc.createElement("span");
+    /// defer child.node.release();
+    ///
+    /// _ = try parent.node.appendChild(&child.node);
+    /// ```
+    pub fn appendChild(
+        self: *Node,
+        node: *Node,
+    ) !*Node {
+        // Delegate to insertBefore with child=null (append to end)
+        return try self.insertBefore(node, null);
+    }
+
+    /// Removes child from this node's children.
+    ///
+    /// Implements WHATWG DOM Node.removeChild() per §4.2.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] Node removeChild(Node child);
+    /// ```
+    ///
+    /// ## Returns
+    /// The removed child node
+    ///
+    /// ## Errors
+    /// - `error.NotFoundError`: Child is not a child of this node
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-removechild
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:2452
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("div");
+    /// defer parent.node.release();
+    ///
+    /// const child = try doc.createElement("span");
+    /// defer child.node.release();
+    ///
+    /// _ = try parent.node.appendChild(&child.node);
+    /// const removed = try parent.node.removeChild(&child.node);
+    /// // removed == child
+    /// ```
+    pub fn removeChild(
+        self: *Node,
+        child: *Node,
+    ) !*Node {
+        return try preRemove(child, self);
+    }
+
+    /// Replaces child with node in this node's children.
+    ///
+    /// Implements WHATWG DOM Node.replaceChild() per §4.2.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] Node replaceChild(Node node, Node child);
+    /// ```
+    ///
+    /// ## Returns
+    /// The replaced (removed) child node
+    ///
+    /// ## Errors
+    /// Same as insertBefore() plus NotFoundError if child not found
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-replacechild
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:2451
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("div");
+    /// defer parent.node.release();
+    ///
+    /// const old_child = try doc.createElement("span");
+    /// defer old_child.node.release();
+    ///
+    /// const new_child = try doc.createElement("p");
+    /// defer new_child.node.release();
+    ///
+    /// _ = try parent.node.appendChild(&old_child.node);
+    /// const removed = try parent.node.replaceChild(&new_child.node, &old_child.node);
+    /// // removed == old_child, new_child is now child of parent
+    /// ```
+    pub fn replaceChild(
+        self: *Node,
+        node: *Node,
+        child: *Node,
+    ) !*Node {
+        return try replace(child, node, self);
+    }
+
     // === RareData management ===
 
     /// Ensures rare data is allocated.
@@ -543,6 +716,215 @@ pub const Node = struct {
         return &[_]@import("rare_data.zig").EventListener{};
     }
 };
+
+// ============================================================================
+// INTERNAL TREE MANIPULATION ALGORITHMS
+// ============================================================================
+
+const validation = @import("validation.zig");
+const tree_helpers = @import("tree_helpers.zig");
+
+/// Pre-insert algorithm per WHATWG DOM §4.2.4.
+fn preInsert(
+    node: *Node,
+    parent: *Node,
+    child: ?*Node,
+) !*Node {
+    // Step 1: Ensure validity
+    try validation.ensurePreInsertValidity(node, parent, child);
+
+    // Step 2: Set referenceChild
+    var reference_child = child;
+
+    // Step 3: Adjust if inserting before self
+    if (reference_child == node) {
+        reference_child = node.next_sibling;
+    }
+
+    // Step 4: Insert
+    try insert(node, parent, reference_child);
+
+    // Step 5: Return node
+    return node;
+}
+
+/// Insert algorithm per WHATWG DOM §4.2.4.
+///
+/// Handles DocumentFragment expansion, sibling pointer updates,
+/// parent pointer updates, and connected state propagation.
+fn insert(
+    node: *Node,
+    parent: *Node,
+    child: ?*Node,
+) !void {
+    // Step 1: Determine nodes to insert
+    var nodes_buffer: [256]*Node = undefined; // Should be enough for most cases
+    var nodes: []*Node = undefined;
+    var node_count: usize = 0;
+
+    if (node.node_type == .document_fragment) {
+        // Collect fragment children
+        var current = node.first_child;
+        while (current) |c| {
+            nodes_buffer[node_count] = c;
+            node_count += 1;
+            current = c.next_sibling;
+        }
+        nodes = nodes_buffer[0..node_count];
+
+        // Remove from fragment (Step 4.1)
+        tree_helpers.removeAllChildren(node);
+    } else {
+        nodes_buffer[0] = node;
+        node_count = 1;
+        nodes = nodes_buffer[0..1];
+    }
+
+    // Step 3: Return if no nodes
+    if (node_count == 0) return;
+
+    // Step 7: Insert each node
+    for (nodes) |n| {
+        // Remove from old parent if any
+        if (n.parent_node) |_| {
+            remove(n);
+        }
+
+        // Step 7.2-7.3: Insert into children list
+        insertIntoChildrenList(n, parent, child);
+
+        // Update parent pointer
+        n.parent_node = parent;
+        n.setHasParent(true);
+
+        // Update connected state
+        if (parent.isConnected()) {
+            n.setConnected(true);
+            // Recursively set connected for descendants
+            tree_helpers.setDescendantsConnected(n, true);
+        }
+    }
+}
+
+/// Inserts node into parent's children list before child.
+fn insertIntoChildrenList(
+    node: *Node,
+    parent: *Node,
+    child: ?*Node,
+) void {
+    if (child) |c| {
+        // Insert before child
+        const prev = c.previous_sibling;
+
+        // Update node's pointers
+        node.previous_sibling = prev;
+        node.next_sibling = c;
+
+        // Update prev's next
+        if (prev) |p| {
+            p.next_sibling = node;
+        } else {
+            parent.first_child = node;
+        }
+
+        // Update child's prev
+        c.previous_sibling = node;
+    } else {
+        // Append to end
+        const last = parent.last_child;
+
+        node.previous_sibling = last;
+        node.next_sibling = null;
+
+        if (last) |l| {
+            l.next_sibling = node;
+        } else {
+            parent.first_child = node;
+        }
+
+        parent.last_child = node;
+    }
+}
+
+/// Pre-remove algorithm per WHATWG DOM §4.2.4.
+fn preRemove(
+    child: *Node,
+    parent: *Node,
+) !*Node {
+    // Step 1: Validate
+    try validation.ensurePreRemoveValidity(child, parent);
+
+    // Step 2: Remove
+    remove(child);
+
+    // Step 3: Return child
+    return child;
+}
+
+/// Remove algorithm per WHATWG DOM §4.2.4.
+///
+/// Removes node from its parent by updating sibling pointers
+/// and propagating disconnected state.
+fn remove(node: *Node) void {
+    const parent = node.parent_node orelse return;
+
+    // Update sibling pointers
+    const prev = node.previous_sibling;
+    const next = node.next_sibling;
+
+    if (prev) |p| {
+        p.next_sibling = next;
+    } else {
+        parent.first_child = next;
+    }
+
+    if (next) |n| {
+        n.previous_sibling = prev;
+    } else {
+        parent.last_child = prev;
+    }
+
+    // Clear node's pointers
+    node.parent_node = null;
+    node.previous_sibling = null;
+    node.next_sibling = null;
+    node.setHasParent(false);
+
+    // Update connected state
+    if (node.isConnected()) {
+        node.setConnected(false);
+        tree_helpers.setDescendantsConnected(node, false);
+    }
+}
+
+/// Replace algorithm per WHATWG DOM §4.2.4.
+fn replace(
+    child: *Node,
+    node: *Node,
+    parent: *Node,
+) !*Node {
+    // Step 1-6: Validation (different from pre-insert!)
+    try validation.ensureReplaceValidity(node, child, parent);
+
+    // Step 7: Get reference child
+    var reference_child = child.next_sibling;
+
+    // Step 8: Adjust if replacing with self
+    if (reference_child == node) {
+        reference_child = node.next_sibling;
+    }
+
+    // Step 11: Remove child
+    if (child.parent_node != null) {
+        remove(child);
+    }
+
+    // Step 13: Insert node
+    try insert(node, parent, reference_child);
+
+    // Step 15: Return child
+    return child;
+}
 
 // ============================================================================
 // TESTS
@@ -1151,4 +1533,399 @@ test "Node - childNodes" {
     child1.next_sibling = null;
     child1.parent_node = null;
     child2.parent_node = null;
+}
+
+// ============================================================================
+// TREE MANIPULATION TESTS
+// ============================================================================
+
+// ============================================================================
+// TREE MANIPULATION TESTS
+// ============================================================================
+
+test "Node.appendChild - adds child successfully" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child = try doc.createElement("span");
+    // NO defer - parent will own it
+
+    _ = try parent.node.appendChild(&child.node);
+
+    // Verify parent-child relationship
+    try std.testing.expectEqual(&parent.node, child.node.parent_node);
+    try std.testing.expectEqual(&child.node, parent.node.first_child);
+    try std.testing.expectEqual(&child.node, parent.node.last_child);
+    try std.testing.expect(child.node.hasParent());
+}
+
+test "Node.appendChild - adds multiple children in order" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("span");
+    const child2 = try doc.createElement("p");
+    const child3 = try doc.createElement("strong");
+    // NO defers - parent owns them
+
+    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.node.appendChild(&child3.node);
+
+    // Verify order
+    try std.testing.expectEqual(&child1.node, parent.node.first_child);
+    try std.testing.expectEqual(&child3.node, parent.node.last_child);
+    try std.testing.expectEqual(&child2.node, child1.node.next_sibling);
+    try std.testing.expectEqual(&child3.node, child2.node.next_sibling);
+}
+
+test "Node.appendChild - moves node from old parent" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent1 = try doc.createElement("div");
+    defer parent1.node.release();
+
+    const parent2 = try doc.createElement("section");
+    defer parent2.node.release();
+
+    const child = try doc.createElement("span");
+    // NO defer - will be owned by one of the parents
+
+    // Add to parent1
+    _ = try parent1.node.appendChild(&child.node);
+    try std.testing.expectEqual(&parent1.node, child.node.parent_node);
+
+    // Move to parent2
+    _ = try parent2.node.appendChild(&child.node);
+    try std.testing.expectEqual(&parent2.node, child.node.parent_node);
+    try std.testing.expect(parent1.node.first_child == null);
+}
+
+test "Node.appendChild - rejects text node under document" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const text = try doc.createTextNode("text");
+    defer text.node.release(); // NOT added to parent, so we own it
+
+    // Should fail - text cannot be child of document
+    try std.testing.expectError(
+        error.HierarchyRequestError,
+        doc.node.appendChild(&text.node),
+    );
+}
+
+test "Node.insertBefore - inserts at beginning" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("span");
+    const child2 = try doc.createElement("p");
+    // NO defers - parent owns them
+
+    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.node.insertBefore(&child2.node, &child1.node);
+
+    // child2 should be first
+    try std.testing.expectEqual(&child2.node, parent.node.first_child);
+    try std.testing.expectEqual(&child1.node, child2.node.next_sibling);
+}
+
+test "Node.insertBefore - inserts in middle" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("span");
+    const child2 = try doc.createElement("p");
+    const child3 = try doc.createElement("strong");
+    // NO defers - parent owns them
+
+    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.node.appendChild(&child3.node);
+    _ = try parent.node.insertBefore(&child2.node, &child3.node);
+
+    // Order should be: child1, child2, child3
+    try std.testing.expectEqual(&child1.node, parent.node.first_child);
+    try std.testing.expectEqual(&child2.node, child1.node.next_sibling);
+    try std.testing.expectEqual(&child3.node, child2.node.next_sibling);
+}
+
+test "Node.insertBefore - with null child appends" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("span");
+    const child2 = try doc.createElement("p");
+    // NO defers - parent owns them
+
+    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.node.insertBefore(&child2.node, null);
+
+    // child2 should be last
+    try std.testing.expectEqual(&child2.node, parent.node.last_child);
+}
+
+test "Node.insertBefore - rejects if child not in parent" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const other = try doc.createElement("section");
+    defer other.node.release();
+
+    const child = try doc.createElement("span");
+    // child will be owned by other, NOT parent
+
+    const new_child = try doc.createElement("p");
+    defer new_child.node.release(); // Will NOT be added
+
+    _ = try other.node.appendChild(&child.node);
+
+    // Should fail - child is not a child of parent
+    try std.testing.expectError(
+        error.NotFoundError,
+        parent.node.insertBefore(&new_child.node, &child.node),
+    );
+}
+
+test "Node.removeChild - removes child successfully" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child = try doc.createElement("span");
+    defer child.node.release(); // Released AFTER removal
+
+    _ = try parent.node.appendChild(&child.node);
+    const removed = try parent.node.removeChild(&child.node);
+
+    try std.testing.expectEqual(&child.node, removed);
+    try std.testing.expect(child.node.parent_node == null);
+    try std.testing.expect(!child.node.hasParent());
+}
+
+test "Node.removeChild - removes middle child" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("span");
+    const child2 = try doc.createElement("p");
+    defer child2.node.release(); // Released AFTER removal
+    const child3 = try doc.createElement("strong");
+    // child1 and child3 owned by parent
+
+    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.node.appendChild(&child3.node);
+
+    _ = try parent.node.removeChild(&child2.node);
+
+    // child1 and child3 should be linked
+    try std.testing.expectEqual(&child3.node, child1.node.next_sibling);
+    try std.testing.expect(child2.node.parent_node == null);
+}
+
+test "Node.removeChild - rejects if not parent" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const other = try doc.createElement("section");
+    defer other.node.release();
+
+    const child = try doc.createElement("span");
+    // child owned by other
+
+    _ = try other.node.appendChild(&child.node);
+
+    // Should fail - child is not a child of parent
+    try std.testing.expectError(
+        error.NotFoundError,
+        parent.node.removeChild(&child.node),
+    );
+}
+
+test "Node.replaceChild - replaces child successfully" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const old_child = try doc.createElement("span");
+    defer old_child.node.release(); // Released AFTER removal
+
+    const new_child = try doc.createElement("p");
+    // new_child owned by parent after replacement
+
+    _ = try parent.node.appendChild(&old_child.node);
+    const removed = try parent.node.replaceChild(&new_child.node, &old_child.node);
+
+    try std.testing.expectEqual(&old_child.node, removed);
+    try std.testing.expectEqual(&new_child.node, parent.node.first_child);
+    try std.testing.expect(old_child.node.parent_node == null);
+}
+
+test "Node.replaceChild - preserves sibling order" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("span");
+    const child2 = try doc.createElement("p");
+    defer child2.node.release(); // Released AFTER replacement
+    const child3 = try doc.createElement("strong");
+    const new_child = try doc.createElement("em");
+    // child1, new_child, child3 owned by parent
+
+    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.node.appendChild(&child3.node);
+
+    _ = try parent.node.replaceChild(&new_child.node, &child2.node);
+
+    // Order should be: child1, new_child, child3
+    try std.testing.expectEqual(&child1.node, parent.node.first_child);
+    try std.testing.expectEqual(&new_child.node, child1.node.next_sibling);
+    try std.testing.expectEqual(&child3.node, new_child.node.next_sibling);
+}
+
+test "Node.replaceChild - rejects if child not in parent" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const other = try doc.createElement("section");
+    defer other.node.release();
+
+    const child = try doc.createElement("span");
+    // child owned by other
+
+    const new_child = try doc.createElement("p");
+    defer new_child.node.release(); // NOT added
+
+    _ = try other.node.appendChild(&child.node);
+
+    // Should fail - child is not a child of parent
+    try std.testing.expectError(
+        error.NotFoundError,
+        parent.node.replaceChild(&new_child.node, &child.node),
+    );
+}
+
+test "Node.appendChild - propagates connected state" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    // root owned by doc after appendChild
+
+    const child = try doc.createElement("body");
+    const grandchild = try doc.createElement("div");
+    // child and grandchild owned by tree
+
+    // Build tree
+    _ = try child.node.appendChild(&grandchild.node);
+    _ = try root.node.appendChild(&child.node);
+
+    // Connect root to document (document is always connected)
+    _ = try doc.node.appendChild(&root.node);
+
+    // Should propagate to child and grandchild
+    try std.testing.expect(root.node.isConnected());
+    try std.testing.expect(child.node.isConnected());
+    try std.testing.expect(grandchild.node.isConnected());
+}
+
+test "Node.removeChild - propagates disconnected state" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    // root owned by doc
+
+    const child = try doc.createElement("body");
+    defer child.node.release(); // Released AFTER removal
+
+    const grandchild = try doc.createElement("div");
+    // grandchild owned by child
+
+    // Build connected tree
+    _ = try child.node.appendChild(&grandchild.node);
+    _ = try root.node.appendChild(&child.node);
+    _ = try doc.node.appendChild(&root.node);
+
+    // All should be connected
+    try std.testing.expect(root.node.isConnected());
+    try std.testing.expect(child.node.isConnected());
+    try std.testing.expect(grandchild.node.isConnected());
+
+    // Remove child
+    _ = try root.node.removeChild(&child.node);
+
+    // root still connected, child and grandchild disconnected
+    try std.testing.expect(root.node.isConnected());
+    try std.testing.expect(!child.node.isConnected());
+    try std.testing.expect(!grandchild.node.isConnected());
 }

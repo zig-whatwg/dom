@@ -190,7 +190,7 @@ pub const Document = struct {
             .vtable = &vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .document,
-            .flags = 0,
+            .flags = Node.FLAG_IS_CONNECTED, // Document is always connected
             .node_id = 0,
             .generation = 0,
             .allocator = allocator,
@@ -388,9 +388,37 @@ pub const Document = struct {
     }
 
     /// Internal cleanup (called when both ref counts reach 0).
+    /// Recursively clears owner_document for node and all descendants.
+    /// Used during document destruction to prevent circular references.
+    fn clearOwnerDocumentRecursive(node: *Node) void {
+        node.owner_document = null;
+        var current = node.first_child;
+        while (current) |child| {
+            clearOwnerDocumentRecursive(child);
+            current = child.next_sibling;
+        }
+    }
+
     fn deinitInternal(self: *Document) void {
         // Clean up rare data if allocated
         self.node.deinitRareData();
+
+        // Destroy all children (first clear owner_document recursively to avoid circular refs)
+        var current = self.node.first_child;
+        while (current) |child| {
+            clearOwnerDocumentRecursive(child);
+        }
+
+        // Now destroy all children
+        current = self.node.first_child;
+        while (current) |child| {
+            const next = child.next_sibling;
+            child.parent_node = null;
+            child.setHasParent(false);
+            // Call vtable deinit directly
+            child.vtable.deinit(child);
+            current = next;
+        }
 
         // Clean up string pool
         self.string_pool.deinit();
