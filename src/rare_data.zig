@@ -15,39 +15,15 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Event = @import("event.zig").Event;
 
+// Re-export EventTarget types for backward compatibility
+pub const EventCallback = @import("event_target.zig").EventCallback;
+pub const EventListener = @import("event_target.zig").EventListener;
+
 /// Callback function type for mutation observers.
 ///
 /// Called when a mutation occurs on an observed node.
 /// Context is user-provided data (e.g., JS object, CDP handler, etc.)
 pub const MutationCallback = *const fn (context: *anyopaque) void;
-
-/// Callback function type for event listeners.
-///
-/// Called when an event is dispatched to a node.
-/// Receives the Event object and user-provided context.
-/// Matches EventListener.handleEvent(Event) signature from WebIDL.
-pub const EventCallback = *const fn (event: *@import("event.zig").Event, context: *anyopaque) void;
-
-/// Event listener registration.
-pub const EventListener = struct {
-    /// Event type (e.g., "click", "input", "change")
-    event_type: []const u8,
-
-    /// Callback function
-    callback: EventCallback,
-
-    /// User context (passed to callback)
-    context: *anyopaque,
-
-    /// Capture phase (true) or bubble phase (false)
-    capture: bool,
-
-    /// Remove after first invocation
-    once: bool,
-
-    /// Passive listener (won't call preventDefault)
-    passive: bool,
-};
 
 /// Mutation observer registration.
 pub const MutationObserver = struct {

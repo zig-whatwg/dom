@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- EventTarget mixin pattern for reusable event dispatching across any type
+- Comptime validation ensures EventTarget interface compliance at compile time
+- `src/event_target.zig` module with EventTargetMixin(comptime T) generic function
+- 5 comprehensive EventTarget mixin tests with MockEventTarget validation
+
+### Changed
+- Node EventTarget methods now delegate to EventTargetMixin (zero code duplication)
+- EventCallback and EventListener types moved from rare_data.zig to event_target.zig
+- rare_data.zig re-exports EventTarget types for backward compatibility
+
+### Added
 - `Event` struct with spec-compliant flags and state management per WHATWG DOM §2.2
 - `EventTarget.dispatchEvent()` - synchronous event dispatching with listener invocation per WHATWG DOM §2.9
 - Support for passive event listeners (preventDefault blocked when passive=true)

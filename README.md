@@ -11,6 +11,7 @@ A production-ready implementation of the [WHATWG DOM Standard](https://dom.spec.
 - **100% WebIDL Compliant** - All implemented APIs match official WebIDL specifications exactly
 - **WebKit-Style Memory Management** - Reference counting with weak parent pointers
 - **Zero Memory Leaks** - Verified by comprehensive test suite
+- **Comptime Event Target Mixin** - Reusable EventTarget pattern with zero overhead for any type
 - **Production Ready** - Extensively tested and documented
 - **JavaScript Bindings Ready** - See [JS_BINDINGS.md](JS_BINDINGS.md) for integration guide
 

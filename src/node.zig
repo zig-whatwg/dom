@@ -12,6 +12,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const NodeRareData = @import("rare_data.zig").NodeRareData;
 const Event = @import("event.zig").Event;
+const EventTargetMixin = @import("event_target.zig").EventTargetMixin;
 
 /// Node types per WHATWG DOM specification.
 pub const NodeType = enum(u8) {
@@ -1237,21 +1238,14 @@ pub const Node = struct {
     pub fn addEventListener(
         self: *Node,
         event_type: []const u8,
-        callback: @import("rare_data.zig").EventCallback,
+        callback: @import("event_target.zig").EventCallback,
         context: *anyopaque,
         capture: bool,
         once: bool,
         passive: bool,
     ) !void {
-        const rare = try self.ensureRareData();
-        try rare.addEventListener(.{
-            .event_type = event_type,
-            .callback = callback,
-            .context = context,
-            .capture = capture,
-            .once = once,
-            .passive = passive,
-        });
+        const Mixin = EventTargetMixin(Node);
+        return Mixin.addEventListener(self, event_type, callback, context, capture, once, passive);
     }
 
     /// Removes an event listener from the node.
@@ -1272,12 +1266,11 @@ pub const Node = struct {
     pub fn removeEventListener(
         self: *Node,
         event_type: []const u8,
-        callback: @import("rare_data.zig").EventCallback,
+        callback: @import("event_target.zig").EventCallback,
         capture: bool,
     ) void {
-        if (self.rare_data) |rare| {
-            _ = rare.removeEventListener(event_type, callback, capture);
-        }
+        const Mixin = EventTargetMixin(Node);
+        return Mixin.removeEventListener(self, event_type, callback, capture);
     }
 
     /// Checks if node has event listeners for the specified type.
@@ -1288,10 +1281,8 @@ pub const Node = struct {
     /// ## Returns
     /// true if node has listeners for this event type, false otherwise
     pub fn hasEventListeners(self: *const Node, event_type: []const u8) bool {
-        if (self.rare_data) |rare| {
-            return rare.hasEventListeners(event_type);
-        }
-        return false;
+        const Mixin = EventTargetMixin(Node);
+        return Mixin.hasEventListeners(self, event_type);
     }
 
     /// Returns all event listeners for a specific event type.
@@ -1301,11 +1292,9 @@ pub const Node = struct {
     ///
     /// ## Returns
     /// Slice of listeners (empty if none registered)
-    pub fn getEventListeners(self: *const Node, event_type: []const u8) []const @import("rare_data.zig").EventListener {
-        if (self.rare_data) |rare| {
-            return rare.getEventListeners(event_type);
-        }
-        return &[_]@import("rare_data.zig").EventListener{};
+    pub fn getEventListeners(self: *const Node, event_type: []const u8) []const @import("event_target.zig").EventListener {
+        const Mixin = EventTargetMixin(Node);
+        return Mixin.getEventListeners(self, event_type);
     }
 
     /// Dispatches an event to this node.
@@ -1357,85 +1346,8 @@ pub const Node = struct {
     /// }
     /// ```
     pub fn dispatchEvent(self: *Node, event: *Event) !bool {
-        // Step 1: Validate event state
-        // Per spec §2.7: "If event's dispatch flag is set, or if its
-        // initialized flag is not set, then throw an InvalidStateError DOMException."
-        if (event.dispatch_flag) {
-            return error.InvalidStateError;
-        }
-        if (!event.initialized_flag) {
-            return error.InvalidStateError;
-        }
-
-        // Step 2: Set flags per spec §2.7 step 2
-        // "Initialize event's isTrusted attribute to false."
-        event.is_trusted = false;
-
-        // Step 3: Dispatch (simplified for Phase 1 - no tree traversal)
-        // Set dispatch flag per spec §2.9 step 1
-        event.dispatch_flag = true;
-
-        // Set event target and phase
-        event.target = self;
-        event.current_target = self;
-        event.event_phase = .at_target;
-
-        // Invoke listeners on target node (Phase 1 - no capture/bubble)
-        if (self.rare_data) |rare| {
-            if (rare.event_listeners) |*listeners_map| {
-                if (listeners_map.get(event.event_type)) |listener_list| {
-                    // Clone listener list to avoid issues with listeners
-                    // added/removed during dispatch (per spec §2.9 step 6)
-                    for (listener_list.items) |listener| {
-                        // Skip if type doesn't match
-                        if (!std.mem.eql(u8, listener.event_type, event.event_type)) {
-                            continue;
-                        }
-
-                        // Set passive listener flag (spec §2.9 inner invoke step 9)
-                        if (listener.passive) {
-                            event.in_passive_listener_flag = true;
-                        }
-
-                        // Invoke callback (spec §2.9 inner invoke step 11)
-                        listener.callback(event, listener.context);
-
-                        // Unset passive listener flag (spec §2.9 inner invoke step 12)
-                        event.in_passive_listener_flag = false;
-
-                        // Handle "once" listeners - remove after invocation
-                        // (spec §2.9 inner invoke step 5)
-                        if (listener.once) {
-                            self.removeEventListener(
-                                listener.event_type,
-                                listener.callback,
-                                listener.capture,
-                            );
-                        }
-
-                        // Stop if stopImmediatePropagation called
-                        // (spec §2.9 inner invoke step 14)
-                        if (event.stop_immediate_propagation_flag) {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Step 4: Cleanup (spec §2.9 steps 7-10)
-        // "Set event's eventPhase attribute to NONE."
-        event.event_phase = .none;
-        // "Set event's currentTarget attribute to null."
-        event.current_target = null;
-        // "Unset event's dispatch flag..."
-        event.dispatch_flag = false;
-        // Note: We don't clear stop_propagation_flag or
-        // stop_immediate_propagation_flag per spec §2.9 step 10
-
-        // Step 5: Return result (spec §2.9 step 13)
-        // "Return false if event's canceled flag is set; otherwise true."
-        return !event.canceled_flag;
+        const Mixin = EventTargetMixin(Node);
+        return Mixin.dispatchEvent(self, event);
     }
 };
 
