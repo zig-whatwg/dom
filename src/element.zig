@@ -246,6 +246,43 @@ pub const Element = struct {
         return false;
     }
 
+    // === WHATWG DOM Core Properties ===
+
+    /// Returns the local name of the element.
+    ///
+    /// Implements WHATWG DOM Element.localName property per §4.9.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute DOMString localName;
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.9)
+    /// For elements without namespace support, localName is the same as tagName.
+    /// When namespace support is added (XML/SVG), this will return the local part
+    /// after the namespace prefix (e.g., "rect" from "svg:rect").
+    ///
+    /// ## Returns
+    /// Local name of the element (currently same as tagName)
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-element-localname
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:353
+    ///
+    /// ## Example
+    /// ```zig
+    /// const elem = try doc.createElement("div");
+    /// defer elem.node.release();
+    ///
+    /// const name = elem.localName();
+    /// // Returns "div" (same as tagName for non-namespaced elements)
+    /// ```
+    pub fn localName(self: *const Element) []const u8 {
+        // For non-namespaced elements, localName === tagName
+        // When namespace support is added, this will extract the local part
+        return self.tag_name;
+    }
+
     // === WHATWG DOM Convenience Properties ===
 
     /// Gets the element's id attribute.
@@ -785,4 +822,24 @@ test "Element - getAttributeNames" {
         try std.testing.expect(found_class);
         try std.testing.expect(found_data);
     }
+}
+
+test "Element - localName property" {
+    const allocator = std.testing.allocator;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+
+    // For non-namespaced elements, localName === tagName
+    try std.testing.expectEqualStrings("div", elem.localName());
+    try std.testing.expectEqualStrings(elem.tag_name, elem.localName());
+}
+
+test "Element - localName for custom element" {
+    const allocator = std.testing.allocator;
+
+    const elem = try Element.create(allocator, "my-custom-element");
+    defer elem.node.release();
+
+    try std.testing.expectEqualStrings("my-custom-element", elem.localName());
 }

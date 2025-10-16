@@ -8,14 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Phase 1 Complete!** All 10 missing Phase 1 readonly/comparison APIs now implemented
 - `Node.isSameNode()` - identity comparison (Phase 1 readonly API)
 - `Node.getRootNode(composed)` - root node traversal with shadow DOM support
 - `Node.contains(other)` - inclusive descendant check
 - `Node.baseURI()` - base URI property (placeholder implementation)
 - `Node.compareDocumentPosition(other)` - relative position comparison with bitmask flags
 - `Node.isEqualNode(other)` - deep structural equality check
+- `Element.localName` - local name property (same as tagName for non-namespaced elements)
+- `Document.doctype()` - returns DocumentType node (placeholder until DocumentType implemented)
+- `Document.createDocumentFragment()` - factory method for DocumentFragment nodes
+- `Text.wholeText()` - concatenates contiguous text nodes
+- `DocumentFragment` node type implementation with cloning support
 - Document position constants: DISCONNECTED, PRECEDING, FOLLOWING, CONTAINS, CONTAINED_BY, IMPLEMENTATION_SPECIFIC
-- 33 comprehensive tests for all 6 new Node methods covering edge cases and spec compliance
+- 47 comprehensive tests (33 Node + 2 Element + 2 Document + 4 Text + 6 DocumentFragment)
 - `textContent` property (getter/setter) on Node interface per WHATWG DOM §4.4
 - 14 comprehensive tests for textContent covering all edge cases
 

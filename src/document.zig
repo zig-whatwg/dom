@@ -18,6 +18,7 @@ const NodeVTable = node_mod.NodeVTable;
 const Element = @import("element.zig").Element;
 const Text = @import("text.zig").Text;
 const Comment = @import("comment.zig").Comment;
+const DocumentFragment = @import("document_fragment.zig").DocumentFragment;
 
 /// String interning pool for per-document string deduplication.
 ///
@@ -300,6 +301,62 @@ pub const Document = struct {
         return comment;
     }
 
+    /// Creates a new DocumentFragment node owned by this document.
+    ///
+    /// Implements WHATWG DOM Document.createDocumentFragment() per §4.10.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] DocumentFragment createDocumentFragment();
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.10)
+    /// Create a new DocumentFragment node with its node document set to this.
+    ///
+    /// ## Memory Management
+    /// Returns DocumentFragment with ref_count=1. Caller MUST call `fragment.node.release()`.
+    ///
+    /// ## Returns
+    /// New document fragment owned by this document
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-createdocumentfragment
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:519
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const fragment = try doc.createDocumentFragment();
+    /// defer fragment.node.release();
+    ///
+    /// // Add elements to fragment
+    /// const elem1 = try doc.createElement("div");
+    /// const elem2 = try doc.createElement("span");
+    /// _ = try fragment.node.appendChild(&elem1.node);
+    /// _ = try fragment.node.appendChild(&elem2.node);
+    ///
+    /// // Insert fragment into document (moves children)
+    /// _ = try doc.node.appendChild(&fragment.node);
+    /// ```
+    pub fn createDocumentFragment(self: *Document) !*DocumentFragment {
+        const fragment = try DocumentFragment.create(self.node.allocator);
+        errdefer fragment.node.release();
+
+        // Set owner document and assign node ID
+        fragment.node.owner_document = &self.node;
+        fragment.node.node_id = self.allocateNodeId();
+
+        // Increment document's node ref count
+        self.acquireNodeRef();
+
+        return fragment;
+    }
+
     /// Returns the document element (root element) of the document.
     ///
     /// Implements WHATWG DOM Document.documentElement property.
@@ -320,6 +377,51 @@ pub const Document = struct {
         while (current) |node| {
             if (node.node_type == .element) {
                 return @fieldParentPtr("node", node);
+            }
+            current = node.next_sibling;
+        }
+        return null;
+    }
+
+    /// Returns the document's DocumentType node.
+    ///
+    /// Implements WHATWG DOM Document.doctype property per §4.10.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute DocumentType? doctype;
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.10)
+    /// Return the first DocumentType node child of this document, or null if none exists.
+    ///
+    /// ## Returns
+    /// The document's DocumentType node, or null if no doctype is present
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-doctype
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:512
+    ///
+    /// ## Note
+    /// Currently returns null. Full implementation requires DocumentType struct.
+    /// When DocumentType is implemented, this will search children for the doctype node.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// if (doc.doctype()) |dt| {
+    ///     std.debug.print("Doctype: {s}\n", .{dt.name});
+    /// }
+    /// ```
+    pub fn doctype(self: *const Document) ?*Node {
+        // TODO: Full implementation requires DocumentType struct
+        // For now, search for DocumentType node among children
+        var current = self.node.first_child;
+        while (current) |node| {
+            if (node.node_type == .document_type) {
+                return node;
             }
             current = node.next_sibling;
         }
@@ -602,6 +704,47 @@ test "Document - createComment" {
     try std.testing.expectEqual(@as(usize, 1), doc.node_ref_count.load(.monotonic));
 }
 
+test "Document - createDocumentFragment" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Create document fragment
+    const fragment = try doc.createDocumentFragment();
+    defer fragment.node.release();
+
+    // Verify fragment properties
+    try std.testing.expect(fragment.node.node_type == .document_fragment);
+    try std.testing.expectEqualStrings("#document-fragment", fragment.node.nodeName());
+    try std.testing.expectEqual(&doc.node, fragment.node.owner_document.?);
+    try std.testing.expect(fragment.node.node_id > 0);
+
+    // Verify document's node ref count incremented
+    try std.testing.expectEqual(@as(usize, 1), doc.node_ref_count.load(.monotonic));
+}
+
+test "Document - createDocumentFragment with children" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const fragment = try doc.createDocumentFragment();
+    defer fragment.node.release();
+
+    // Add children to fragment
+    const elem1 = try doc.createElement("div");
+    const elem2 = try doc.createElement("span");
+
+    _ = try fragment.node.appendChild(&elem1.node);
+    _ = try fragment.node.appendChild(&elem2.node);
+
+    // Verify fragment has children
+    try std.testing.expect(fragment.node.hasChildNodes());
+    try std.testing.expectEqual(@as(usize, 2), fragment.node.childNodes().length());
+}
+
 test "Document - string interning in createElement" {
     const allocator = std.testing.allocator;
 
@@ -801,4 +944,29 @@ test "Document - documentElement with mixed children" {
     root_elem.node.parent_node = null;
     root_elem.node.setHasParent(false);
     comment.node.setHasParent(false);
+}
+
+test "Document - doctype property returns null (no DocumentType yet)" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // No DocumentType children, so doctype() should return null
+    try std.testing.expect(doc.doctype() == null);
+}
+
+test "Document - doctype property with element children" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Add an element child
+    const elem = try doc.createElement("html");
+
+    _ = try doc.node.appendChild(&elem.node);
+
+    // Still no DocumentType, should return null
+    try std.testing.expect(doc.doctype() == null);
 }

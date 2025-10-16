@@ -36,6 +36,7 @@ pub const Comment = @import("comment.zig").Comment;
 // Export document modules
 pub const Document = @import("document.zig").Document;
 pub const StringPool = @import("document.zig").StringPool;
+pub const DocumentFragment = @import("document_fragment.zig").DocumentFragment;
 
 // Export rare data modules
 pub const NodeRareData = @import("rare_data.zig").NodeRareData;
@@ -59,6 +60,7 @@ test {
     _ = @import("text.zig");
     _ = @import("comment.zig");
     _ = @import("document.zig");
+    _ = @import("document_fragment.zig");
     _ = @import("rare_data.zig");
     _ = @import("node_list.zig");
     _ = @import("validation.zig");

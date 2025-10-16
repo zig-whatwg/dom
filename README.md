@@ -1,7 +1,7 @@
 # DOM - WHATWG DOM Implementation in Zig
 
 [![Zig](https://img.shields.io/badge/zig-0.15.1-orange.svg)](https://ziglang.org/)
-[![Tests](https://img.shields.io/badge/tests-149%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-163%20passing-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A production-ready implementation of the [WHATWG DOM Standard](https://dom.spec.whatwg.org/) in Zig, designed for headless browsers and JavaScript engines.
@@ -304,6 +304,7 @@ All implemented APIs are verified against both sources to ensure 100% compliance
 
 **Element Interface** - Element-specific operations
 - ✅ `tagName` - Element tag name
+- ✅ `localName` - Local name (same as tagName for non-namespaced elements)
 - ✅ `getAttribute(name)` - Get attribute value
 - ✅ `setAttribute(name, value)` - Set attribute value
 - ✅ `removeAttribute(name)` - Remove attribute (void return per WebIDL)
@@ -317,7 +318,9 @@ All implemented APIs are verified against both sources to ensure 100% compliance
 - ✅ `createElement(localName)` - Create element with tag name
 - ✅ `createTextNode(data)` - Create text node with content
 - ✅ `createComment(data)` - Create comment node
+- ✅ `createDocumentFragment()` - Create document fragment node
 - ✅ `documentElement` - Root element (typically `<html>`)
+- ✅ `doctype` - DocumentType node (placeholder)
 
 **CharacterData Interface** - Text and comment data manipulation
 - ✅ `data` - Character data content
@@ -327,6 +330,14 @@ All implemented APIs are verified against both sources to ensure 100% compliance
 - ✅ `insertData(offset, data)` - Insert at position
 - ✅ `deleteData(offset, count)` - Delete range
 - ✅ `replaceData(offset, count, data)` - Replace range
+
+**Text Interface** - Text node operations
+- ✅ `wholeText` - Concatenated text of contiguous text nodes
+
+**DocumentFragment Interface** - Lightweight container
+- ✅ `createDocumentFragment()` - Factory method
+- ✅ Node operations (appendChild, insertBefore, etc.)
+- ✅ Clone operations (shallow and deep)
 
 **NodeList Interface** - Live collection
 - ✅ `length` - Number of nodes in list
@@ -344,17 +355,12 @@ All implemented APIs are verified against both sources to ensure 100% compliance
 - ✅ `removeChild(child)` - Remove child from parent
 - ✅ `replaceChild(node, child)` - Replace child with new node
 
-**Recently Implemented** (Phase 2):
-- ✅ `textContent` property - Get/set descendant text content
-- ✅ `getRootNode(composed)` - Get root of tree (shadow DOM aware)
-- ✅ `contains(other)` - Check if node is inclusive descendant
-- ✅ `isSameNode(other)` - Identity comparison (actually Phase 1 readonly)
-- ✅ `isEqualNode(other)` - Deep structural equality check (Phase 1 readonly)
-- ✅ `compareDocumentPosition(other)` - Relative position (Phase 1 readonly)
-- ✅ `baseURI` - Base URI property (Phase 1 readonly, placeholder)
+**Recently Implemented**:
+- ✅ `textContent` property - Get/set descendant text content (Phase 2)
+- ✅ All Phase 1 missing APIs completed (10 new APIs)
 
-**Remaining APIs** (to complete Phase 2):
-- ❌ `normalize()` - Normalize adjacent text nodes
+**Remaining Phase 2 APIs**:
+- ❌ `normalize()` - Normalize adjacent text nodes (only remaining Phase 2 API)
 
 ### Phase 3 - Advanced Features (Future)
 
