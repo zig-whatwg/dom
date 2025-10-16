@@ -12,6 +12,7 @@ A production-ready implementation of the [WHATWG DOM Standard](https://dom.spec.
 - **WebKit-Style Memory Management** - Reference counting with weak parent pointers
 - **Zero Memory Leaks** - Verified by comprehensive test suite
 - **Production Ready** - Extensively tested and documented
+- **JavaScript Bindings Ready** - See [JS_BINDINGS.md](JS_BINDINGS.md) for integration guide
 
 ## Quick Start
 
@@ -464,3 +465,35 @@ Inspired by:
 **Status**: Phase 2 In Progress 🔄 | Production Ready | WebIDL Compliant
 
 See [summaries/plans/IMPLEMENTATION_STATUS.md](summaries/plans/IMPLEMENTATION_STATUS.md) for detailed roadmap.
+
+## JavaScript Bindings
+
+This library is designed for integration with JavaScript engines. See the comprehensive [JavaScript Bindings Guide](JS_BINDINGS.md) for details on:
+
+- **Property vs Function Design** - Why DOM properties are functions in Zig
+- **Type Mappings** - WebIDL → Zig → JavaScript conversions
+- **Memory Management** - Reference counting and garbage collection integration
+- **Error Handling** - Converting Zig errors to DOMException
+- **Complete Examples** - Full bindings implementation code
+
+**Quick Summary:**
+
+In Zig, DOM properties are implemented as functions for performance and memory efficiency:
+
+```zig
+// Zig API (explicit function calls)
+const name = node.nodeName();      // Computed via vtable
+const uri = node.baseURI();        // Computed property
+const parent = node.parent_node;   // Stored field (direct access)
+```
+
+JavaScript bindings should expose these as properties:
+
+```javascript
+// JavaScript API (looks like properties)
+const name = node.nodeName;        // Calls Zig function behind the scenes
+const uri = node.baseURI;          // Calls Zig function
+const parent = node.parentNode;    // Direct field access
+```
+
+This design keeps Node size at exactly 96 bytes while maintaining full spec compliance. See [JS_BINDINGS.md](JS_BINDINGS.md) for complete details and implementation examples.
