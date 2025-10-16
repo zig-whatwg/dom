@@ -1,0 +1,40 @@
+# Zig build artifacts
+zig-out/
+zig-cache/
+.zig-cache/
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.exe
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Zig language server
+zls.json
+
+# Test coverage
+*.profdata
+*.profraw
+
+# Documentation build
+docs/
+
+# Local configuration
+.env
+.envrc
+
+# Summaries and plans to ignore
+summaries/
+
+# tmp files
+.bak
