@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const Event = @import("event.zig").Event;
 
 /// Callback function type for mutation observers.
 ///
@@ -23,8 +24,9 @@ pub const MutationCallback = *const fn (context: *anyopaque) void;
 /// Callback function type for event listeners.
 ///
 /// Called when an event is dispatched to a node.
-/// Context is user-provided data (e.g., JS function, callback object, etc.)
-pub const EventCallback = *const fn (context: *anyopaque) void;
+/// Receives the Event object and user-provided context.
+/// Matches EventListener.handleEvent(Event) signature from WebIDL.
+pub const EventCallback = *const fn (event: *@import("event.zig").Event, context: *anyopaque) void;
 
 /// Event listener registration.
 pub const EventListener = struct {
@@ -358,7 +360,7 @@ test "NodeRareData - event listeners" {
     // Test context
     var ctx: u32 = 42;
     const callback = struct {
-        fn cb(context: *anyopaque) void {
+        fn cb(_: *Event, context: *anyopaque) void {
             const val: *u32 = @ptrCast(@alignCast(context));
             _ = val;
         }
@@ -514,7 +516,7 @@ test "NodeRareData - multiple event types" {
 
     var ctx: u32 = 42;
     const callback = struct {
-        fn cb(_: *anyopaque) void {}
+        fn cb(_: *Event, _: *anyopaque) void {}
     }.cb;
 
     // Add listeners for different events
@@ -573,7 +575,7 @@ test "NodeRareData - memory leak test" {
 
         var ctx: u32 = 42;
         const callback = struct {
-            fn cb(_: *anyopaque) void {}
+            fn cb(_: *Event, _: *anyopaque) void {}
         }.cb;
 
         try rare_data.addEventListener(.{
@@ -630,21 +632,25 @@ test "NodeRareData - memory leak test" {
         defer rare_data.deinit();
 
         var ctx: u32 = 42;
-        const cb1 = struct {
-            fn cb(_: *anyopaque) void {}
+        const callback = struct {
+            fn cb(_: *Event, _: *anyopaque) void {}
         }.cb;
 
         try rare_data.addEventListener(.{
             .event_type = "click",
-            .callback = cb1,
+            .callback = callback,
             .context = @ptrCast(&ctx),
             .capture = false,
             .once = false,
             .passive = false,
         });
 
+        const mut_callback = struct {
+            fn cb(_: *anyopaque) void {}
+        }.cb;
+
         try rare_data.addMutationObserver(.{
-            .callback = cb1,
+            .callback = mut_callback,
             .context = @ptrCast(&ctx),
             .observe_children = true,
             .observe_attributes = false,
@@ -672,7 +678,7 @@ test "NodeRareData - lazy allocation" {
     // Add event listener - only event_listeners allocated
     var ctx: u32 = 42;
     const callback = struct {
-        fn cb(_: *anyopaque) void {}
+        fn cb(_: *Event, _: *anyopaque) void {}
     }.cb;
 
     try rare_data.addEventListener(.{
@@ -696,8 +702,12 @@ test "NodeRareData - lazy allocation" {
     try std.testing.expect(rare_data.user_data != null);
 
     // Add mutation observer - now everything allocated
+    const mut_callback2 = struct {
+        fn cb(_: *anyopaque) void {}
+    }.cb;
+
     try rare_data.addMutationObserver(.{
-        .callback = callback,
+        .callback = mut_callback2,
         .context = @ptrCast(&ctx),
         .observe_children = true,
         .observe_attributes = false,

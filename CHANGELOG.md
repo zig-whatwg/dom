@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `Event` struct with spec-compliant flags and state management per WHATWG DOM §2.2
+- `EventTarget.dispatchEvent()` - synchronous event dispatching with listener invocation per WHATWG DOM §2.9
+- Support for passive event listeners (preventDefault blocked when passive=true)
+- Support for "once" event listeners (auto-removed after first invocation)
+- `stopImmediatePropagation()` prevents remaining listeners from executing
+- EventCallback signature updated to pass mutable Event pointer for preventDefault support
+- 8 comprehensive dispatchEvent tests covering dispatch flow, cancellation, passive/once listeners, and state management
+- `Node.lookupPrefix(namespace)` - returns namespace prefix per WHATWG DOM §4.4
+- `Node.lookupNamespaceURI(prefix)` - returns namespace URI per WHATWG DOM §4.4
+- `Node.isDefaultNamespace(namespace)` - checks if namespace is default per WHATWG DOM §4.4
+- 14 comprehensive namespace method tests covering null handling, empty strings, and node type behavior
+- **Phase 2 Complete!** All tree manipulation APIs now implemented with spec-compliant behavior
+- `Node.normalize()` - removes empty text nodes and merges adjacent text nodes per WHATWG DOM §4.4
+- Tree traversal helpers: `getFirstDescendant()`, `getNextNodeInTree()` for depth-first traversal
+- 8 comprehensive normalize() tests covering empty removal, merging, nested trees, and edge cases
 - **Phase 1 Complete!** All 10 missing Phase 1 readonly/comparison APIs now implemented
 - `Node.isSameNode()` - identity comparison (Phase 1 readonly API)
 - `Node.getRootNode(composed)` - root node traversal with shadow DOM support

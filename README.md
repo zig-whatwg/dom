@@ -1,7 +1,7 @@
 # DOM - WHATWG DOM Implementation in Zig
 
 [![Zig](https://img.shields.io/badge/zig-0.15.1-orange.svg)](https://ziglang.org/)
-[![Tests](https://img.shields.io/badge/tests-163%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-183%20passing-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A production-ready implementation of the [WHATWG DOM Standard](https://dom.spec.whatwg.org/) in Zig, designed for headless browsers and JavaScript engines.
@@ -302,6 +302,9 @@ All implemented APIs are verified against both sources to ensure 100% compliance
 - ✅ `isEqualNode(other)` - Deep structural equality check
 - ✅ `compareDocumentPosition(other)` - Relative position with bitmask flags
 - ✅ `cloneNode(deep)` - Clones node (shallow/deep)
+- ✅ `lookupPrefix(namespace)` - Returns namespace prefix
+- ✅ `lookupNamespaceURI(prefix)` - Returns namespace URI
+- ✅ `isDefaultNamespace(namespace)` - Checks if namespace is default
 
 **Element Interface** - Element-specific operations
 - ✅ `tagName` - Element tag name
@@ -344,24 +347,29 @@ All implemented APIs are verified against both sources to ensure 100% compliance
 - ✅ `length` - Number of nodes in list
 - ✅ `item(index)` - Get node at index
 
-**EventTarget Interface** - Event handling (partial)
+**EventTarget Interface** - Event handling
 - ✅ `addEventListener(type, callback, capture, once, passive)` - Add listener
 - ✅ `removeEventListener(type, callback, capture)` - Remove listener (void return per WebIDL)
+- ✅ `dispatchEvent(event)` - Synchronous event dispatching with listener invocation
 
-### Phase 2 - Tree Manipulation (Partially Complete)
+**Event Interface** - Event objects
+- ✅ `Event.init(type, options)` - Create event with type and options
+- ✅ `preventDefault()` - Cancel default action (respects passive listeners)
+- ✅ `stopPropagation()` - Stop event propagation
+- ✅ `stopImmediatePropagation()` - Stop remaining listeners
+- ✅ Event state: `bubbles`, `cancelable`, `composed`, `isTrusted`, `eventPhase`
 
-**Implemented APIs**:
+### Phase 2 - Tree Manipulation ✅ Complete!
+
+**Node Interface** - Tree modification operations:
 - ✅ `appendChild(node)` - Append child to parent
 - ✅ `insertBefore(node, child)` - Insert node before reference child
 - ✅ `removeChild(child)` - Remove child from parent
 - ✅ `replaceChild(node, child)` - Replace child with new node
+- ✅ `textContent` property - Get/set descendant text content
+- ✅ `normalize()` - Remove empty text nodes and merge adjacent text nodes
 
-**Recently Implemented**:
-- ✅ `textContent` property - Get/set descendant text content (Phase 2)
-- ✅ All Phase 1 missing APIs completed (10 new APIs)
-
-**Remaining Phase 2 APIs**:
-- ❌ `normalize()` - Normalize adjacent text nodes (only remaining Phase 2 API)
+**Phase 2 Complete**: All tree manipulation APIs implemented per WHATWG DOM §4.4!
 
 ### Phase 3 - Advanced Features (Future)
 
@@ -462,7 +470,7 @@ Inspired by:
 
 ---
 
-**Status**: Phase 2 In Progress 🔄 | Production Ready | WebIDL Compliant
+**Status**: Phase 2 Complete ✅ | Production Ready | WebIDL Compliant
 
 See [summaries/plans/IMPLEMENTATION_STATUS.md](summaries/plans/IMPLEMENTATION_STATUS.md) for detailed roadmap.
 

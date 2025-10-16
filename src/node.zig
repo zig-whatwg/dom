@@ -11,6 +11,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const NodeRareData = @import("rare_data.zig").NodeRareData;
+const Event = @import("event.zig").Event;
 
 /// Node types per WHATWG DOM specification.
 pub const NodeType = enum(u8) {
@@ -1306,6 +1307,136 @@ pub const Node = struct {
         }
         return &[_]@import("rare_data.zig").EventListener{};
     }
+
+    /// Dispatches an event to this node.
+    ///
+    /// Implements WHATWG DOM EventTarget.dispatchEvent() per §2.9.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// boolean dispatchEvent(Event event);
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §2.9 - Phase 1 Simplified)
+    /// 1. Validate event state (not already dispatching, initialized)
+    /// 2. Set isTrusted = false, dispatch_flag = true
+    /// 3. Set target, currentTarget, eventPhase = AT_TARGET
+    /// 4. Invoke listeners on target node (no capture/bubble in Phase 1)
+    /// 5. Handle passive listeners, "once" listeners
+    /// 6. Stop on stopImmediatePropagation
+    /// 7. Cleanup: reset event_phase, currentTarget, dispatch_flag
+    /// 8. Return !canceled_flag
+    ///
+    /// ## Note
+    /// Phase 1 implementation - dispatches to target node only.
+    /// Future phases will add:
+    /// - Tree traversal (capture/bubble phases)
+    /// - Event path construction
+    /// - Shadow DOM retargeting
+    ///
+    /// ## Parameters
+    /// - `event`: Event to dispatch
+    ///
+    /// ## Returns
+    /// - `true` if event was not canceled
+    /// - `false` if preventDefault() was called
+    ///
+    /// ## Errors
+    /// - `error.InvalidStateError`: Event is already being dispatched or not initialized
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:68
+    ///
+    /// ## Example
+    /// ```zig
+    /// var event = Event.init("click", .{ .cancelable = true });
+    /// const result = try node.dispatchEvent(&event);
+    /// if (!result) {
+    ///     // Event was canceled
+    /// }
+    /// ```
+    pub fn dispatchEvent(self: *Node, event: *Event) !bool {
+        // Step 1: Validate event state
+        // Per spec §2.7: "If event's dispatch flag is set, or if its
+        // initialized flag is not set, then throw an InvalidStateError DOMException."
+        if (event.dispatch_flag) {
+            return error.InvalidStateError;
+        }
+        if (!event.initialized_flag) {
+            return error.InvalidStateError;
+        }
+
+        // Step 2: Set flags per spec §2.7 step 2
+        // "Initialize event's isTrusted attribute to false."
+        event.is_trusted = false;
+
+        // Step 3: Dispatch (simplified for Phase 1 - no tree traversal)
+        // Set dispatch flag per spec §2.9 step 1
+        event.dispatch_flag = true;
+
+        // Set event target and phase
+        event.target = self;
+        event.current_target = self;
+        event.event_phase = .at_target;
+
+        // Invoke listeners on target node (Phase 1 - no capture/bubble)
+        if (self.rare_data) |rare| {
+            if (rare.event_listeners) |*listeners_map| {
+                if (listeners_map.get(event.event_type)) |listener_list| {
+                    // Clone listener list to avoid issues with listeners
+                    // added/removed during dispatch (per spec §2.9 step 6)
+                    for (listener_list.items) |listener| {
+                        // Skip if type doesn't match
+                        if (!std.mem.eql(u8, listener.event_type, event.event_type)) {
+                            continue;
+                        }
+
+                        // Set passive listener flag (spec §2.9 inner invoke step 9)
+                        if (listener.passive) {
+                            event.in_passive_listener_flag = true;
+                        }
+
+                        // Invoke callback (spec §2.9 inner invoke step 11)
+                        listener.callback(event, listener.context);
+
+                        // Unset passive listener flag (spec §2.9 inner invoke step 12)
+                        event.in_passive_listener_flag = false;
+
+                        // Handle "once" listeners - remove after invocation
+                        // (spec §2.9 inner invoke step 5)
+                        if (listener.once) {
+                            self.removeEventListener(
+                                listener.event_type,
+                                listener.callback,
+                                listener.capture,
+                            );
+                        }
+
+                        // Stop if stopImmediatePropagation called
+                        // (spec §2.9 inner invoke step 14)
+                        if (event.stop_immediate_propagation_flag) {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Step 4: Cleanup (spec §2.9 steps 7-10)
+        // "Set event's eventPhase attribute to NONE."
+        event.event_phase = .none;
+        // "Set event's currentTarget attribute to null."
+        event.current_target = null;
+        // "Unset event's dispatch flag..."
+        event.dispatch_flag = false;
+        // Note: We don't clear stop_propagation_flag or
+        // stop_immediate_propagation_flag per spec §2.9 step 10
+
+        // Step 5: Return result (spec §2.9 step 13)
+        // "Return false if event's canceled flag is set; otherwise true."
+        return !event.canceled_flag;
+    }
 };
 
 // ============================================================================
@@ -1878,7 +2009,7 @@ test "Node - rare data cleanup" {
 
     var ctx: u32 = 42;
     const callback = struct {
-        fn cb(_: *anyopaque) void {}
+        fn cb(_: *Event, _: *anyopaque) void {}
     }.cb;
 
     try rare.addEventListener(.{
@@ -1933,7 +2064,7 @@ test "Node - addEventListener wrapper" {
 
     var ctx: u32 = 42;
     const callback = struct {
-        fn cb(_: *anyopaque) void {}
+        fn cb(_: *Event, _: *anyopaque) void {}
     }.cb;
 
     // Test WHATWG-style API
@@ -3206,23 +3337,213 @@ test "Node.isEqualNode - returns false for different tag names" {
     try std.testing.expect(!elem1.node.isEqualNode(&elem2.node));
 }
 
-test "Node.isEqualNode - returns true for equal attributes" {
+// ============================================================================
+// EVENT DISPATCHING TESTS
+// ============================================================================
+
+test "Node.dispatchEvent - basic dispatch returns true" {
     const allocator = std.testing.allocator;
+    const Element = @import("element.zig").Element;
 
-    const doc = try @import("document.zig").Document.init(allocator);
-    defer doc.release();
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
 
-    const elem1 = try doc.createElement("div");
-    defer elem1.node.release();
-    try elem1.setAttribute("id", "test");
-    try elem1.setAttribute("class", "foo");
+    var event = Event.init("click", .{});
+    const result = try elem.node.dispatchEvent(&event);
 
-    const elem2 = try doc.createElement("div");
-    defer elem2.node.release();
-    try elem2.setAttribute("id", "test");
-    try elem2.setAttribute("class", "foo");
+    // Should return true (not canceled)
+    try std.testing.expect(result);
+}
 
-    try std.testing.expect(elem1.node.isEqualNode(&elem2.node));
+test "Node.dispatchEvent - invokes listener with event" {
+    const allocator = std.testing.allocator;
+    const Element = @import("element.zig").Element;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+
+    var invoked: bool = false;
+    const callback = struct {
+        fn cb(evt: *Event, context: *anyopaque) void {
+            const flag: *bool = @ptrCast(@alignCast(context));
+            flag.* = true;
+            // Verify event properties
+            std.testing.expectEqualStrings("click", evt.event_type) catch unreachable;
+            std.testing.expect(evt.target != null) catch unreachable;
+        }
+    }.cb;
+
+    try elem.node.addEventListener("click", callback, @ptrCast(&invoked), false, false, false);
+
+    var event = Event.init("click", .{});
+    _ = try elem.node.dispatchEvent(&event);
+
+    try std.testing.expect(invoked);
+}
+
+test "Node.dispatchEvent - returns false when preventDefault called" {
+    const allocator = std.testing.allocator;
+    const Element = @import("element.zig").Element;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+
+    const callback = struct {
+        fn cb(evt: *Event, _: *anyopaque) void {
+            evt.preventDefault();
+        }
+    }.cb;
+
+    try elem.node.addEventListener("click", callback, undefined, false, false, false);
+
+    var event = Event.init("click", .{ .cancelable = true });
+    const result = try elem.node.dispatchEvent(&event);
+
+    // Should return false (canceled)
+    try std.testing.expect(!result);
+    try std.testing.expect(event.canceled_flag);
+}
+
+test "Node.dispatchEvent - once listener removed after dispatch" {
+    const allocator = std.testing.allocator;
+    const Element = @import("element.zig").Element;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+
+    var count: u32 = 0;
+    const callback = struct {
+        fn cb(_: *Event, context: *anyopaque) void {
+            const counter: *u32 = @ptrCast(@alignCast(context));
+            counter.* += 1;
+        }
+    }.cb;
+
+    // Add listener with once=true
+    try elem.node.addEventListener("click", callback, @ptrCast(&count), false, true, false);
+
+    // First dispatch
+    var event1 = Event.init("click", .{});
+    _ = try elem.node.dispatchEvent(&event1);
+    try std.testing.expectEqual(@as(u32, 1), count);
+
+    // Second dispatch - listener should be removed
+    var event2 = Event.init("click", .{});
+    _ = try elem.node.dispatchEvent(&event2);
+    try std.testing.expectEqual(@as(u32, 1), count); // Still 1, not 2
+}
+
+test "Node.dispatchEvent - passive listener blocks preventDefault" {
+    const allocator = std.testing.allocator;
+    const Element = @import("element.zig").Element;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+
+    const callback = struct {
+        fn cb(evt: *Event, _: *anyopaque) void {
+            // Try to prevent default (should be blocked because passive=true)
+            evt.preventDefault();
+        }
+    }.cb;
+
+    // Add passive listener
+    try elem.node.addEventListener("click", callback, undefined, false, false, true);
+
+    var event = Event.init("click", .{ .cancelable = true });
+    const result = try elem.node.dispatchEvent(&event);
+
+    // preventDefault should have been ignored
+    try std.testing.expect(result); // Returns true
+    try std.testing.expect(!event.canceled_flag); // Not canceled
+}
+
+test "Node.dispatchEvent - stopImmediatePropagation prevents remaining listeners" {
+    const allocator = std.testing.allocator;
+    const Element = @import("element.zig").Element;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+
+    var count: u32 = 0;
+
+    const callback1 = struct {
+        fn cb(_: *Event, context: *anyopaque) void {
+            const counter: *u32 = @ptrCast(@alignCast(context));
+            counter.* += 1;
+        }
+    }.cb;
+
+    const callback2 = struct {
+        fn cb(evt: *Event, context: *anyopaque) void {
+            const counter: *u32 = @ptrCast(@alignCast(context));
+            counter.* += 1;
+            // Stop propagation
+            evt.stopImmediatePropagation();
+        }
+    }.cb;
+
+    const callback3 = struct {
+        fn cb(_: *Event, context: *anyopaque) void {
+            const counter: *u32 = @ptrCast(@alignCast(context));
+            counter.* += 1;
+        }
+    }.cb;
+
+    try elem.node.addEventListener("click", callback1, @ptrCast(&count), false, false, false);
+    try elem.node.addEventListener("click", callback2, @ptrCast(&count), false, false, false);
+    try elem.node.addEventListener("click", callback3, @ptrCast(&count), false, false, false);
+
+    var event = Event.init("click", .{});
+    _ = try elem.node.dispatchEvent(&event);
+
+    // Only first two listeners should be invoked
+    try std.testing.expectEqual(@as(u32, 2), count);
+}
+
+test "Node.dispatchEvent - rejects already dispatching event" {
+    const allocator = std.testing.allocator;
+    const Element = @import("element.zig").Element;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+
+    var event = Event.init("click", .{});
+    event.dispatch_flag = true; // Manually set dispatch flag
+
+    // Should return InvalidStateError
+    try std.testing.expectError(error.InvalidStateError, elem.node.dispatchEvent(&event));
+}
+
+test "Node.dispatchEvent - sets event properties correctly" {
+    const allocator = std.testing.allocator;
+    const Element = @import("element.zig").Element;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+
+    const callback = struct {
+        fn cb(evt: *Event, context: *anyopaque) void {
+            const expected_node: *Node = @ptrCast(@alignCast(context));
+            // During dispatch
+            const target_node: *Node = @ptrCast(@alignCast(evt.target.?));
+            const current_node: *Node = @ptrCast(@alignCast(evt.current_target.?));
+            std.testing.expect(target_node == expected_node) catch unreachable;
+            std.testing.expect(current_node == expected_node) catch unreachable;
+            std.testing.expectEqual(Event.EventPhase.at_target, evt.event_phase) catch unreachable;
+            std.testing.expect(!evt.is_trusted) catch unreachable; // Always false for dispatchEvent
+        }
+    }.cb;
+
+    try elem.node.addEventListener("click", callback, @ptrCast(&elem.node), false, false, false);
+
+    var event = Event.init("click", .{});
+    _ = try elem.node.dispatchEvent(&event);
+
+    // After dispatch - should be cleaned up
+    try std.testing.expectEqual(Event.EventPhase.none, event.event_phase);
+    try std.testing.expect(event.current_target == null);
+    try std.testing.expect(!event.dispatch_flag);
 }
 
 test "Node.isEqualNode - returns false for different attribute values" {

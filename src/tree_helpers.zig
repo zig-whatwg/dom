@@ -155,6 +155,61 @@ pub fn countElementChildren(node: *const Node) usize {
     return count;
 }
 
+/// Returns the first descendant of a node in tree order.
+///
+/// Used by normalize() to start tree traversal.
+/// Simply returns the first child (if any).
+///
+/// ## Spec Reference
+/// https://dom.spec.whatwg.org/#concept-tree-order
+pub fn getFirstDescendant(node: *const Node) ?*Node {
+    return node.first_child;
+}
+
+/// Returns the next node in tree order within a boundary.
+///
+/// Used by normalize() for depth-first tree traversal.
+/// Returns null when reaching the boundary node or end of tree.
+///
+/// ## Algorithm
+/// 1. If node has children, return first child (go deeper)
+/// 2. If node has next sibling, return it (go right)
+/// 3. Walk up ancestors looking for next sibling (go up and right)
+/// 4. Stop at boundary node
+///
+/// ## Spec Reference
+/// https://dom.spec.whatwg.org/#concept-tree-order
+pub fn getNextNodeInTree(node: *const Node, boundary: *const Node) ?*Node {
+    // If node has children, return first child (depth-first)
+    if (node.first_child) |child| {
+        return child;
+    }
+
+    // If node is the boundary, we're done
+    if (node == boundary) {
+        return null;
+    }
+
+    // Otherwise, walk up to find next sibling
+    var current = node;
+    while (true) {
+        // Try next sibling
+        if (current.next_sibling) |sibling| {
+            return sibling;
+        }
+
+        // Move to parent
+        const parent = current.parent_node orelse return null;
+
+        // Stop at boundary
+        if (parent == boundary) {
+            return null;
+        }
+
+        current = parent;
+    }
+}
+
 // ============================================================================
 // TESTS
 // ============================================================================
