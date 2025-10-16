@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `Node.isSameNode()` - identity comparison (Phase 1 readonly API)
+- `Node.getRootNode(composed)` - root node traversal with shadow DOM support
+- `Node.contains(other)` - inclusive descendant check
+- `Node.baseURI()` - base URI property (placeholder implementation)
+- `Node.compareDocumentPosition(other)` - relative position comparison with bitmask flags
+- `Node.isEqualNode(other)` - deep structural equality check
+- Document position constants: DISCONNECTED, PRECEDING, FOLLOWING, CONTAINS, CONTAINED_BY, IMPLEMENTATION_SPECIFIC
+- 33 comprehensive tests for all 6 new Node methods covering edge cases and spec compliance
+- `textContent` property (getter/setter) on Node interface per WHATWG DOM §4.4
+- 14 comprehensive tests for textContent covering all edge cases
+
+### Fixed
+- Critical infinite loop bugs in tree traversal (saved `next_sibling` before recursive operations)
+- Document cleanup reentrant destruction issue (added `is_destroying` flag)
+- Double-free crash during document destruction cascade
+- Memory leaks in `setDescendantsConnected()` and `collectTextContent()` helper functions
+- Infinite loop in `clearOwnerDocumentRecursive()` during document destruction
+- Use-after-free in `Element.deinitImpl()` child release loop
+
+### Changed
+- Removed HTML-specific optimizations to keep library generic for XML/SVG use
+- Test element names changed from HTML tags ("div", "span") to generic names ("element", "item")
+- README updated to reflect Phase 2 partial completion status (tree mutation APIs complete)
+
+### Added
+- Comprehensive implementation status document (`summaries/plans/IMPLEMENTATION_STATUS.md`)
+- Infinite loop fixes session report (`summaries/completion/INFINITE_LOOP_FIXES.md`)
 - Core Node structure with WebKit-style reference counting (96 bytes exactly)
 - Packed ref_count + has_parent in single atomic u32 (saves 12 bytes/node)
 - NodeVTable for polymorphic behavior (enables extension by Browser/HTML projects)

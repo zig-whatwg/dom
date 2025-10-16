@@ -1,7 +1,7 @@
 # DOM - WHATWG DOM Implementation in Zig
 
 [![Zig](https://img.shields.io/badge/zig-0.15.1-orange.svg)](https://ziglang.org/)
-[![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-149%20passing-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A production-ready implementation of the [WHATWG DOM Standard](https://dom.spec.whatwg.org/) in Zig, designed for headless browsers and JavaScript engines.
@@ -293,7 +293,13 @@ All implemented APIs are verified against both sources to ensure 100% compliance
 - ✅ `previousSibling` - Previous sibling pointer
 - ✅ `nextSibling` - Next sibling pointer
 - ✅ `ownerDocument` - Document that owns this node
+- ✅ `baseURI` - Base URI of the node (placeholder)
 - ✅ `hasChildNodes()` - Boolean check for children
+- ✅ `getRootNode(composed)` - Get root of tree (shadow DOM aware)
+- ✅ `contains(other)` - Check if node is inclusive descendant
+- ✅ `isSameNode(other)` - Identity comparison (legacy but spec-compliant)
+- ✅ `isEqualNode(other)` - Deep structural equality check
+- ✅ `compareDocumentPosition(other)` - Relative position with bitmask flags
 - ✅ `cloneNode(deep)` - Clones node (shallow/deep)
 
 **Element Interface** - Element-specific operations
@@ -330,17 +336,25 @@ All implemented APIs are verified against both sources to ensure 100% compliance
 - ✅ `addEventListener(type, callback, capture, once, passive)` - Add listener
 - ✅ `removeEventListener(type, callback, capture)` - Remove listener (void return per WebIDL)
 
-### Phase 2 - Tree Manipulation (Next)
+### Phase 2 - Tree Manipulation (Partially Complete)
 
-**Planned APIs**:
-- `appendChild(node)` - Append child to parent
-- `insertBefore(node, child)` - Insert node before reference child
-- `removeChild(child)` - Remove child from parent
-- `replaceChild(node, child)` - Replace child with new node
-- `textContent` property - Get/set descendant text content
-- `contains(other)` - Check if node is descendant
-- `getRootNode(options)` - Get root of tree
-- `normalize()` - Normalize adjacent text nodes
+**Implemented APIs**:
+- ✅ `appendChild(node)` - Append child to parent
+- ✅ `insertBefore(node, child)` - Insert node before reference child
+- ✅ `removeChild(child)` - Remove child from parent
+- ✅ `replaceChild(node, child)` - Replace child with new node
+
+**Recently Implemented** (Phase 2):
+- ✅ `textContent` property - Get/set descendant text content
+- ✅ `getRootNode(composed)` - Get root of tree (shadow DOM aware)
+- ✅ `contains(other)` - Check if node is inclusive descendant
+- ✅ `isSameNode(other)` - Identity comparison (actually Phase 1 readonly)
+- ✅ `isEqualNode(other)` - Deep structural equality check (Phase 1 readonly)
+- ✅ `compareDocumentPosition(other)` - Relative position (Phase 1 readonly)
+- ✅ `baseURI` - Base URI property (Phase 1 readonly, placeholder)
+
+**Remaining APIs** (to complete Phase 2):
+- ❌ `normalize()` - Normalize adjacent text nodes
 
 ### Phase 3 - Advanced Features (Future)
 
@@ -372,7 +386,7 @@ All implemented APIs are verified against both sources to ensure 100% compliance
 - DOM exceptions map to Zig error types
 - `HierarchyRequestError`, `InvalidCharacterError`, etc.
 
-See [summaries/analysis/PHASE1_WEBIDL_COMPLIANCE.md](summaries/analysis/PHASE1_WEBIDL_COMPLIANCE.md) for detailed compliance analysis.
+See [summaries/analysis/PHASE1_DEEP_COMPLIANCE_ANALYSIS.md](summaries/analysis/PHASE1_DEEP_COMPLIANCE_ANALYSIS.md) for comprehensive compliance verification (88% complete, A+ rating).
 
 ## Testing
 
@@ -441,4 +455,6 @@ Inspired by:
 
 ---
 
-**Status**: Phase 1 Complete ✅ | Production Ready | WebIDL Compliant
+**Status**: Phase 2 In Progress 🔄 | Production Ready | WebIDL Compliant
+
+See [summaries/plans/IMPLEMENTATION_STATUS.md](summaries/plans/IMPLEMENTATION_STATUS.md) for detailed roadmap.

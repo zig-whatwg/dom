@@ -59,6 +59,9 @@ fn collectTextContent(node: *const Node, list: *std.ArrayList(u8), allocator: Al
 
     var current = node.first_child;
     while (current) |child| {
+        // Save next sibling before any operations
+        const next = child.next_sibling;
+
         // If text node, append its data
         if (child.node_type == .text) {
             const text: *const TextNode = @fieldParentPtr("node", child);
@@ -68,7 +71,7 @@ fn collectTextContent(node: *const Node, list: *std.ArrayList(u8), allocator: Al
         // Recurse into all children (not just text nodes)
         try collectTextContent(child, list, allocator);
 
-        current = child.next_sibling;
+        current = next;
     }
 }
 
@@ -82,19 +85,23 @@ fn collectTextContent(node: *const Node, list: *std.ArrayList(u8), allocator: Al
 pub fn setDescendantsConnected(node: *Node, connected: bool) void {
     var current = node.first_child;
     while (current) |child| {
+        // Save next sibling BEFORE any operations that might modify it
+        const next = child.next_sibling;
+
         child.setConnected(connected);
 
         // Recurse into children
         setDescendantsConnected(child, connected);
 
-        current = child.next_sibling;
+        // Use saved next pointer
+        current = next;
     }
 }
 
 /// Removes all children from parent node.
 ///
 /// Used by textContent setter and normalize() operations.
-/// Does not call full remove() algorithm - just clears pointers.
+/// Releases all children (decrements ref counts).
 pub fn removeAllChildren(parent: *Node) void {
     var current = parent.first_child;
     while (current) |child| {
@@ -111,6 +118,9 @@ pub fn removeAllChildren(parent: *Node) void {
             child.setConnected(false);
             setDescendantsConnected(child, false);
         }
+
+        // Release parent's ownership
+        child.release();
 
         current = next;
     }
@@ -159,7 +169,7 @@ test "tree_helpers - isInclusiveDescendant with same node" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const elem = try doc.createElement("div");
+    const elem = try doc.createElement("element");
     defer elem.node.release();
 
     // Node is its own inclusive descendant
@@ -172,10 +182,10 @@ test "tree_helpers - isInclusiveDescendant with ancestor" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const child = try doc.createElement("span");
+    const child = try doc.createElement("item");
     defer child.node.release();
 
     // Manually set up parent-child relationship
@@ -197,7 +207,7 @@ test "tree_helpers - getDescendantTextContent empty" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const elem = try doc.createElement("div");
+    const elem = try doc.createElement("element");
     defer elem.node.release();
 
     // No children - empty string
@@ -213,7 +223,7 @@ test "tree_helpers - getDescendantTextContent with text" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const elem = try doc.createElement("div");
+    const elem = try doc.createElement("element");
     defer elem.node.release();
 
     const text = try doc.createTextNode("Hello");
@@ -241,10 +251,10 @@ test "tree_helpers - getDescendantTextContent nested" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const div = try doc.createElement("div");
+    const div = try doc.createElement("element");
     defer div.node.release();
 
-    const span = try doc.createElement("span");
+    const span = try doc.createElement("item");
     defer span.node.release();
 
     const text1 = try doc.createTextNode("Hello");
@@ -290,10 +300,10 @@ test "tree_helpers - setDescendantsConnected" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const child = try doc.createElement("span");
+    const child = try doc.createElement("item");
     defer child.node.release();
 
     // Manually connect
@@ -324,13 +334,13 @@ test "tree_helpers - removeAllChildren" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const child1 = try doc.createElement("span");
+    const child1 = try doc.createElement("item");
     defer child1.node.release();
 
-    const child2 = try doc.createElement("p");
+    const child2 = try doc.createElement("text-block");
     defer child2.node.release();
 
     // Manually add children
@@ -362,13 +372,13 @@ test "tree_helpers - hasElementChild" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
     const text = try doc.createTextNode("text");
     defer text.node.release();
 
-    const elem = try doc.createElement("span");
+    const elem = try doc.createElement("item");
     defer elem.node.release();
 
     // Parent with only text child
@@ -400,18 +410,18 @@ test "tree_helpers - countElementChildren" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
     try std.testing.expectEqual(@as(usize, 0), countElementChildren(&parent.node));
 
-    const elem1 = try doc.createElement("span");
+    const elem1 = try doc.createElement("item");
     defer elem1.node.release();
 
     const text = try doc.createTextNode("text");
     defer text.node.release();
 
-    const elem2 = try doc.createElement("p");
+    const elem2 = try doc.createElement("text-block");
     defer elem2.node.release();
 
     // Structure: elem1, text, elem2

@@ -128,7 +128,7 @@ pub const Element = struct {
     ///
     /// ## Example
     /// ```zig
-    /// const elem = try Element.create(allocator, "div");
+    /// const elem = try Element.create(allocator, "element");
     /// defer elem.node.release();
     /// ```
     pub fn create(allocator: Allocator, tag_name: []const u8) !*Element {
@@ -521,23 +521,23 @@ test "AttributeMap - basic operations" {
 test "Element - creation and cleanup" {
     const allocator = std.testing.allocator;
 
-    const elem = try Element.create(allocator, "div");
+    const elem = try Element.create(allocator, "element");
     defer elem.node.release();
 
     // Verify node properties
     try std.testing.expectEqual(NodeType.element, elem.node.node_type);
     try std.testing.expectEqual(@as(u32, 1), elem.node.getRefCount());
-    try std.testing.expectEqualStrings("div", elem.tag_name);
+    try std.testing.expectEqualStrings("element", elem.tag_name);
 
     // Verify vtable dispatch
-    try std.testing.expectEqualStrings("div", elem.node.nodeName());
+    try std.testing.expectEqualStrings("element", elem.node.nodeName());
     try std.testing.expect(elem.node.nodeValue() == null);
 }
 
 test "Element - attributes" {
     const allocator = std.testing.allocator;
 
-    const elem = try Element.create(allocator, "div");
+    const elem = try Element.create(allocator, "element");
     defer elem.node.release();
 
     // Initially no attributes
@@ -568,7 +568,7 @@ test "Element - attributes" {
 test "Element - class bloom filter" {
     const allocator = std.testing.allocator;
 
-    const elem = try Element.create(allocator, "div");
+    const elem = try Element.create(allocator, "element");
     defer elem.node.release();
 
     // Set class attribute
@@ -594,7 +594,7 @@ test "Element - class bloom filter" {
 test "Element - cloneNode shallow" {
     const allocator = std.testing.allocator;
 
-    const elem = try Element.create(allocator, "div");
+    const elem = try Element.create(allocator, "element");
     defer elem.node.release();
 
     try elem.setAttribute("id", "original");
@@ -607,7 +607,7 @@ test "Element - cloneNode shallow" {
     const cloned: *Element = @fieldParentPtr("node", cloned_node);
 
     // Verify clone properties
-    try std.testing.expectEqualStrings("div", cloned.tag_name);
+    try std.testing.expectEqualStrings("element", cloned.tag_name);
     try std.testing.expectEqual(@as(usize, 2), cloned.attributeCount());
     try std.testing.expectEqualStrings("original", cloned.getAttribute("id").?);
     try std.testing.expectEqualStrings("foo bar", cloned.getAttribute("class").?);
@@ -622,13 +622,13 @@ test "Element - memory leak test" {
 
     // Test 1: Simple creation
     {
-        const elem = try Element.create(allocator, "div");
+        const elem = try Element.create(allocator, "element");
         defer elem.node.release();
     }
 
     // Test 2: With attributes
     {
-        const elem = try Element.create(allocator, "div");
+        const elem = try Element.create(allocator, "element");
         defer elem.node.release();
 
         try elem.setAttribute("id", "test");
@@ -638,7 +638,7 @@ test "Element - memory leak test" {
 
     // Test 3: Clone
     {
-        const elem = try Element.create(allocator, "span");
+        const elem = try Element.create(allocator, "item");
         defer elem.node.release();
 
         try elem.setAttribute("id", "original");
@@ -665,7 +665,7 @@ test "Element - memory leak test" {
 test "Element - ref counting" {
     const allocator = std.testing.allocator;
 
-    const elem = try Element.create(allocator, "div");
+    const elem = try Element.create(allocator, "element");
     defer elem.node.release();
 
     // Initial ref count
@@ -683,7 +683,7 @@ test "Element - ref counting" {
 test "Element - id property" {
     const allocator = std.testing.allocator;
 
-    const elem = try Element.create(allocator, "div");
+    const elem = try Element.create(allocator, "element");
     defer elem.node.release();
 
     // Initially no id
@@ -704,7 +704,7 @@ test "Element - id property" {
 test "Element - className property" {
     const allocator = std.testing.allocator;
 
-    const elem = try Element.create(allocator, "div");
+    const elem = try Element.create(allocator, "element");
     defer elem.node.release();
 
     // Initially no class (returns empty string)
@@ -725,7 +725,7 @@ test "Element - className property" {
 test "Element - hasAttributes" {
     const allocator = std.testing.allocator;
 
-    const elem = try Element.create(allocator, "div");
+    const elem = try Element.create(allocator, "element");
     defer elem.node.release();
 
     // Initially no attributes
@@ -748,7 +748,7 @@ test "Element - hasAttributes" {
 test "Element - getAttributeNames" {
     const allocator = std.testing.allocator;
 
-    const elem = try Element.create(allocator, "div");
+    const elem = try Element.create(allocator, "element");
     defer elem.node.release();
 
     // Initially no attributes

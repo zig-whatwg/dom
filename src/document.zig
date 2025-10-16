@@ -21,93 +21,41 @@ const Comment = @import("comment.zig").Comment;
 
 /// String interning pool for per-document string deduplication.
 ///
-/// Stores commonly used strings (tag names, attribute names, etc.) to reduce
-/// memory usage. Strings are freed when the document is destroyed.
+/// Stores strings (tag names, attribute names, etc.) to reduce memory usage
+/// through deduplication. Strings are freed when the document is destroyed.
+///
+/// HTML-specific optimizations (e.g., common tag name pools) should be
+/// implemented in the HTML library, not here.
 pub const StringPool = struct {
-    /// Common HTML element tag names (compile-time constants)
-    pub const Common = struct {
-        // Most common HTML tags
-        pub const div = "div";
-        pub const span = "span";
-        pub const p = "p";
-        pub const a = "a";
-        pub const img = "img";
-        pub const input = "input";
-        pub const button = "button";
-        pub const form = "form";
-        pub const table = "table";
-        pub const tr = "tr";
-        pub const td = "td";
-        pub const th = "th";
-        pub const ul = "ul";
-        pub const ol = "ol";
-        pub const li = "li";
-        pub const h1 = "h1";
-        pub const h2 = "h2";
-        pub const h3 = "h3";
-        pub const h4 = "h4";
-        pub const h5 = "h5";
-        pub const h6 = "h6";
-        pub const section = "section";
-        pub const article = "article";
-        pub const header = "header";
-        pub const footer = "footer";
-        pub const nav = "nav";
-        pub const main = "main";
-        pub const aside = "aside";
-
-        // Common attributes
-        pub const id = "id";
-        pub const class = "class";
-        pub const style = "style";
-        pub const href = "href";
-        pub const src = "src";
-        pub const @"type" = "type";
-        pub const value = "value";
-        pub const name = "name";
-        pub const title = "title";
-        pub const alt = "alt";
-        pub const data = "data";
-    };
-
-    /// Runtime interned strings (for rare/custom strings)
-    rare_strings: std.StringHashMap([]const u8),
+    /// Interned strings hash map
+    strings: std.StringHashMap([]const u8),
     allocator: Allocator,
 
     pub fn init(allocator: Allocator) StringPool {
         return .{
-            .rare_strings = std.StringHashMap([]const u8).init(allocator),
+            .strings = std.StringHashMap([]const u8).init(allocator),
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *StringPool) void {
-        // Free all rare strings
-        var it = self.rare_strings.iterator();
+        // Free all interned strings
+        var it = self.strings.iterator();
         while (it.next()) |entry| {
             self.allocator.free(entry.value_ptr.*);
         }
-        self.rare_strings.deinit();
+        self.strings.deinit();
     }
 
     /// Interns a string, returning a pointer to the canonical copy.
     ///
-    /// Fast path: Check common strings first (comptime, no hash lookup)
-    /// Slow path: Check rare strings hash table
+    /// If the string has already been interned, returns the existing copy.
+    /// Otherwise, duplicates the string and stores it in the pool.
     ///
     /// ## Returns
     /// Pointer to interned string (valid until document destroyed)
     pub fn intern(self: *StringPool, str: []const u8) ![]const u8 {
-        // Fast path: check common strings (comptime iteration, no runtime cost)
-        inline for (comptime std.meta.declarations(Common)) |decl| {
-            const value = @field(Common, decl.name);
-            if (std.mem.eql(u8, str, value)) {
-                return value; // Return comptime constant
-            }
-        }
-
-        // Slow path: rare strings (hash table)
-        const result = try self.rare_strings.getOrPut(str);
+        const result = try self.strings.getOrPut(str);
         if (!result.found_existing) {
             // New string, duplicate and store
             result.value_ptr.* = try self.allocator.dupe(u8, str);
@@ -115,9 +63,9 @@ pub const StringPool = struct {
         return result.value_ptr.*;
     }
 
-    /// Returns the number of rare (non-common) strings interned.
-    pub fn rareStringCount(self: *const StringPool) usize {
-        return self.rare_strings.count();
+    /// Returns the number of strings currently interned.
+    pub fn count(self: *const StringPool) usize {
+        return self.strings.count();
     }
 };
 
@@ -145,6 +93,10 @@ pub const Document = struct {
 
     /// Next node ID to assign
     next_node_id: u16,
+
+    /// Flag to prevent reentrant destruction during cleanup
+    /// When true, releaseNodeRef() should not trigger deinitInternal()
+    is_destroying: bool,
 
     /// Vtable for Document nodes.
     const vtable = NodeVTable{
@@ -208,6 +160,7 @@ pub const Document = struct {
         doc.node_ref_count = std.atomic.Value(usize).init(0);
         doc.string_pool = string_pool;
         doc.next_node_id = 1; // 0 reserved for document itself
+        doc.is_destroying = false;
 
         return doc;
     }
@@ -260,7 +213,9 @@ pub const Document = struct {
             // Internal refs reached 0
             const external_refs = self.external_ref_count.load(.monotonic);
 
-            if (external_refs == 0) {
+            // Only destroy if not already in the middle of destruction
+            // (prevents reentrant destruction during clearInternalReferences)
+            if (external_refs == 0 and !self.is_destroying) {
                 // No external refs either, destroy now
                 self.deinitInternal();
             }
@@ -382,9 +337,36 @@ pub const Document = struct {
 
     /// Clears internal references when external refs reach 0 but nodes still exist.
     fn clearInternalReferences(self: *Document) void {
-        // TODO: Walk tree and clear ownerDocument pointers
-        // For now, nodes will hold references until they're destroyed
-        _ = self;
+        // External refs reached 0, but internal node refs still exist.
+        // Destroy all children to trigger their releaseNodeRef() calls.
+
+        // Set flag to prevent reentrant destruction
+        self.is_destroying = true;
+
+        // Release all children (this will trigger deinit which calls releaseNodeRef)
+        // NOTE: We DON'T clear owner_document before releasing because Element.deinitImpl
+        // needs to see owner_document to call releaseNodeRef(). The circular reference
+        // is handled by the dual ref counting system.
+        var current = self.node.first_child;
+        while (current) |child| {
+            const next = child.next_sibling;
+            child.parent_node = null;
+            child.setHasParent(false);
+            // Release will decrement ref_count, trigger deinit, which calls releaseNodeRef
+            child.release();
+            current = next;
+        }
+
+        // Clear child pointers so deinitInternal doesn't try to free them again
+        self.node.first_child = null;
+        self.node.last_child = null;
+
+        // All children released. Now check if we should destroy the document.
+        const node_refs = self.node_ref_count.load(.monotonic);
+        if (node_refs == 0) {
+            // All nodes released, safe to destroy
+            self.deinitInternal();
+        }
     }
 
     /// Internal cleanup (called when both ref counts reach 0).
@@ -394,8 +376,9 @@ pub const Document = struct {
         node.owner_document = null;
         var current = node.first_child;
         while (current) |child| {
+            const next = child.next_sibling;
             clearOwnerDocumentRecursive(child);
-            current = child.next_sibling;
+            current = next;
         }
     }
 
@@ -403,21 +386,27 @@ pub const Document = struct {
         // Clean up rare data if allocated
         self.node.deinitRareData();
 
-        // Destroy all children (first clear owner_document recursively to avoid circular refs)
-        var current = self.node.first_child;
-        while (current) |child| {
-            clearOwnerDocumentRecursive(child);
-        }
+        // Only destroy children if they haven't been freed by clearInternalReferences
+        // (clearInternalReferences sets first_child to null after freeing)
+        if (self.node.first_child) |_| {
+            // Destroy all children (first clear owner_document recursively to avoid circular refs)
+            var current = self.node.first_child;
+            while (current) |child| {
+                const next = child.next_sibling;
+                clearOwnerDocumentRecursive(child);
+                current = next;
+            }
 
-        // Now destroy all children
-        current = self.node.first_child;
-        while (current) |child| {
-            const next = child.next_sibling;
-            child.parent_node = null;
-            child.setHasParent(false);
-            // Call vtable deinit directly
-            child.vtable.deinit(child);
-            current = next;
+            // Now destroy all children
+            current = self.node.first_child;
+            while (current) |child| {
+                const next = child.next_sibling;
+                child.parent_node = null;
+                child.setHasParent(false);
+                // Call vtable deinit directly
+                child.vtable.deinit(child);
+                current = next;
+            }
         }
 
         // Clean up string pool
@@ -463,69 +452,63 @@ pub const Document = struct {
 // TESTS
 // ============================================================================
 
-test "StringPool - common strings" {
+test "StringPool - string deduplication" {
     const allocator = std.testing.allocator;
 
     var pool = StringPool.init(allocator);
     defer pool.deinit();
 
-    // Intern common strings (should use comptime constants)
-    const div1 = try pool.intern("div");
-    const div2 = try pool.intern("div");
+    // Intern same string twice
+    const str1 = try pool.intern("test-element");
+    const str2 = try pool.intern("test-element");
 
-    // Should return same pointer (comptime constant)
-    try std.testing.expectEqual(div1.ptr, div2.ptr);
-    try std.testing.expectEqualStrings("div", div1);
+    // Should return same pointer (deduplicated)
+    try std.testing.expectEqual(str1.ptr, str2.ptr);
+    try std.testing.expectEqualStrings("test-element", str1);
 
-    // Multiple common strings
-    const span = try pool.intern("span");
-    const class = try pool.intern("class");
-    try std.testing.expectEqualStrings("span", span);
-    try std.testing.expectEqualStrings("class", class);
-
-    // No rare strings allocated
-    try std.testing.expectEqual(@as(usize, 0), pool.rareStringCount());
+    // Only one string allocated
+    try std.testing.expectEqual(@as(usize, 1), pool.count());
 }
 
-test "StringPool - rare strings" {
+test "StringPool - multiple strings" {
     const allocator = std.testing.allocator;
 
     var pool = StringPool.init(allocator);
     defer pool.deinit();
 
-    // Intern custom element name (rare)
+    // Intern multiple different strings
     const custom1 = try pool.intern("my-custom-element");
     const custom2 = try pool.intern("my-custom-element");
 
-    // Should return same pointer (from hash table)
+    // Should return same pointer (deduplicated)
     try std.testing.expectEqual(custom1.ptr, custom2.ptr);
     try std.testing.expectEqualStrings("my-custom-element", custom1);
 
-    // One rare string allocated
-    try std.testing.expectEqual(@as(usize, 1), pool.rareStringCount());
+    // One string allocated
+    try std.testing.expectEqual(@as(usize, 1), pool.count());
 
-    // Another rare string
-    _ = try pool.intern("another-custom");
-    try std.testing.expectEqual(@as(usize, 2), pool.rareStringCount());
+    // Add another string
+    _ = try pool.intern("another-element");
+    try std.testing.expectEqual(@as(usize, 2), pool.count());
 }
 
-test "StringPool - mixed common and rare" {
+test "StringPool - multiple unique strings" {
     const allocator = std.testing.allocator;
 
     var pool = StringPool.init(allocator);
     defer pool.deinit();
 
-    // Mix of common and rare
-    const div = try pool.intern("div");
-    const custom = try pool.intern("custom-element");
-    const span = try pool.intern("span");
+    // Intern multiple unique strings
+    const str1 = try pool.intern("element-one");
+    const str2 = try pool.intern("custom-element");
+    const str3 = try pool.intern("element-three");
 
-    try std.testing.expectEqualStrings("div", div);
-    try std.testing.expectEqualStrings("custom-element", custom);
-    try std.testing.expectEqualStrings("span", span);
+    try std.testing.expectEqualStrings("element-one", str1);
+    try std.testing.expectEqualStrings("custom-element", str2);
+    try std.testing.expectEqualStrings("element-three", str3);
 
-    // Only rare string allocated
-    try std.testing.expectEqual(@as(usize, 1), pool.rareStringCount());
+    // Three unique strings allocated
+    try std.testing.expectEqual(@as(usize, 3), pool.count());
 }
 
 test "Document - creation and cleanup" {
@@ -569,11 +552,11 @@ test "Document - createElement" {
     defer doc.release();
 
     // Create element
-    const elem = try doc.createElement("div");
+    const elem = try doc.createElement("test-element");
     defer elem.node.release();
 
     // Verify element properties
-    try std.testing.expectEqualStrings("div", elem.tag_name);
+    try std.testing.expectEqualStrings("test-element", elem.tag_name);
     try std.testing.expectEqual(&doc.node, elem.node.owner_document.?);
     try std.testing.expect(elem.node.node_id > 0);
 
@@ -626,17 +609,17 @@ test "Document - string interning in createElement" {
     defer doc.release();
 
     // Create multiple elements with same tag
-    const div1 = try doc.createElement("div");
-    defer div1.node.release();
+    const elem1 = try doc.createElement("test-element");
+    defer elem1.node.release();
 
-    const div2 = try doc.createElement("div");
-    defer div2.node.release();
+    const elem2 = try doc.createElement("test-element");
+    defer elem2.node.release();
 
     // Tag names should point to same interned string
-    try std.testing.expectEqual(div1.tag_name.ptr, div2.tag_name.ptr);
+    try std.testing.expectEqual(elem1.tag_name.ptr, elem2.tag_name.ptr);
 
-    // No rare strings should be allocated (div is common)
-    try std.testing.expectEqual(@as(usize, 0), doc.string_pool.rareStringCount());
+    // One string should be interned
+    try std.testing.expectEqual(@as(usize, 1), doc.string_pool.count());
 }
 
 test "Document - multiple node types" {
@@ -646,7 +629,7 @@ test "Document - multiple node types" {
     defer doc.release();
 
     // Create various nodes
-    const elem = try doc.createElement("div");
+    const elem = try doc.createElement("test-element");
     defer elem.node.release();
 
     const text = try doc.createTextNode("content");
@@ -683,10 +666,10 @@ test "Document - memory leak test" {
         const doc = try Document.init(allocator);
         defer doc.release();
 
-        const elem1 = try doc.createElement("div");
+        const elem1 = try doc.createElement("element-one");
         defer elem1.node.release();
 
-        const elem2 = try doc.createElement("span");
+        const elem2 = try doc.createElement("element-two");
         defer elem2.node.release();
     }
 
@@ -695,7 +678,7 @@ test "Document - memory leak test" {
         const doc = try Document.init(allocator);
         defer doc.release();
 
-        const elem = try doc.createElement("div");
+        const elem = try doc.createElement("test-element");
         defer elem.node.release();
 
         const text = try doc.createTextNode("test");
@@ -710,17 +693,17 @@ test "Document - memory leak test" {
         const doc = try Document.init(allocator);
         defer doc.release();
 
-        // Common strings
-        const div1 = try doc.createElement("div");
-        defer div1.node.release();
+        // Create elements with interning
+        const elem1 = try doc.createElement("test-element");
+        defer elem1.node.release();
 
-        const span = try doc.createElement("span");
-        defer span.node.release();
+        const elem2 = try doc.createElement("another-element");
+        defer elem2.node.release();
 
-        const div2 = try doc.createElement("div"); // Reuse interned
-        defer div2.node.release();
+        const elem3 = try doc.createElement("test-element"); // Reuse interned
+        defer elem3.node.release();
 
-        // Custom element (rare string)
+        // Custom element
         const custom = try doc.createElement("my-custom-element");
         defer custom.node.release();
     }
@@ -760,26 +743,26 @@ test "Document - documentElement" {
     try std.testing.expect(doc.documentElement() == null);
 
     // Create and add root element (Phase 2 will do this via appendChild)
-    const html = try doc.createElement("html");
-    defer html.node.release();
+    const root_elem = try doc.createElement("root");
+    defer root_elem.node.release();
 
     // Manually add to document children
-    doc.node.first_child = &html.node;
-    doc.node.last_child = &html.node;
-    html.node.parent_node = &doc.node;
-    html.node.setHasParent(true);
+    doc.node.first_child = &root_elem.node;
+    doc.node.last_child = &root_elem.node;
+    root_elem.node.parent_node = &doc.node;
+    root_elem.node.setHasParent(true);
 
-    // documentElement should return the html element
+    // documentElement should return the root element
     const root = doc.documentElement();
     try std.testing.expect(root != null);
-    try std.testing.expectEqual(html, root.?);
-    try std.testing.expectEqualStrings("html", root.?.tag_name);
+    try std.testing.expectEqual(root_elem, root.?);
+    try std.testing.expectEqualStrings("root", root.?.tag_name);
 
     // Clean up manual connection
     doc.node.first_child = null;
     doc.node.last_child = null;
-    html.node.parent_node = null;
-    html.node.setHasParent(false);
+    root_elem.node.parent_node = null;
+    root_elem.node.setHasParent(false);
 }
 
 test "Document - documentElement with mixed children" {
@@ -788,34 +771,34 @@ test "Document - documentElement with mixed children" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    // Create comment (before html)
-    const comment = try doc.createComment(" DOCTYPE ");
+    // Create comment (before root element)
+    const comment = try doc.createComment(" metadata ");
     defer comment.node.release();
 
-    // Create html element
-    const html = try doc.createElement("html");
-    defer html.node.release();
+    // Create root element
+    const root_elem = try doc.createElement("root");
+    defer root_elem.node.release();
 
-    // Manually add both to document (comment first, then html)
+    // Manually add both to document (comment first, then root element)
     doc.node.first_child = &comment.node;
-    doc.node.last_child = &html.node;
-    comment.node.next_sibling = &html.node;
+    doc.node.last_child = &root_elem.node;
+    comment.node.next_sibling = &root_elem.node;
     comment.node.parent_node = &doc.node;
-    html.node.parent_node = &doc.node;
-    html.node.setHasParent(true);
+    root_elem.node.parent_node = &doc.node;
+    root_elem.node.setHasParent(true);
     comment.node.setHasParent(true);
 
-    // documentElement should skip comment and return html
+    // documentElement should skip comment and return root element
     const root = doc.documentElement();
     try std.testing.expect(root != null);
-    try std.testing.expectEqual(html, root.?);
+    try std.testing.expectEqual(root_elem, root.?);
 
     // Clean up manual connections
     doc.node.first_child = null;
     doc.node.last_child = null;
     comment.node.next_sibling = null;
     comment.node.parent_node = null;
-    html.node.parent_node = null;
-    html.node.setHasParent(false);
+    root_elem.node.parent_node = null;
+    root_elem.node.setHasParent(false);
     comment.node.setHasParent(false);
 }

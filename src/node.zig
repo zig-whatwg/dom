@@ -150,6 +150,14 @@ pub const Node = struct {
     pub const FLAG_IS_CONNECTED: u8 = 1 << 0;
     pub const FLAG_IS_IN_SHADOW_TREE: u8 = 1 << 1;
 
+    // === Document position constants (WHATWG DOM §4.4) ===
+    pub const DOCUMENT_POSITION_DISCONNECTED: u16 = 0x01;
+    pub const DOCUMENT_POSITION_PRECEDING: u16 = 0x02;
+    pub const DOCUMENT_POSITION_FOLLOWING: u16 = 0x04;
+    pub const DOCUMENT_POSITION_CONTAINS: u16 = 0x08;
+    pub const DOCUMENT_POSITION_CONTAINED_BY: u16 = 0x10;
+    pub const DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: u16 = 0x20;
+
     /// Initializes a new Node with ref_count = 1.
     ///
     /// ## Memory Management
@@ -296,9 +304,592 @@ pub const Node = struct {
         return self.vtable.set_node_value(self, value);
     }
 
+    /// Gets the text content of the node and its descendants.
+    ///
+    /// Implements WHATWG DOM Node.textContent getter per §4.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] attribute DOMString? textContent;
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.4)
+    /// - If node is Document or DocumentType: return null
+    /// - If node is Text, ProcessingInstruction, or Comment: return node's data
+    /// - Otherwise: return concatenation of data of all Text node descendants
+    ///
+    /// ## Returns
+    /// Text content or null for Document/DocumentType nodes.
+    /// Caller owns returned memory and must free with allocator.
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate result string
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-textcontent
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:240
+    ///
+    /// ## Example
+    /// ```zig
+    /// const content = try node.textContent(allocator);
+    /// defer if (content) |c| allocator.free(c);
+    ///
+    /// if (content) |text| {
+    ///     std.debug.print("Text: {s}\n", .{text});
+    /// }
+    /// ```
+    pub fn textContent(self: *const Node, allocator: Allocator) !?[]u8 {
+        // Step 1: If Document or DocumentType, return null
+        if (self.node_type == .document or self.node_type == .document_type) {
+            return null;
+        }
+
+        // Step 2: If Text, ProcessingInstruction, or Comment, return data
+        if (self.node_type == .text or
+            self.node_type == .processing_instruction or
+            self.node_type == .comment)
+        {
+            // Get data from node value
+            if (self.nodeValue()) |data| {
+                return try allocator.dupe(u8, data);
+            }
+            return null;
+        }
+
+        // Step 3: Otherwise, collect text from all Text descendants
+        const text = try tree_helpers.getDescendantTextContent(self, allocator);
+
+        // Return null for empty string per spec
+        if (text.len == 0) {
+            allocator.free(text);
+            return null;
+        }
+
+        return text;
+    }
+
+    /// Sets the text content of the node.
+    ///
+    /// Implements WHATWG DOM Node.textContent setter per §4.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] attribute DOMString? textContent;
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.4)
+    /// Performs "string replace all" algorithm:
+    /// 1. Let string be the given value (or empty string if null)
+    /// 2. If node is Document or DocumentType: do nothing
+    /// 3. If node is Text, ProcessingInstruction, or Comment: replace node's data
+    /// 4. Otherwise: remove all children and insert a Text node (if string non-empty)
+    ///
+    /// ## Parameters
+    /// - `value`: New text content (null or empty removes all children)
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate text node
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-textcontent
+    /// - String Replace All: https://dom.spec.whatwg.org/#string-replace-all
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:240
+    ///
+    /// ## Example
+    /// ```zig
+    /// try elem.node.setTextContent("Hello, World!");
+    /// try elem.node.setTextContent(null); // Removes all children
+    /// ```
+    pub fn setTextContent(self: *Node, value: ?[]const u8) !void {
+        // Convert null to empty string
+        const string = value orelse "";
+
+        // Step 1: If Document or DocumentType, do nothing
+        if (self.node_type == .document or self.node_type == .document_type) {
+            return;
+        }
+
+        // Step 2: If Text, ProcessingInstruction, or Comment, set data
+        if (self.node_type == .text or
+            self.node_type == .processing_instruction or
+            self.node_type == .comment)
+        {
+            return self.setNodeValue(string);
+        }
+
+        // Step 3: String replace all (for Element, DocumentFragment, etc.)
+        // Remove all children
+        tree_helpers.removeAllChildren(self);
+
+        // If string is non-empty, create and insert a Text node
+        if (string.len > 0) {
+            // Get owner document to create text node
+            const owner_doc = self.owner_document orelse return error.InvalidStateError;
+            if (owner_doc.node_type != .document) return error.InvalidStateError;
+
+            const Document = @import("document.zig").Document;
+            const doc: *Document = @fieldParentPtr("node", owner_doc);
+
+            const text_node = try doc.createTextNode(string);
+
+            // Insert the text node directly (bypass validation for efficiency)
+            text_node.node.parent_node = self;
+            text_node.node.setHasParent(true);
+            self.first_child = &text_node.node;
+            self.last_child = &text_node.node;
+
+            // Propagate connected state if parent is connected
+            if (self.isConnected()) {
+                text_node.node.setConnected(true);
+            }
+        }
+    }
+
     /// Clones the node (delegates to vtable).
     pub fn cloneNode(self: *const Node, deep: bool) !*Node {
         return self.vtable.clone_node(self, deep);
+    }
+
+    /// Returns whether this node is the same node as other.
+    ///
+    /// Implements WHATWG DOM Node.isSameNode() per §4.4.
+    /// This is a legacy alias of the === (identity) operator.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// boolean isSameNode(Node? otherNode); // legacy alias of ===
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.4)
+    /// Return true if other is this; otherwise false.
+    ///
+    /// ## Parameters
+    /// - `other`: Node to compare with (nullable)
+    ///
+    /// ## Returns
+    /// true if other is the exact same node (identity), false otherwise
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-issamenode
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:242
+    ///
+    /// ## Example
+    /// ```zig
+    /// const node1 = try doc.createElement("div");
+    /// const node2 = node1;
+    /// const node3 = try doc.createElement("div");
+    ///
+    /// try std.testing.expect(node1.isSameNode(node2));  // true (same reference)
+    /// try std.testing.expect(!node1.isSameNode(node3)); // false (different nodes)
+    /// try std.testing.expect(!node1.isSameNode(null));  // false (null)
+    /// ```
+    pub fn isSameNode(self: *const Node, other: ?*const Node) bool {
+        if (other) |o| {
+            return self == o;
+        }
+        return false;
+    }
+
+    /// Returns the root node of this node's tree.
+    ///
+    /// Implements WHATWG DOM Node.getRootNode() per §4.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// Node getRootNode(optional GetRootNodeOptions options = {});
+    ///
+    /// dictionary GetRootNodeOptions {
+    ///   boolean composed = false;
+    /// };
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.4)
+    /// 1. Let root be this
+    /// 2. While root's parent is non-null, set root to root's parent
+    /// 3. If composed is true and root is a shadow root, return root's host
+    /// 4. Return root
+    ///
+    /// ## Parameters
+    /// - `composed`: If true, pierces shadow boundaries (default: false)
+    ///
+    /// ## Returns
+    /// The root node of the tree
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-getrootnode
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:221
+    ///
+    /// ## Example
+    /// ```zig
+    /// const root = node.getRootNode(false);
+    /// // Returns document node for connected nodes
+    /// ```
+    pub fn getRootNode(self: *const Node, composed: bool) *Node {
+        // Step 1 & 2: Walk up to root
+        var root: *Node = @constCast(self);
+        while (root.parent_node) |parent| {
+            root = parent;
+        }
+
+        // Step 3: If composed and shadow root, return host
+        // (Shadow DOM not yet implemented, so this is a no-op for now)
+        _ = composed;
+
+        // Step 4: Return root
+        return root;
+    }
+
+    /// Returns whether other is an inclusive descendant of this node.
+    ///
+    /// Implements WHATWG DOM Node.contains() per §4.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// boolean contains(Node? other);
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.4)
+    /// Return true if other is an inclusive descendant of this; otherwise false.
+    /// - If other is null, return true (per spec quirk)
+    /// - If other is this, return true (inclusive)
+    /// - If other is a descendant, return true
+    /// - Otherwise return false
+    ///
+    /// ## Parameters
+    /// - `other`: Node to check (nullable)
+    ///
+    /// ## Returns
+    /// true if other is this or a descendant of this, false otherwise
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-contains
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:248
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("div");
+    /// const child = try doc.createElement("span");
+    /// _ = try parent.node.appendChild(&child.node);
+    ///
+    /// try std.testing.expect(parent.node.contains(&child.node));  // true
+    /// try std.testing.expect(!child.node.contains(&parent.node)); // false
+    /// try std.testing.expect(parent.node.contains(&parent.node)); // true (inclusive)
+    /// ```
+    pub fn contains(self: *const Node, other: ?*const Node) bool {
+        // Per spec: if other is null, return true
+        if (other == null) return true;
+
+        const other_node = other.?;
+
+        // If other is this, return true (inclusive)
+        if (other_node == self) return true;
+
+        // Walk up from other looking for self
+        var current = other_node.parent_node;
+        while (current) |parent| {
+            if (parent == self) return true;
+            current = parent.parent_node;
+        }
+
+        return false;
+    }
+
+    /// Returns the base URI of this node.
+    ///
+    /// Implements WHATWG DOM Node.baseURI property per §4.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute USVString baseURI;
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.4)
+    /// Return the base URL of this node (document's URL or xml:base).
+    ///
+    /// ## Returns
+    /// Base URI as a string (empty string if no base URL)
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-baseuri
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:217
+    ///
+    /// ## Note
+    /// Currently returns empty string. Full implementation requires:
+    /// - Document URL tracking
+    /// - xml:base attribute support (XML)
+    /// - <base> element support (HTML, out of scope)
+    ///
+    /// ## Example
+    /// ```zig
+    /// const uri = node.baseURI();
+    /// // Currently returns ""
+    /// ```
+    pub fn baseURI(self: *const Node) []const u8 {
+        _ = self;
+        // TODO: Full implementation requires document URL tracking
+        // For now, return empty string per spec fallback
+        return "";
+    }
+
+    /// Returns the relative position of other compared to this node.
+    ///
+    /// Implements WHATWG DOM Node.compareDocumentPosition() per §4.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// unsigned short compareDocumentPosition(Node other);
+    /// ```
+    ///
+    /// ## Returns
+    /// Bitmask of position flags:
+    /// - DOCUMENT_POSITION_DISCONNECTED (0x01): Nodes in different trees
+    /// - DOCUMENT_POSITION_PRECEDING (0x02): Other precedes this
+    /// - DOCUMENT_POSITION_FOLLOWING (0x04): Other follows this
+    /// - DOCUMENT_POSITION_CONTAINS (0x08): Other contains this
+    /// - DOCUMENT_POSITION_CONTAINED_BY (0x10): This contains other
+    /// - DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC (0x20): Implementation-defined
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:247
+    ///
+    /// ## Example
+    /// ```zig
+    /// const pos = node1.compareDocumentPosition(node2);
+    /// if (pos & Node.DOCUMENT_POSITION_FOLLOWING != 0) {
+    ///     std.debug.print("node2 follows node1\n", .{});
+    /// }
+    /// ```
+    pub fn compareDocumentPosition(self: *const Node, other: *const Node) u16 {
+        // Step 1: If this is other, return 0
+        if (self == other) return 0;
+
+        // Step 2: Get roots
+        const this_root = self.getRootNode(false);
+        const other_root = other.getRootNode(false);
+
+        // Step 3: If in different trees, return DISCONNECTED | IMPLEMENTATION_SPECIFIC
+        if (this_root != other_root) {
+            // Add implementation-specific ordering based on pointer address
+            if (@intFromPtr(self) < @intFromPtr(other)) {
+                return DOCUMENT_POSITION_DISCONNECTED | DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC | DOCUMENT_POSITION_FOLLOWING;
+            } else {
+                return DOCUMENT_POSITION_DISCONNECTED | DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC | DOCUMENT_POSITION_PRECEDING;
+            }
+        }
+
+        // Step 4: Check if other is an ancestor of this
+        var current = self.parent_node;
+        while (current) |parent| {
+            if (parent == other) {
+                return DOCUMENT_POSITION_CONTAINS | DOCUMENT_POSITION_PRECEDING;
+            }
+            current = parent.parent_node;
+        }
+
+        // Step 5: Check if this is an ancestor of other
+        current = other.parent_node;
+        while (current) |parent| {
+            if (parent == self) {
+                return DOCUMENT_POSITION_CONTAINED_BY | DOCUMENT_POSITION_FOLLOWING;
+            }
+            current = parent.parent_node;
+        }
+
+        // Step 6: Find common ancestor and determine order
+        // Collect ancestors of this
+        var this_ancestors: [1024]*const Node = undefined;
+        var this_count: usize = 0;
+        current = self.parent_node;
+        while (current) |parent| {
+            this_ancestors[this_count] = parent;
+            this_count += 1;
+            if (this_count >= 1024) break; // Prevent overflow
+            current = parent.parent_node;
+        }
+
+        // Walk up from other until we find common ancestor
+        var other_current = other.parent_node;
+        while (other_current) |other_parent| {
+            // Check if other_parent is in this's ancestors
+            for (this_ancestors[0..this_count]) |ancestor| {
+                if (ancestor == other_parent) {
+                    // Found common ancestor - now determine order among siblings
+                    // Walk from common ancestor's children to find which comes first
+                    var child = other_parent.first_child;
+                    while (child) |c| {
+                        // Check if c is ancestor of this
+                        var temp = self.parent_node;
+                        var this_in_c = (c == self);
+                        while (temp) |t| {
+                            if (t == c) {
+                                this_in_c = true;
+                                break;
+                            }
+                            temp = t.parent_node;
+                        }
+
+                        // Check if c is ancestor of other
+                        temp = other.parent_node;
+                        var other_in_c = (c == other);
+                        while (temp) |t| {
+                            if (t == c) {
+                                other_in_c = true;
+                                break;
+                            }
+                            temp = t.parent_node;
+                        }
+
+                        if (this_in_c and other_in_c) {
+                            // Both in same subtree, shouldn't happen
+                            break;
+                        } else if (this_in_c) {
+                            return DOCUMENT_POSITION_FOLLOWING;
+                        } else if (other_in_c) {
+                            return DOCUMENT_POSITION_PRECEDING;
+                        }
+
+                        child = c.next_sibling;
+                    }
+
+                    // Fallback: use pointer comparison
+                    if (@intFromPtr(self) < @intFromPtr(other)) {
+                        return DOCUMENT_POSITION_FOLLOWING;
+                    } else {
+                        return DOCUMENT_POSITION_PRECEDING;
+                    }
+                }
+            }
+            other_current = other_parent.parent_node;
+        }
+
+        // No common ancestor found (shouldn't happen if same root)
+        // Use pointer comparison as fallback
+        if (@intFromPtr(self) < @intFromPtr(other)) {
+            return DOCUMENT_POSITION_FOLLOWING;
+        } else {
+            return DOCUMENT_POSITION_PRECEDING;
+        }
+    }
+
+    /// Returns whether this node is equal to other node.
+    ///
+    /// Implements WHATWG DOM Node.isEqualNode() per §4.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// boolean isEqualNode(Node? otherNode);
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.4)
+    /// Two nodes are equal if and only if:
+    /// - They are both null, or
+    /// - They have the same type, attributes, children (recursively equal)
+    ///
+    /// ## Parameters
+    /// - `other`: Node to compare with (nullable)
+    ///
+    /// ## Returns
+    /// true if nodes are deeply equal, false otherwise
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-node-isequalnode
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:241
+    ///
+    /// ## Example
+    /// ```zig
+    /// const elem1 = try doc.createElement("div");
+    /// try elem1.setAttribute("id", "test");
+    ///
+    /// const elem2 = try doc.createElement("div");
+    /// try elem2.setAttribute("id", "test");
+    ///
+    /// try std.testing.expect(elem1.node.isEqualNode(&elem2.node)); // true (same structure)
+    /// try std.testing.expect(!elem1.node.isSameNode(&elem2.node)); // false (different instances)
+    /// ```
+    pub fn isEqualNode(self: *const Node, other: ?*const Node) bool {
+        // If other is null, return false
+        if (other == null) return false;
+
+        const other_node = other.?;
+
+        // If same node, return true
+        if (self == other_node) return true;
+
+        // Check node types match
+        if (self.node_type != other_node.node_type) return false;
+
+        // Check node names match
+        if (!std.mem.eql(u8, self.nodeName(), other_node.nodeName())) return false;
+
+        // Check node values match (for text, comment, etc.)
+        const this_value = self.nodeValue();
+        const other_value = other_node.nodeValue();
+        if (this_value == null and other_value != null) return false;
+        if (this_value != null and other_value == null) return false;
+        if (this_value != null and other_value != null) {
+            if (!std.mem.eql(u8, this_value.?, other_value.?)) return false;
+        }
+
+        // For elements, check attributes
+        if (self.node_type == .element) {
+            const Element = @import("element.zig").Element;
+            const this_elem: *const Element = @fieldParentPtr("node", self);
+            const other_elem: *const Element = @fieldParentPtr("node", other_node);
+
+            // Check attribute counts match
+            if (this_elem.attributeCount() != other_elem.attributeCount()) return false;
+
+            // Check all attributes match
+            const allocator = self.allocator;
+            const this_attrs = this_elem.getAttributeNames(allocator) catch return false;
+            defer allocator.free(this_attrs);
+
+            for (this_attrs) |name| {
+                const this_val = this_elem.getAttribute(name);
+                const other_val = other_elem.getAttribute(name);
+
+                if (this_val == null and other_val != null) return false;
+                if (this_val != null and other_val == null) return false;
+                if (this_val != null and other_val != null) {
+                    if (!std.mem.eql(u8, this_val.?, other_val.?)) return false;
+                }
+            }
+        }
+
+        // Check children count matches
+        var this_child_count: usize = 0;
+        var other_child_count: usize = 0;
+
+        var child = self.first_child;
+        while (child) |c| {
+            this_child_count += 1;
+            child = c.next_sibling;
+        }
+
+        child = other_node.first_child;
+        while (child) |c| {
+            other_child_count += 1;
+            child = c.next_sibling;
+        }
+
+        if (this_child_count != other_child_count) return false;
+
+        // Check each child is equal recursively
+        var this_child = self.first_child;
+        var other_child = other_node.first_child;
+
+        while (this_child) |tc| {
+            if (other_child == null) return false;
+            const oc = other_child.?;
+
+            if (!tc.isEqualNode(oc)) return false;
+
+            this_child = tc.next_sibling;
+            other_child = oc.next_sibling;
+        }
+
+        return true;
     }
 
     // === Node Tree Query Methods (WHATWG DOM) ===
@@ -317,7 +908,7 @@ pub const Node = struct {
     /// ## Example
     /// ```zig
     /// if (node.getOwnerDocument()) |doc| {
-    ///     const elem = try doc.createElement("div");
+    ///     const elem = try doc.createElement("element");
     ///     defer elem.node.release();
     /// }
     /// ```
@@ -432,13 +1023,13 @@ pub const Node = struct {
     ///
     /// ## Example
     /// ```zig
-    /// const parent = try doc.createElement("div");
+    /// const parent = try doc.createElement("element");
     /// defer parent.node.release();
     ///
-    /// const child1 = try doc.createElement("span");
+    /// const child1 = try doc.createElement("item");
     /// defer child1.node.release();
     ///
-    /// const child2 = try doc.createElement("p");
+    /// const child2 = try doc.createElement("text-block");
     /// defer child2.node.release();
     ///
     /// _ = try parent.node.appendChild(&child1.node);
@@ -474,10 +1065,10 @@ pub const Node = struct {
     ///
     /// ## Example
     /// ```zig
-    /// const parent = try doc.createElement("div");
+    /// const parent = try doc.createElement("element");
     /// defer parent.node.release();
     ///
-    /// const child = try doc.createElement("span");
+    /// const child = try doc.createElement("item");
     /// defer child.node.release();
     ///
     /// _ = try parent.node.appendChild(&child.node);
@@ -511,10 +1102,10 @@ pub const Node = struct {
     ///
     /// ## Example
     /// ```zig
-    /// const parent = try doc.createElement("div");
+    /// const parent = try doc.createElement("element");
     /// defer parent.node.release();
     ///
-    /// const child = try doc.createElement("span");
+    /// const child = try doc.createElement("item");
     /// defer child.node.release();
     ///
     /// _ = try parent.node.appendChild(&child.node);
@@ -549,13 +1140,13 @@ pub const Node = struct {
     ///
     /// ## Example
     /// ```zig
-    /// const parent = try doc.createElement("div");
+    /// const parent = try doc.createElement("element");
     /// defer parent.node.release();
     ///
-    /// const old_child = try doc.createElement("span");
+    /// const old_child = try doc.createElement("item");
     /// defer old_child.node.release();
     ///
-    /// const new_child = try doc.createElement("p");
+    /// const new_child = try doc.createElement("text-block");
     /// defer new_child.node.release();
     ///
     /// _ = try parent.node.appendChild(&old_child.node);
@@ -1450,7 +2041,7 @@ test "Node - getOwnerDocument" {
     try std.testing.expect(doc.node.getOwnerDocument() == null);
 
     // Create element via document
-    const elem = try doc.createElement("div");
+    const elem = try doc.createElement("element");
     defer elem.node.release();
 
     // Element's ownerDocument should be the document
@@ -1549,10 +2140,10 @@ test "Node.appendChild - adds child successfully" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const child = try doc.createElement("span");
+    const child = try doc.createElement("item");
     // NO defer - parent will own it
 
     _ = try parent.node.appendChild(&child.node);
@@ -1570,11 +2161,11 @@ test "Node.appendChild - adds multiple children in order" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const child1 = try doc.createElement("span");
-    const child2 = try doc.createElement("p");
+    const child1 = try doc.createElement("item");
+    const child2 = try doc.createElement("text-block");
     const child3 = try doc.createElement("strong");
     // NO defers - parent owns them
 
@@ -1595,13 +2186,13 @@ test "Node.appendChild - moves node from old parent" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent1 = try doc.createElement("div");
+    const parent1 = try doc.createElement("element");
     defer parent1.node.release();
 
     const parent2 = try doc.createElement("section");
     defer parent2.node.release();
 
-    const child = try doc.createElement("span");
+    const child = try doc.createElement("item");
     // NO defer - will be owned by one of the parents
 
     // Add to parent1
@@ -1636,11 +2227,11 @@ test "Node.insertBefore - inserts at beginning" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const child1 = try doc.createElement("span");
-    const child2 = try doc.createElement("p");
+    const child1 = try doc.createElement("item");
+    const child2 = try doc.createElement("text-block");
     // NO defers - parent owns them
 
     _ = try parent.node.appendChild(&child1.node);
@@ -1657,11 +2248,11 @@ test "Node.insertBefore - inserts in middle" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const child1 = try doc.createElement("span");
-    const child2 = try doc.createElement("p");
+    const child1 = try doc.createElement("item");
+    const child2 = try doc.createElement("text-block");
     const child3 = try doc.createElement("strong");
     // NO defers - parent owns them
 
@@ -1681,11 +2272,11 @@ test "Node.insertBefore - with null child appends" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const child1 = try doc.createElement("span");
-    const child2 = try doc.createElement("p");
+    const child1 = try doc.createElement("item");
+    const child2 = try doc.createElement("text-block");
     // NO defers - parent owns them
 
     _ = try parent.node.appendChild(&child1.node);
@@ -1701,16 +2292,16 @@ test "Node.insertBefore - rejects if child not in parent" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
     const other = try doc.createElement("section");
     defer other.node.release();
 
-    const child = try doc.createElement("span");
+    const child = try doc.createElement("item");
     // child will be owned by other, NOT parent
 
-    const new_child = try doc.createElement("p");
+    const new_child = try doc.createElement("text-block");
     defer new_child.node.release(); // Will NOT be added
 
     _ = try other.node.appendChild(&child.node);
@@ -1728,10 +2319,10 @@ test "Node.removeChild - removes child successfully" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const child = try doc.createElement("span");
+    const child = try doc.createElement("item");
     defer child.node.release(); // Released AFTER removal
 
     _ = try parent.node.appendChild(&child.node);
@@ -1748,11 +2339,11 @@ test "Node.removeChild - removes middle child" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const child1 = try doc.createElement("span");
-    const child2 = try doc.createElement("p");
+    const child1 = try doc.createElement("item");
+    const child2 = try doc.createElement("text-block");
     defer child2.node.release(); // Released AFTER removal
     const child3 = try doc.createElement("strong");
     // child1 and child3 owned by parent
@@ -1774,13 +2365,13 @@ test "Node.removeChild - rejects if not parent" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
     const other = try doc.createElement("section");
     defer other.node.release();
 
-    const child = try doc.createElement("span");
+    const child = try doc.createElement("item");
     // child owned by other
 
     _ = try other.node.appendChild(&child.node);
@@ -1798,13 +2389,13 @@ test "Node.replaceChild - replaces child successfully" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const old_child = try doc.createElement("span");
+    const old_child = try doc.createElement("item");
     defer old_child.node.release(); // Released AFTER removal
 
-    const new_child = try doc.createElement("p");
+    const new_child = try doc.createElement("text-block");
     // new_child owned by parent after replacement
 
     _ = try parent.node.appendChild(&old_child.node);
@@ -1821,11 +2412,11 @@ test "Node.replaceChild - preserves sibling order" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
-    const child1 = try doc.createElement("span");
-    const child2 = try doc.createElement("p");
+    const child1 = try doc.createElement("item");
+    const child2 = try doc.createElement("text-block");
     defer child2.node.release(); // Released AFTER replacement
     const child3 = try doc.createElement("strong");
     const new_child = try doc.createElement("em");
@@ -1849,16 +2440,16 @@ test "Node.replaceChild - rejects if child not in parent" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const parent = try doc.createElement("div");
+    const parent = try doc.createElement("element");
     defer parent.node.release();
 
     const other = try doc.createElement("section");
     defer other.node.release();
 
-    const child = try doc.createElement("span");
+    const child = try doc.createElement("item");
     // child owned by other
 
-    const new_child = try doc.createElement("p");
+    const new_child = try doc.createElement("text-block");
     defer new_child.node.release(); // NOT added
 
     _ = try other.node.appendChild(&child.node);
@@ -1876,11 +2467,11 @@ test "Node.appendChild - propagates connected state" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const root = try doc.createElement("html");
+    const root = try doc.createElement("root");
     // root owned by doc after appendChild
 
-    const child = try doc.createElement("body");
-    const grandchild = try doc.createElement("div");
+    const child = try doc.createElement("container");
+    const grandchild = try doc.createElement("element");
     // child and grandchild owned by tree
 
     // Build tree
@@ -1902,13 +2493,13 @@ test "Node.removeChild - propagates disconnected state" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const root = try doc.createElement("html");
+    const root = try doc.createElement("root");
     // root owned by doc
 
-    const child = try doc.createElement("body");
+    const child = try doc.createElement("container");
     defer child.node.release(); // Released AFTER removal
 
-    const grandchild = try doc.createElement("div");
+    const grandchild = try doc.createElement("element");
     // grandchild owned by child
 
     // Build connected tree
@@ -1928,4 +2519,856 @@ test "Node.removeChild - propagates disconnected state" {
     try std.testing.expect(root.node.isConnected());
     try std.testing.expect(!child.node.isConnected());
     try std.testing.expect(!grandchild.node.isConnected());
+}
+
+test "Node.textContent - getter returns null for Document" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const content = try doc.node.textContent(allocator);
+    try std.testing.expect(content == null);
+}
+
+test "Node.textContent - getter returns text node data" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const text = try doc.createTextNode("Hello, World!");
+    defer text.node.release();
+
+    const content = try text.node.textContent(allocator);
+    defer if (content) |c| allocator.free(c);
+
+    try std.testing.expect(content != null);
+    try std.testing.expectEqualStrings("Hello, World!", content.?);
+}
+
+test "Node.textContent - getter returns comment data" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const comment = try doc.createComment("This is a comment");
+    defer comment.node.release();
+
+    const content = try comment.node.textContent(allocator);
+    defer if (content) |c| allocator.free(c);
+
+    try std.testing.expect(content != null);
+    try std.testing.expectEqualStrings("This is a comment", content.?);
+}
+
+test "Node.textContent - getter collects descendant text" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const div = try doc.createElement("div");
+    defer div.node.release();
+
+    const text1 = try doc.createTextNode("Hello ");
+    const text2 = try doc.createTextNode("World");
+    const text3 = try doc.createTextNode("!");
+
+    _ = try div.node.appendChild(&text1.node);
+    _ = try div.node.appendChild(&text2.node);
+    _ = try div.node.appendChild(&text3.node);
+
+    const content = try div.node.textContent(allocator);
+    defer if (content) |c| allocator.free(c);
+
+    try std.testing.expect(content != null);
+    try std.testing.expectEqualStrings("Hello World!", content.?);
+}
+
+test "Node.textContent - getter collects nested text" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const div = try doc.createElement("div");
+    defer div.node.release();
+
+    const span = try doc.createElement("span");
+    const text1 = try doc.createTextNode("Hello ");
+    const text2 = try doc.createTextNode("World");
+
+    _ = try span.node.appendChild(&text1.node);
+    _ = try div.node.appendChild(&span.node);
+    _ = try div.node.appendChild(&text2.node);
+
+    const content = try div.node.textContent(allocator);
+    defer if (content) |c| allocator.free(c);
+
+    try std.testing.expect(content != null);
+    try std.testing.expectEqualStrings("Hello World", content.?);
+}
+
+test "Node.textContent - getter returns null for empty element" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const div = try doc.createElement("div");
+    defer div.node.release();
+
+    const content = try div.node.textContent(allocator);
+    try std.testing.expect(content == null);
+}
+
+test "Node.textContent - setter does nothing for Document" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    // Should not error, but does nothing
+    try doc.node.setTextContent("This should be ignored");
+
+    const content = try doc.node.textContent(allocator);
+    try std.testing.expect(content == null);
+}
+
+test "Node.textContent - setter replaces text node data" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const text = try doc.createTextNode("Old text");
+    defer text.node.release();
+
+    try text.node.setTextContent("New text");
+
+    const content = try text.node.textContent(allocator);
+    defer if (content) |c| allocator.free(c);
+
+    try std.testing.expectEqualStrings("New text", content.?);
+}
+
+test "Node.textContent - setter replaces comment data" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const comment = try doc.createComment("Old comment");
+    defer comment.node.release();
+
+    try comment.node.setTextContent("New comment");
+
+    const content = try comment.node.textContent(allocator);
+    defer if (content) |c| allocator.free(c);
+
+    try std.testing.expectEqualStrings("New comment", content.?);
+}
+
+test "Node.textContent - setter removes all children and inserts text" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const div = try doc.createElement("div");
+    defer div.node.release();
+
+    // Add some children (owned by tree, no defer needed)
+    const span = try doc.createElement("span");
+    const text1 = try doc.createTextNode("Old");
+
+    _ = try span.node.appendChild(&text1.node);
+    _ = try div.node.appendChild(&span.node);
+
+    // Set text content - should remove all children (releasing span and text1)
+    try div.node.setTextContent("New text");
+
+    // Should have exactly one child (text node)
+    try std.testing.expect(div.node.hasChildNodes());
+    try std.testing.expectEqual(@as(usize, 1), div.node.childNodes().length());
+    try std.testing.expectEqual(NodeType.text, div.node.first_child.?.node_type);
+
+    const content = try div.node.textContent(allocator);
+    defer if (content) |c| allocator.free(c);
+
+    try std.testing.expectEqualStrings("New text", content.?);
+}
+
+test "Node.textContent - setter with empty string removes all children" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const div = try doc.createElement("div");
+    defer div.node.release();
+
+    const text = try doc.createTextNode("Some text");
+    // text owned by div after appendChild
+    _ = try div.node.appendChild(&text.node);
+
+    try std.testing.expect(div.node.hasChildNodes());
+
+    // Set to empty string - should remove all children (releasing text)
+    try div.node.setTextContent("");
+
+    try std.testing.expect(!div.node.hasChildNodes());
+    try std.testing.expectEqual(@as(?*Node, null), div.node.first_child);
+}
+
+test "Node.textContent - setter with null removes all children" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const div = try doc.createElement("div");
+    defer div.node.release();
+
+    const text = try doc.createTextNode("Some text");
+    // text owned by div after appendChild
+    _ = try div.node.appendChild(&text.node);
+
+    try std.testing.expect(div.node.hasChildNodes());
+
+    // Set to null - should remove all children (releasing text)
+    try div.node.setTextContent(null);
+
+    try std.testing.expect(!div.node.hasChildNodes());
+    try std.testing.expectEqual(@as(?*Node, null), div.node.first_child);
+}
+
+test "Node.textContent - setter propagates connected state" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("root");
+    // root owned by document after appendChild, no defer needed
+
+    // Connect to document
+    _ = try doc.node.appendChild(&root.node);
+
+    // Set text content
+    try root.node.setTextContent("Connected text");
+
+    // New text node should be connected
+    try std.testing.expect(root.node.first_child != null);
+    try std.testing.expect(root.node.first_child.?.isConnected());
+}
+
+test "Node.textContent - no memory leaks" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const div = try doc.createElement("div");
+    defer div.node.release();
+
+    // Set multiple times
+    try div.node.setTextContent("First");
+    try div.node.setTextContent("Second");
+    try div.node.setTextContent("Third");
+    try div.node.setTextContent(null);
+
+    // Get multiple times
+    for (0..10) |_| {
+        const content = try div.node.textContent(allocator);
+        if (content) |c| allocator.free(c);
+    }
+
+    // Test passes if no leaks detected by testing allocator
+}
+
+// === isSameNode() Tests ===
+
+test "Node.isSameNode - returns true for same node" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+    defer elem.node.release();
+
+    try std.testing.expect(elem.node.isSameNode(&elem.node));
+}
+
+test "Node.isSameNode - returns false for different nodes" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem1 = try doc.createElement("div");
+    defer elem1.node.release();
+
+    const elem2 = try doc.createElement("div");
+    defer elem2.node.release();
+
+    try std.testing.expect(!elem1.node.isSameNode(&elem2.node));
+}
+
+test "Node.isSameNode - returns false for null" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+    defer elem.node.release();
+
+    try std.testing.expect(!elem.node.isSameNode(null));
+}
+
+// === getRootNode() Tests ===
+
+test "Node.getRootNode - returns document for connected node" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    const child = try doc.createElement("span");
+
+    _ = try parent.node.appendChild(&child.node);
+    _ = try doc.node.appendChild(&parent.node);
+
+    const root = child.node.getRootNode(false);
+    try std.testing.expect(root == &doc.node);
+}
+
+test "Node.getRootNode - returns self for disconnected single node" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+    defer elem.node.release();
+
+    const root = elem.node.getRootNode(false);
+    try std.testing.expect(root == &elem.node);
+}
+
+test "Node.getRootNode - returns topmost disconnected node" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child = try doc.createElement("span");
+
+    _ = try parent.node.appendChild(&child.node);
+
+    // Not connected to document
+    const root = child.node.getRootNode(false);
+    try std.testing.expect(root == &parent.node);
+}
+
+test "Node.getRootNode - composed parameter (no shadow DOM yet)" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+
+    _ = try doc.node.appendChild(&elem.node);
+
+    // Both should return same result (no shadow DOM)
+    const root1 = elem.node.getRootNode(false);
+    const root2 = elem.node.getRootNode(true);
+
+    try std.testing.expect(root1 == root2);
+    try std.testing.expect(root1 == &doc.node);
+}
+
+// === contains() Tests ===
+
+test "Node.contains - returns true for self (inclusive)" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+    defer elem.node.release();
+
+    try std.testing.expect(elem.node.contains(&elem.node));
+}
+
+test "Node.contains - returns true for direct child" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child = try doc.createElement("span");
+
+    _ = try parent.node.appendChild(&child.node);
+
+    try std.testing.expect(parent.node.contains(&child.node));
+}
+
+test "Node.contains - returns true for deep descendant" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const grandparent = try doc.createElement("div");
+    defer grandparent.node.release();
+
+    const parent = try doc.createElement("section");
+    const child = try doc.createElement("span");
+
+    _ = try grandparent.node.appendChild(&parent.node);
+    _ = try parent.node.appendChild(&child.node);
+
+    try std.testing.expect(grandparent.node.contains(&child.node));
+}
+
+test "Node.contains - returns false for parent (not ancestor of child)" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child = try doc.createElement("span");
+
+    _ = try parent.node.appendChild(&child.node);
+
+    try std.testing.expect(!child.node.contains(&parent.node));
+}
+
+test "Node.contains - returns false for sibling" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("span");
+    const child2 = try doc.createElement("p");
+
+    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.node.appendChild(&child2.node);
+
+    try std.testing.expect(!child1.node.contains(&child2.node));
+    try std.testing.expect(!child2.node.contains(&child1.node));
+}
+
+test "Node.contains - returns true for null (per spec)" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+    defer elem.node.release();
+
+    try std.testing.expect(elem.node.contains(null));
+}
+
+// === baseURI() Tests ===
+
+test "Node.baseURI - returns empty string (placeholder)" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+    defer elem.node.release();
+
+    const uri = elem.node.baseURI();
+    try std.testing.expectEqualStrings("", uri);
+}
+
+// === compareDocumentPosition() Tests ===
+
+test "Node.compareDocumentPosition - returns 0 for same node" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+    defer elem.node.release();
+
+    const pos = elem.node.compareDocumentPosition(&elem.node);
+    try std.testing.expectEqual(@as(u16, 0), pos);
+}
+
+test "Node.compareDocumentPosition - disconnected nodes" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem1 = try doc.createElement("div");
+    defer elem1.node.release();
+
+    const elem2 = try doc.createElement("span");
+    defer elem2.node.release();
+
+    const pos = elem1.node.compareDocumentPosition(&elem2.node);
+
+    // Must have DISCONNECTED flag
+    try std.testing.expect((pos & Node.DOCUMENT_POSITION_DISCONNECTED) != 0);
+    // Must have IMPLEMENTATION_SPECIFIC flag
+    try std.testing.expect((pos & Node.DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC) != 0);
+    // Must have either PRECEDING or FOLLOWING
+    try std.testing.expect((pos & (Node.DOCUMENT_POSITION_PRECEDING | Node.DOCUMENT_POSITION_FOLLOWING)) != 0);
+}
+
+test "Node.compareDocumentPosition - parent contains child" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child = try doc.createElement("span");
+
+    _ = try parent.node.appendChild(&child.node);
+
+    const pos = child.node.compareDocumentPosition(&parent.node);
+
+    // Parent CONTAINS child (from child's perspective)
+    try std.testing.expect((pos & Node.DOCUMENT_POSITION_CONTAINS) != 0);
+    try std.testing.expect((pos & Node.DOCUMENT_POSITION_PRECEDING) != 0);
+}
+
+test "Node.compareDocumentPosition - child contained by parent" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child = try doc.createElement("span");
+
+    _ = try parent.node.appendChild(&child.node);
+
+    const pos = parent.node.compareDocumentPosition(&child.node);
+
+    // Child CONTAINED_BY parent (from parent's perspective)
+    try std.testing.expect((pos & Node.DOCUMENT_POSITION_CONTAINED_BY) != 0);
+    try std.testing.expect((pos & Node.DOCUMENT_POSITION_FOLLOWING) != 0);
+}
+
+test "Node.compareDocumentPosition - sibling order (preceding)" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("span");
+    const child2 = try doc.createElement("p");
+
+    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.node.appendChild(&child2.node);
+
+    const pos = child2.node.compareDocumentPosition(&child1.node);
+
+    // child1 PRECEDES child2 (from child2's perspective)
+    try std.testing.expect((pos & Node.DOCUMENT_POSITION_PRECEDING) != 0);
+}
+
+test "Node.compareDocumentPosition - sibling order (following)" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("span");
+    const child2 = try doc.createElement("p");
+
+    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.node.appendChild(&child2.node);
+
+    const pos = child1.node.compareDocumentPosition(&child2.node);
+
+    // child2 FOLLOWS child1 (from child1's perspective)
+    try std.testing.expect((pos & Node.DOCUMENT_POSITION_FOLLOWING) != 0);
+}
+
+test "Node.compareDocumentPosition - complex tree order" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("div");
+    defer root.node.release();
+
+    const branch1 = try doc.createElement("section");
+    const branch2 = try doc.createElement("article");
+    const leaf1 = try doc.createElement("span");
+    const leaf2 = try doc.createElement("p");
+
+    _ = try root.node.appendChild(&branch1.node);
+    _ = try root.node.appendChild(&branch2.node);
+    _ = try branch1.node.appendChild(&leaf1.node);
+    _ = try branch2.node.appendChild(&leaf2.node);
+
+    // leaf1 precedes leaf2 (different branches, branch1 before branch2)
+    const pos = leaf2.node.compareDocumentPosition(&leaf1.node);
+    try std.testing.expect((pos & Node.DOCUMENT_POSITION_PRECEDING) != 0);
+}
+
+// === isEqualNode() Tests ===
+
+test "Node.isEqualNode - returns true for same node" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+    defer elem.node.release();
+
+    try std.testing.expect(elem.node.isEqualNode(&elem.node));
+}
+
+test "Node.isEqualNode - returns false for null" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+    defer elem.node.release();
+
+    try std.testing.expect(!elem.node.isEqualNode(null));
+}
+
+test "Node.isEqualNode - returns true for equal elements (no attributes)" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem1 = try doc.createElement("div");
+    defer elem1.node.release();
+
+    const elem2 = try doc.createElement("div");
+    defer elem2.node.release();
+
+    try std.testing.expect(elem1.node.isEqualNode(&elem2.node));
+}
+
+test "Node.isEqualNode - returns false for different tag names" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem1 = try doc.createElement("div");
+    defer elem1.node.release();
+
+    const elem2 = try doc.createElement("span");
+    defer elem2.node.release();
+
+    try std.testing.expect(!elem1.node.isEqualNode(&elem2.node));
+}
+
+test "Node.isEqualNode - returns true for equal attributes" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem1 = try doc.createElement("div");
+    defer elem1.node.release();
+    try elem1.setAttribute("id", "test");
+    try elem1.setAttribute("class", "foo");
+
+    const elem2 = try doc.createElement("div");
+    defer elem2.node.release();
+    try elem2.setAttribute("id", "test");
+    try elem2.setAttribute("class", "foo");
+
+    try std.testing.expect(elem1.node.isEqualNode(&elem2.node));
+}
+
+test "Node.isEqualNode - returns false for different attribute values" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem1 = try doc.createElement("div");
+    defer elem1.node.release();
+    try elem1.setAttribute("id", "test1");
+
+    const elem2 = try doc.createElement("div");
+    defer elem2.node.release();
+    try elem2.setAttribute("id", "test2");
+
+    try std.testing.expect(!elem1.node.isEqualNode(&elem2.node));
+}
+
+test "Node.isEqualNode - returns false for different attribute counts" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const elem1 = try doc.createElement("div");
+    defer elem1.node.release();
+    try elem1.setAttribute("id", "test");
+
+    const elem2 = try doc.createElement("div");
+    defer elem2.node.release();
+    try elem2.setAttribute("id", "test");
+    try elem2.setAttribute("class", "foo");
+
+    try std.testing.expect(!elem1.node.isEqualNode(&elem2.node));
+}
+
+test "Node.isEqualNode - returns true for equal text nodes" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const text1 = try doc.createTextNode("Hello");
+    defer text1.node.release();
+
+    const text2 = try doc.createTextNode("Hello");
+    defer text2.node.release();
+
+    try std.testing.expect(text1.node.isEqualNode(&text2.node));
+}
+
+test "Node.isEqualNode - returns false for different text content" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const text1 = try doc.createTextNode("Hello");
+    defer text1.node.release();
+
+    const text2 = try doc.createTextNode("World");
+    defer text2.node.release();
+
+    try std.testing.expect(!text1.node.isEqualNode(&text2.node));
+}
+
+test "Node.isEqualNode - returns true for equal subtrees" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    // Build first tree
+    const parent1 = try doc.createElement("div");
+    defer parent1.node.release();
+    try parent1.setAttribute("id", "container");
+
+    const child1a = try doc.createElement("span");
+    const text1 = try doc.createTextNode("Hello");
+
+    _ = try child1a.node.appendChild(&text1.node);
+    _ = try parent1.node.appendChild(&child1a.node);
+
+    // Build identical tree
+    const parent2 = try doc.createElement("div");
+    defer parent2.node.release();
+    try parent2.setAttribute("id", "container");
+
+    const child2a = try doc.createElement("span");
+    const text2 = try doc.createTextNode("Hello");
+
+    _ = try child2a.node.appendChild(&text2.node);
+    _ = try parent2.node.appendChild(&child2a.node);
+
+    try std.testing.expect(parent1.node.isEqualNode(&parent2.node));
+}
+
+test "Node.isEqualNode - returns false for different child counts" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent1 = try doc.createElement("div");
+    defer parent1.node.release();
+
+    const child1 = try doc.createElement("span");
+
+    _ = try parent1.node.appendChild(&child1.node);
+
+    const parent2 = try doc.createElement("div");
+    defer parent2.node.release();
+
+    const child2a = try doc.createElement("span");
+    const child2b = try doc.createElement("p");
+
+    _ = try parent2.node.appendChild(&child2a.node);
+    _ = try parent2.node.appendChild(&child2b.node);
+
+    try std.testing.expect(!parent1.node.isEqualNode(&parent2.node));
+}
+
+test "Node.isEqualNode - returns false for different child order" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const parent1 = try doc.createElement("div");
+    defer parent1.node.release();
+
+    const child1a = try doc.createElement("span");
+    const child1b = try doc.createElement("p");
+
+    _ = try parent1.node.appendChild(&child1a.node);
+    _ = try parent1.node.appendChild(&child1b.node);
+
+    const parent2 = try doc.createElement("div");
+    defer parent2.node.release();
+
+    const child2a = try doc.createElement("p");
+    const child2b = try doc.createElement("span");
+
+    _ = try parent2.node.appendChild(&child2a.node);
+    _ = try parent2.node.appendChild(&child2b.node);
+
+    try std.testing.expect(!parent1.node.isEqualNode(&parent2.node));
 }
