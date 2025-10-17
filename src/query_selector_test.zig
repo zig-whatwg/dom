@@ -390,3 +390,207 @@ test "querySelectorAll - universal selector" {
 
     try testing.expectEqual(@as(usize, 3), results.len);
 }
+
+// ============================================================================
+// Element.matches() Tests
+// ============================================================================
+
+test "Element.matches - type selector" {
+    const allocator = testing.allocator;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+
+    try testing.expect(try elem.matches(allocator, "div"));
+    try testing.expect(!try elem.matches(allocator, "span"));
+}
+
+test "Element.matches - class selector" {
+    const allocator = testing.allocator;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+    try elem.setAttribute("class", "container active");
+
+    try testing.expect(try elem.matches(allocator, ".container"));
+    try testing.expect(try elem.matches(allocator, ".active"));
+    try testing.expect(!try elem.matches(allocator, ".hidden"));
+}
+
+test "Element.matches - ID selector" {
+    const allocator = testing.allocator;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+    try elem.setAttribute("id", "main");
+
+    try testing.expect(try elem.matches(allocator, "#main"));
+    try testing.expect(!try elem.matches(allocator, "#other"));
+}
+
+test "Element.matches - compound selector" {
+    const allocator = testing.allocator;
+
+    const elem = try Element.create(allocator, "button");
+    defer elem.node.release();
+    try elem.setAttribute("class", "btn primary");
+    try elem.setAttribute("type", "submit");
+
+    try testing.expect(try elem.matches(allocator, "button.btn"));
+    try testing.expect(try elem.matches(allocator, "button.primary"));
+    try testing.expect(try elem.matches(allocator, "button.btn.primary"));
+    try testing.expect(!try elem.matches(allocator, "button.secondary"));
+}
+
+test "Element.matches - attribute selector" {
+    const allocator = testing.allocator;
+
+    const elem = try Element.create(allocator, "input");
+    defer elem.node.release();
+    try elem.setAttribute("type", "text");
+    try elem.setAttribute("required", "");
+
+    try testing.expect(try elem.matches(allocator, "input[type='text']"));
+    try testing.expect(try elem.matches(allocator, "input[required]"));
+    try testing.expect(!try elem.matches(allocator, "input[type='submit']"));
+}
+
+test "Element.matches - universal selector" {
+    const allocator = testing.allocator;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+
+    try testing.expect(try elem.matches(allocator, "*"));
+}
+
+// ============================================================================
+// Element.closest() Tests
+// ============================================================================
+
+test "Element.closest - matches self" {
+    const allocator = testing.allocator;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.node.release();
+    try elem.setAttribute("class", "container");
+
+    const result = try elem.closest(allocator, ".container");
+    try testing.expect(result != null);
+    try testing.expect(result.? == elem);
+}
+
+test "Element.closest - finds parent" {
+    const allocator = testing.allocator;
+
+    const parent = try Element.create(allocator, "form");
+    defer parent.node.release();
+    try parent.setAttribute("class", "login-form");
+
+    const child = try Element.create(allocator, "button");
+    _ = try parent.node.appendChild(&child.node);
+
+    const result = try child.closest(allocator, "form");
+    try testing.expect(result != null);
+    try testing.expect(result.? == parent);
+}
+
+test "Element.closest - finds ancestor" {
+    const allocator = testing.allocator;
+
+    const grandparent = try Element.create(allocator, "article");
+    defer grandparent.node.release();
+    try grandparent.setAttribute("class", "post");
+
+    const parent = try Element.create(allocator, "div");
+    _ = try grandparent.node.appendChild(&parent.node);
+
+    const child = try Element.create(allocator, "span");
+    _ = try parent.node.appendChild(&child.node);
+
+    const result = try child.closest(allocator, "article.post");
+    try testing.expect(result != null);
+    try testing.expect(result.? == grandparent);
+}
+
+test "Element.closest - returns null when no match" {
+    const allocator = testing.allocator;
+
+    const parent = try Element.create(allocator, "div");
+    defer parent.node.release();
+
+    const child = try Element.create(allocator, "span");
+    _ = try parent.node.appendChild(&child.node);
+
+    const result = try child.closest(allocator, "form");
+    try testing.expect(result == null);
+}
+
+test "Element.closest - stops at document" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const div = try doc.createElement("div");
+    _ = try doc.node.appendChild(&div.node);
+
+    // Should not find Document (not an Element)
+    const result = try div.closest(allocator, "*");
+    try testing.expect(result != null);
+    try testing.expect(result.? == div); // Matches self
+}
+
+test "Element.closest - with complex selector" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const form = try doc.createElement("form");
+    try form.setAttribute("class", "login");
+    try form.setAttribute("method", "POST");
+    _ = try doc.node.appendChild(&form.node);
+
+    const fieldset = try doc.createElement("fieldset");
+    _ = try form.node.appendChild(&fieldset.node);
+
+    const input = try doc.createElement("input");
+    _ = try fieldset.node.appendChild(&input.node);
+
+    const result = try input.closest(allocator, "form.login[method='POST']");
+    try testing.expect(result != null);
+    try testing.expect(result.? == form);
+}
+
+test "Element.matches and Element.closest - event delegation pattern" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const list = try doc.createElement("ul");
+    try list.setAttribute("class", "menu");
+    _ = try doc.node.appendChild(&list.node);
+
+    const item = try doc.createElement("li");
+    _ = try list.node.appendChild(&item.node);
+
+    const link = try doc.createElement("a");
+    try link.setAttribute("class", "menu-link");
+    _ = try item.node.appendChild(&link.node);
+
+    // Simulate click on link - check if it matches ".menu a"
+    // This should match because link is an "a" element with ancestor ".menu"
+    const in_menu = try link.matches(allocator, ".menu a");
+    try testing.expect(in_menu); // Matches! (link is "a" with ancestor ".menu")
+
+    // Find the containing menu
+    const menu = try link.closest(allocator, ".menu");
+    try testing.expect(menu != null);
+    try testing.expect(menu.? == list);
+
+    // Check if link itself is a menu link
+    const is_menu_link = try link.matches(allocator, ".menu-link");
+    try testing.expect(is_menu_link);
+}

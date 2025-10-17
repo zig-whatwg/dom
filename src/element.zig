@@ -871,6 +871,166 @@ pub const Element = struct {
         }
     }
 
+    // ========================================================================
+    // Element Selector Methods
+    // ========================================================================
+
+    /// Tests if the element matches the specified CSS selector.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.9 Interface Element**: https://dom.spec.whatwg.org/#dom-element-matches
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// boolean matches(DOMString selectors);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Element.matches(): https://developer.mozilla.org/en-US/docs/Web/API/Element/matches
+    ///
+    /// ## Algorithm
+    /// 1. Parse selectors string into selector list
+    /// 2. Test if this element matches any selector in list
+    /// 3. Return true if match, false otherwise
+    ///
+    /// ## Usage
+    /// ```zig
+    /// const button = try doc.createElement("button");
+    /// try button.setAttribute("class", "btn primary");
+    ///
+    /// // Test if button matches selector
+    /// const is_button = try button.matches(allocator, "button");
+    /// // is_button == true
+    ///
+    /// const is_primary = try button.matches(allocator, ".primary");
+    /// // is_primary == true
+    ///
+    /// const is_link = try button.matches(allocator, "a");
+    /// // is_link == false
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// // Instance method on Element.prototype
+    /// const element = document.querySelector('.container');
+    /// const matches = element.matches('div.container');
+    /// // Returns: boolean
+    /// ```
+    ///
+    /// ## Common Use Cases
+    /// - Event delegation: Check if event target matches selector
+    /// - Conditional logic: Apply different behavior based on selector match
+    /// - Feature detection: Test element characteristics
+    pub fn matches(self: *Element, allocator: Allocator, selectors: []const u8) !bool {
+        const Tokenizer = @import("selector/tokenizer.zig").Tokenizer;
+        const Parser = @import("selector/parser.zig").Parser;
+        const Matcher = @import("selector/matcher.zig").Matcher;
+
+        // Parse selector
+        var tokenizer = Tokenizer.init(allocator, selectors);
+        var parser = try Parser.init(allocator, &tokenizer);
+        defer parser.deinit();
+
+        var selector_list = try parser.parse();
+        defer selector_list.deinit();
+
+        // Create matcher and test element
+        const matcher = Matcher.init(allocator);
+        return try matcher.matches(self, &selector_list);
+    }
+
+    /// Returns the nearest ancestor (including self) that matches the specified CSS selector.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.9 Interface Element**: https://dom.spec.whatwg.org/#dom-element-closest
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// Element? closest(DOMString selectors);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Element.closest(): https://developer.mozilla.org/en-US/docs/Web/API/Element/closest
+    ///
+    /// ## Algorithm
+    /// 1. Parse selectors string into selector list
+    /// 2. Test if this element matches (check self first)
+    /// 3. If not, traverse up the tree testing each ancestor
+    /// 4. Return first matching ancestor, or null if none match
+    ///
+    /// ## Usage
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const form = try doc.createElement("form");
+    /// try form.setAttribute("class", "login-form");
+    /// _ = try doc.node.appendChild(&form.node);
+    ///
+    /// const button = try doc.createElement("button");
+    /// _ = try form.node.appendChild(&button.node);
+    ///
+    /// // Find closest form from button
+    /// const closest_form = try button.closest(allocator, "form");
+    /// // closest_form == form
+    ///
+    /// // Find closest .login-form
+    /// const closest_login = try button.closest(allocator, ".login-form");
+    /// // closest_login == form
+    ///
+    /// // No match
+    /// const no_match = try button.closest(allocator, "table");
+    /// // no_match == null
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// // Instance method on Element.prototype
+    /// const button = document.querySelector('button');
+    /// const form = button.closest('form');
+    /// // Returns: Element or null
+    /// ```
+    ///
+    /// ## Common Use Cases
+    /// - Event delegation: Find parent matching selector from event target
+    /// - Component boundaries: Find containing component element
+    /// - Form handling: Find form from any input element
+    pub fn closest(self: *Element, allocator: Allocator, selectors: []const u8) !?*Element {
+        const Tokenizer = @import("selector/tokenizer.zig").Tokenizer;
+        const Parser = @import("selector/parser.zig").Parser;
+        const Matcher = @import("selector/matcher.zig").Matcher;
+
+        // Parse selector
+        var tokenizer = Tokenizer.init(allocator, selectors);
+        var parser = try Parser.init(allocator, &tokenizer);
+        defer parser.deinit();
+
+        var selector_list = try parser.parse();
+        defer selector_list.deinit();
+
+        // Create matcher
+        const matcher = Matcher.init(allocator);
+
+        // Test self first
+        if (try matcher.matches(self, &selector_list)) {
+            return self;
+        }
+
+        // Traverse ancestors
+        var current = self.node.parent_node;
+        while (current) |parent_node| {
+            if (parent_node.node_type == .element) {
+                const parent_elem: *Element = @fieldParentPtr("node", parent_node);
+                if (try matcher.matches(parent_elem, &selector_list)) {
+                    return parent_elem;
+                }
+            }
+            current = parent_node.parent_node;
+        }
+
+        return null;
+    }
+
     // === Private implementation ===
 
     /// Updates the bloom filter from a class attribute value.
