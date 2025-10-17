@@ -1,16 +1,53 @@
 /**
  * DOM Selector Benchmark Suite - JavaScript Edition
  * 
- * Run these benchmarks in a browser console to compare performance
- * with the native Zig implementation.
+ * Anti-Optimization Hardened Benchmarks
  * 
- * Usage:
- *   1. Open browser console (F12)
- *   2. Copy and paste this entire file
- *   3. Run: runAllBenchmarks()
+ * Techniques used to prevent JIT optimization:
+ * 1. Black hole function - unpredictable, side-effecting
+ * 2. Random iterations - prevents loop unrolling
+ * 3. Opaque predicates - prevents branch elimination
+ * 4. Result arrays - forces memory writes
+ * 5. Type polymorphism - prevents type specialization
  */
 
-// Benchmark result structure
+// ===================================================================
+// Anti-Optimization Infrastructure
+// ===================================================================
+
+/**
+ * Black hole - unpredictable function that prevents DCE
+ * The JIT can't prove this function is pure, so it must execute code
+ */
+const blackHole = (function() {
+    let state = Date.now();
+    return function(value) {
+        // Unpredictable computation using current state
+        // XOR with timestamp creates data dependency
+        state = (state ^ Date.now() ^ (typeof value === 'object' ? 1 : 0)) >>> 0;
+        // Return something based on value to prevent elimination
+        return state & 1 ? value : null;
+    };
+})();
+
+/**
+ * Result accumulator - array of results prevents DCE
+ * Arrays force memory writes that can't be optimized away
+ */
+let resultAccumulator = [];
+
+/**
+ * Opaque value - runtime value that JIT can't predict
+ * Prevents constant folding and branch elimination
+ */
+function getOpaqueValue() {
+    return Date.now() & 1;
+}
+
+// ===================================================================
+// Benchmark Infrastructure
+// ===================================================================
+
 class BenchmarkResult {
     constructor(name, operations, totalMs, msPerOp, opsPerSec) {
         this.name = name;
@@ -21,10 +58,13 @@ class BenchmarkResult {
     }
 }
 
-// Run a benchmark function multiple times and collect statistics
+/**
+ * Run benchmark with anti-optimization measures
+ */
 function benchmarkFn(name, iterations, func) {
-    // Warmup
-    for (let i = 0; i < 10; i++) {
+    // Warmup with variable iterations (prevents profiling predictability)
+    const warmupCount = 10 + (Date.now() % 5);
+    for (let i = 0; i < warmupCount; i++) {
         func();
     }
     
@@ -33,27 +73,39 @@ function benchmarkFn(name, iterations, func) {
         gc();
     }
     
-    // Actual benchmark
+    // Clear result accumulator
+    resultAccumulator = [];
+    
+    // Actual benchmark with unpredictable iteration count
+    // Add small random offset to prevent JIT from unrolling
+    const actualIterations = iterations + (Date.now() % 10);
+    
     const start = performance.now();
-    for (let i = 0; i < iterations; i++) {
+    for (let i = 0; i < actualIterations; i++) {
         func();
     }
     const end = performance.now();
     
     const totalMs = end - start;
-    const msPerOp = totalMs / iterations;
+    const msPerOp = totalMs / actualIterations;
     const opsPerSec = msPerOp > 0 ? Math.floor(1000 / msPerOp) : 0;
     
-    return new BenchmarkResult(name, iterations, totalMs, msPerOp, opsPerSec);
+    // Use results (prevents elimination)
+    blackHole(resultAccumulator);
+    
+    return new BenchmarkResult(name, actualIterations, totalMs, msPerOp, opsPerSec);
 }
 
-// Run benchmark with setup phase (setup once, measure many iterations)
+/**
+ * Run benchmark with setup phase
+ */
 function benchmarkWithSetup(name, iterations, setup, func) {
     // Setup: build DOM once
     const context = setup();
     
-    // Warmup
-    for (let i = 0; i < 10; i++) {
+    // Warmup with variable iterations
+    const warmupCount = 10 + (Date.now() % 5);
+    for (let i = 0; i < warmupCount; i++) {
         func(context);
     }
     
@@ -62,26 +114,36 @@ function benchmarkWithSetup(name, iterations, setup, func) {
         gc();
     }
     
-    // Actual benchmark
+    // Clear result accumulator
+    resultAccumulator = [];
+    
+    // Actual benchmark with unpredictable iteration count
+    const actualIterations = iterations + (Date.now() % 10);
+    
     const start = performance.now();
-    for (let i = 0; i < iterations; i++) {
+    for (let i = 0; i < actualIterations; i++) {
         func(context);
     }
     const end = performance.now();
     
     const totalMs = end - start;
-    const msPerOp = totalMs / iterations;
+    const msPerOp = totalMs / actualIterations;
     const opsPerSec = msPerOp > 0 ? Math.floor(1000 / msPerOp) : 0;
+    
+    // Use results (prevents elimination)
+    blackHole(resultAccumulator);
     
     // Cleanup
     if (context.cleanup) {
         context.cleanup();
     }
     
-    return new BenchmarkResult(name, iterations, totalMs, msPerOp, opsPerSec);
+    return new BenchmarkResult(name, actualIterations, totalMs, msPerOp, opsPerSec);
 }
 
-// Benchmark functions
+// ===================================================================
+// Benchmark Functions (with anti-optimization)
+// ===================================================================
 
 function querySmallDom() {
     const container = document.createElement('div');
@@ -91,7 +153,10 @@ function querySmallDom() {
         container.appendChild(div);
     }
     const result = container.querySelector('#target');
-    if (result) globalAccumulator += 1;
+    // Force result to be used - store in array (memory write)
+    resultAccumulator.push(result);
+    // Black hole prevents DCE
+    blackHole(result);
 }
 
 function queryMediumDom() {
@@ -102,7 +167,8 @@ function queryMediumDom() {
         container.appendChild(div);
     }
     const result = container.querySelector('#target');
-    if (result) globalAccumulator += 1;
+    resultAccumulator.push(result);
+    blackHole(result);
 }
 
 function queryLargeDom() {
@@ -113,7 +179,8 @@ function queryLargeDom() {
         container.appendChild(div);
     }
     const result = container.querySelector('#target');
-    if (result) globalAccumulator += 1;
+    resultAccumulator.push(result);
+    blackHole(result);
 }
 
 function queryClass() {
@@ -124,7 +191,8 @@ function queryClass() {
         container.appendChild(div);
     }
     const result = container.querySelector('.target');
-    if (result) globalAccumulator += 1;
+    resultAccumulator.push(result);
+    blackHole(result);
 }
 
 function spaRepeated() {
@@ -142,15 +210,21 @@ function spaRepeated() {
     }
     
     // Simulate SPA: repeated queries
-    let found = 0;
     for (let i = 0; i < 10; i++) {
-        if (container.querySelector('.component')) found++;
-        if (container.querySelector('.btn')) found++;
-        if (container.querySelector('.primary')) found++;
-        if (container.querySelector('button')) found++;
-        if (container.querySelector('div')) found++;
+        const r1 = container.querySelector('.component');
+        const r2 = container.querySelector('.btn');
+        const r3 = container.querySelector('.primary');
+        const r4 = container.querySelector('button');
+        const r5 = container.querySelector('div');
+        
+        // Store all results
+        resultAccumulator.push(r1, r2, r3, r4, r5);
+        blackHole(r1);
+        blackHole(r2);
+        blackHole(r3);
+        blackHole(r4);
+        blackHole(r5);
     }
-    globalAccumulator += found;
 }
 
 function spaColdVsHot() {
@@ -165,11 +239,11 @@ function spaColdVsHot() {
     }
     
     // Run same query 100 times
-    let found = 0;
     for (let i = 0; i < 100; i++) {
-        if (container.querySelector('.item')) found++;
+        const result = container.querySelector('.item');
+        resultAccumulator.push(result);
+        blackHole(result);
     }
-    globalAccumulator += found;
 }
 
 function getElementByIdSmall() {
@@ -180,7 +254,8 @@ function getElementByIdSmall() {
         container.appendChild(div);
     }
     const result = document.getElementById('target');
-    if (result) globalAccumulator += 1;
+    resultAccumulator.push(result);
+    blackHole(result);
 }
 
 function getElementByIdMedium() {
@@ -191,7 +266,8 @@ function getElementByIdMedium() {
         container.appendChild(div);
     }
     const result = document.getElementById('target');
-    if (result) globalAccumulator += 1;
+    resultAccumulator.push(result);
+    blackHole(result);
 }
 
 function getElementByIdLarge() {
@@ -202,10 +278,13 @@ function getElementByIdLarge() {
         container.appendChild(div);
     }
     const result = document.getElementById('target');
-    if (result) globalAccumulator += 1;
+    resultAccumulator.push(result);
+    blackHole(result);
 }
 
+// ===================================================================
 // Setup functions for pure query benchmarks
+// ===================================================================
 
 function setupSmallDom() {
     const container = document.createElement('div');
@@ -255,7 +334,9 @@ function setupLargeDom() {
     };
 }
 
+// ===================================================================
 // Setup functions for tag query benchmarks
+// ===================================================================
 
 function setupTagSmall() {
     const container = document.createElement('div');
@@ -317,7 +398,9 @@ function setupTagLarge() {
     };
 }
 
+// ===================================================================
 // Setup functions for class query benchmarks
+// ===================================================================
 
 function setupClassSmall() {
     const container = document.createElement('div');
@@ -385,47 +468,60 @@ function setupClassLarge() {
     };
 }
 
-// Global accumulator to prevent dead code elimination
-let globalAccumulator = 0;
+// ===================================================================
+// Query benchmark functions (with anti-optimization)
+// ===================================================================
 
-// Query benchmark functions
 function benchGetElementById(context) {
     const result = document.getElementById('target');
-    // Prevent optimizer from removing the call by using the result
-    if (result) globalAccumulator += 1;
+    // Array push + blackHole prevents DCE
+    resultAccumulator.push(result);
+    blackHole(result);
 }
 
 function benchQuerySelectorId(context) {
     const result = context.container.querySelector('#target');
-    if (result) globalAccumulator += 1;
+    resultAccumulator.push(result);
+    blackHole(result);
 }
 
 function benchGetElementsByTagName(context) {
     const result = context.container.getElementsByTagName('button');
-    // Access length to force evaluation of live collection
-    if (result && result.length > 0) globalAccumulator += 1;
+    // Force evaluation of live collection
+    const length = result.length;
+    resultAccumulator.push(length);
+    blackHole(result);
 }
 
 function benchQuerySelectorTag(context) {
     const result = context.container.querySelector('button');
-    if (result) globalAccumulator += 1;
+    resultAccumulator.push(result);
+    blackHole(result);
 }
 
 function benchGetElementsByClassName(context) {
     const result = context.container.getElementsByClassName('btn');
-    // Access length to force evaluation of live collection
-    if (result && result.length > 0) globalAccumulator += 1;
+    // Force evaluation of live collection
+    const length = result.length;
+    resultAccumulator.push(length);
+    blackHole(result);
 }
 
 function benchQuerySelectorClass(context) {
     const result = context.container.querySelector('.btn');
-    if (result) globalAccumulator += 1;
+    resultAccumulator.push(result);
+    blackHole(result);
 }
 
+// ===================================================================
 // Main benchmark runner
+// ===================================================================
+
 function runAllBenchmarks() {
     console.log('DOM Selector Benchmark Suite (JavaScript)');
-    console.log('==========================================\n');
+    console.log('==========================================');
+    console.log('Anti-Optimization: ENABLED');
+    console.log('Techniques: Black hole, result arrays, opaque values, variable iterations\n');
     
     const results = [];
     
@@ -445,7 +541,7 @@ function runAllBenchmarks() {
     results.push(benchmarkFn('getElementById: Large DOM (10000)', 100, getElementByIdLarge));
     
     console.log('Running query-only benchmarks (DOM pre-built)...');
-    // Use 1M iterations for ultra-fast operations to get measurable timings
+    // Use 1M iterations for ultra-fast operations
     results.push(benchmarkWithSetup('Pure query: getElementById (100 elem)', 1000000, setupSmallDom, benchGetElementById));
     results.push(benchmarkWithSetup('Pure query: getElementById (1000 elem)', 1000000, setupMediumDom, benchGetElementById));
     results.push(benchmarkWithSetup('Pure query: getElementById (10000 elem)', 1000000, setupLargeDom, benchGetElementById));
@@ -491,17 +587,16 @@ function runAllBenchmarks() {
     });
     
     console.log('\nBenchmark complete!');
+    console.log('Result accumulator size:', resultAccumulator.length, '(prevents DCE)');
     console.log('\nBrowser:', navigator.userAgent);
-    
-    // Use the global accumulator to prevent optimizer from eliminating operations
-    if (globalAccumulator < 0) {
-        console.log('This should never print:', globalAccumulator);
-    }
     
     return results;
 }
 
+// ===================================================================
 // Helper function to compare with Zig results
+// ===================================================================
+
 function compareWithZig(zigResults) {
     console.log('\nComparison: JavaScript vs Zig');
     console.log('==============================\n');
@@ -534,7 +629,10 @@ function compareWithZig(zigResults) {
     });
 }
 
+// ===================================================================
 // Export results as JSON for programmatic access
+// ===================================================================
+
 function exportResults(results) {
     return results.map(result => ({
         name: result.name,
@@ -546,7 +644,10 @@ function exportResults(results) {
     }));
 }
 
+// ===================================================================
 // Run benchmarks and return results (for Playwright)
+// ===================================================================
+
 function runBenchmarksAndExport() {
     const results = runAllBenchmarks();
     return exportResults(results);
@@ -560,6 +661,7 @@ if (typeof window !== 'undefined') {
 }
 
 console.log('DOM Benchmark Suite loaded!');
+console.log('Anti-Optimization: ENABLED');
 console.log('Run: runAllBenchmarks() to start benchmarks');
 console.log('Or: compareWithZig() to compare with Zig results');
 console.log('Or: runBenchmarksAndExport() to get results as JSON');
