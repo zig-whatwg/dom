@@ -215,6 +215,13 @@ pub const tree_helpers = @import("tree_helpers.zig");
 pub const selector = struct {
     pub const Tokenizer = @import("selector/tokenizer.zig").Tokenizer;
     pub const Token = @import("selector/tokenizer.zig").Token;
+    pub const Parser = @import("selector/parser.zig").Parser;
+    pub const Matcher = @import("selector/matcher.zig").Matcher;
+    pub const SelectorList = @import("selector/parser.zig").SelectorList;
+    pub const ComplexSelector = @import("selector/parser.zig").ComplexSelector;
+    pub const CompoundSelector = @import("selector/parser.zig").CompoundSelector;
+    pub const SimpleSelector = @import("selector/parser.zig").SimpleSelector;
+    pub const Combinator = @import("selector/parser.zig").Combinator;
 };
 
 test {
@@ -236,4 +243,6 @@ test {
     _ = @import("abort_signal_rare_data.zig");
     // Phase 4 - querySelector
     _ = @import("selector/tokenizer.zig");
+    _ = @import("selector/parser.zig");
+    _ = @import("selector/matcher.zig");
 }
