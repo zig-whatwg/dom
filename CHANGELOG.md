@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- addEventListener signal option support per WHATWG DOM §2.7.3 (Critical Issue #8 resolved)
+- Automatic listener removal when AbortSignal aborts (spec step 6)
+- Early return if signal already aborted (spec step 2)
+- 5 comprehensive tests for addEventListener signal integration
+
+### Changed
+- **BREAKING:** AbortAlgorithm now struct with callback + context instead of bare function pointer
+- Enables closure-like behavior for abort algorithms (required for addEventListener signal integration)
+- All abort algorithm tests updated to use new struct-based API
+
+### Fixed
+- addEventListener signal parameter now fully functional (was completely ignored before)
+- AbortAlgorithm memory management improved with automatic cleanup on abort
+
+### Added
 - EventTarget mixin pattern for reusable event dispatching across any type
 - Comptime validation ensures EventTarget interface compliance at compile time
 - `src/event_target.zig` module with EventTargetMixin(comptime T) generic function

@@ -48,6 +48,12 @@ pub const MutationCallback = @import("rare_data.zig").MutationCallback;
 // Export NodeList collection
 pub const NodeList = @import("node_list.zig").NodeList;
 
+// Export AbortSignal and AbortController
+pub const AbortSignal = @import("abort_signal.zig").AbortSignal;
+pub const AbortController = @import("abort_controller.zig").AbortController;
+pub const AbortAlgorithm = @import("abort_signal.zig").AbortAlgorithm;
+pub const SignalRareData = @import("abort_signal_rare_data.zig").SignalRareData;
+
 // Export validation and helpers (internal)
 pub const validation = @import("validation.zig");
 pub const tree_helpers = @import("tree_helpers.zig");
@@ -65,4 +71,8 @@ test {
     _ = @import("node_list.zig");
     _ = @import("validation.zig");
     _ = @import("tree_helpers.zig");
+    _ = @import("abort_signal.zig");
+    _ = @import("abort_signal_test.zig");
+    _ = @import("abort_controller.zig");
+    _ = @import("abort_signal_rare_data.zig");
 }

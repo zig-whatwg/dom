@@ -59,7 +59,21 @@ pub const EventCallback = *const fn (event: *Event, context: *anyopaque) void;
 /// Event listener registration per WHATWG DOM §2.7.
 ///
 /// Stores listener configuration including callback, capture phase,
-/// once flag, and passive flag.
+/// once flag, passive flag, and optional AbortSignal.
+///
+/// ## WebIDL (AddEventListenerOptions)
+/// ```webidl
+/// dictionary AddEventListenerOptions : EventListenerOptions {
+///   boolean passive;
+///   boolean once = false;
+///   AbortSignal signal;
+/// };
+/// ```
+///
+/// ## Spec References
+/// - EventListener: https://dom.spec.whatwg.org/#callbackdef-eventlistener
+/// - AddEventListenerOptions: https://dom.spec.whatwg.org/#dictdef-addeventlisteneroptions
+/// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:50-54
 pub const EventListener = struct {
     /// Event type (e.g., "click", "input", "change")
     event_type: []const u8,
@@ -78,6 +92,12 @@ pub const EventListener = struct {
 
     /// Passive listener (won't call preventDefault)
     passive: bool,
+
+    /// Optional AbortSignal to auto-remove listener on abort (NEW)
+    /// Per WHATWG DOM §2.7.3 step 6: "If listener's signal is not null,
+    /// then add the following abort steps to it: Remove an event listener"
+    /// This enables automatic cleanup when operations are aborted.
+    signal: ?*anyopaque = null, // Will be *AbortSignal once that type exists
 };
 
 /// Mixin to add EventTarget functionality to any type T.
@@ -158,13 +178,21 @@ pub fn EventTargetMixin(comptime T: type) type {
         /// ```webidl
         /// undefined addEventListener(DOMString type, EventListener? callback,
         ///                            optional (AddEventListenerOptions or boolean) options = {});
+        ///
+        /// dictionary AddEventListenerOptions : EventListenerOptions {
+        ///   boolean passive;
+        ///   boolean once = false;
+        ///   AbortSignal signal;
+        /// };
         /// ```
         ///
-        /// ## Algorithm (WHATWG DOM §2.7)
-        /// 1. Let capture, passive, once be options values
-        /// 2. If callback is null, return
-        /// 3. Ensure event listener list exists
-        /// 4. Add listener to list (if not duplicate)
+        /// ## Algorithm (WHATWG DOM §2.7.3)
+        /// 1. Let capture, passive, once, signal be options values
+        /// 2. If listener's signal is not null and is aborted, then return
+        /// 3. If callback is null, return
+        /// 4. Ensure event listener list exists
+        /// 5. Add listener to list (if not duplicate)
+        /// 6. If listener's signal is not null, then add abort steps to remove listener
         ///
         /// ## Parameters
         /// - `self`: Target object
@@ -174,6 +202,7 @@ pub fn EventTargetMixin(comptime T: type) type {
         /// - `capture`: Listen in capture phase (true) or bubble phase (false)
         /// - `once`: Remove listener after first invocation
         /// - `passive`: Listener won't call preventDefault()
+        /// - `signal`: Optional AbortSignal to auto-remove listener on abort (NEW)
         ///
         /// ## Errors
         /// - `error.OutOfMemory`: Failed to allocate listener storage
@@ -188,11 +217,16 @@ pub fn EventTargetMixin(comptime T: type) type {
         /// }.handle;
         ///
         /// var my_data = MyData{};
-        /// try target.addEventListener("click", callback, @ptrCast(&my_data), false, false, false);
+        /// // Without signal
+        /// try target.addEventListener("click", callback, @ptrCast(&my_data), false, false, false, null);
+        ///
+        /// // With signal (when AbortSignal is implemented)
+        /// // try target.addEventListener("click", callback, @ptrCast(&my_data), false, false, false, signal);
         /// ```
         ///
         /// ## Spec References
         /// - Algorithm: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+        /// - Signal option: https://dom.spec.whatwg.org/#add-an-event-listener
         /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:57
         pub fn addEventListener(
             self: *T,
@@ -202,7 +236,19 @@ pub fn EventTargetMixin(comptime T: type) type {
             capture: bool,
             once: bool,
             passive: bool,
+            signal: ?*anyopaque, // Will be ?*AbortSignal once that type exists
         ) !void {
+            // Step 2: Early return if signal already aborted
+            // Per spec §2.7.3: "If listener's signal is not null and is aborted, then return"
+            if (signal) |sig_ptr| {
+                const AbortSignal = @import("abort_signal.zig").AbortSignal;
+                const abort_signal = @as(*AbortSignal, @ptrCast(@alignCast(sig_ptr)));
+                if (abort_signal.isAborted()) {
+                    // std.debug.print("Signal already aborted, not adding listener\n", .{});
+                    return; // Don't add listener if already aborted
+                }
+            }
+
             const rare = try self.ensureRareData();
             try rare.addEventListener(.{
                 .event_type = event_type,
@@ -211,7 +257,53 @@ pub fn EventTargetMixin(comptime T: type) type {
                 .capture = capture,
                 .once = once,
                 .passive = passive,
+                .signal = signal,
             });
+
+            // Step 6: Register abort algorithm if signal provided
+            // Per spec §2.7.3 step 6: "If listener's signal is not null, then add
+            // the following abort steps to it: Remove an event listener with eventTarget and listener"
+            if (signal) |sig_ptr| {
+                const AbortSignal = @import("abort_signal.zig").AbortSignal;
+                const abort_signal = @as(*AbortSignal, @ptrCast(@alignCast(sig_ptr)));
+
+                // Create removal context
+                const RemovalContext = struct {
+                    target: *T,
+                    event_type: []const u8,
+                    callback: EventCallback,
+                    capture: bool,
+                };
+
+                const removal_ctx = try abort_signal.allocator.create(RemovalContext);
+                removal_ctx.* = .{
+                    .target = self,
+                    .event_type = event_type,
+                    .callback = callback,
+                    .capture = capture,
+                };
+
+                // Create abort algorithm that removes the listener
+                const removal_callback = struct {
+                    fn remove(sig: *AbortSignal, ctx: *anyopaque) void {
+                        const removal = @as(*RemovalContext, @ptrCast(@alignCast(ctx)));
+                        // Debug: Print removal attempt
+                        // std.debug.print("Removing listener for event '{s}' (capture={})\n", .{removal.event_type, removal.capture});
+                        removal.target.removeEventListener(
+                            removal.event_type,
+                            removal.callback,
+                            removal.capture,
+                        );
+                        // Free the removal context
+                        sig.allocator.destroy(removal);
+                    }
+                }.remove;
+
+                try abort_signal.addAlgorithm(.{
+                    .callback = removal_callback,
+                    .context = @ptrCast(removal_ctx),
+                });
+            }
         }
 
         /// Removes an event listener from the target.

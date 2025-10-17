@@ -2,9 +2,10 @@ const std = @import("std");
 const dom = @import("dom");
 
 pub fn main() !void {
-    // Prints to stderr, ignoring potential errors.
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
-    try dom.bufferedPrint();
+    std.debug.print("DOM library initialized.\n", .{});
+    std.debug.print("Node size: {d} bytes\n", .{@sizeOf(dom.Node)});
+    std.debug.print("AbortSignal size: {d} bytes\n", .{@sizeOf(dom.AbortSignal)});
+    std.debug.print("AbortController size: {d} bytes\n", .{@sizeOf(dom.AbortController)});
 }
 
 test "simple test" {

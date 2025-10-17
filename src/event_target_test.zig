@@ -104,7 +104,7 @@ const MockEventTarget = struct {
         once: bool,
         passive: bool,
     ) !void {
-        return Mixin.addEventListener(self, event_type, callback, context, capture, once, passive);
+        return Mixin.addEventListener(self, event_type, callback, context, capture, once, passive, null);
     }
 
     pub fn removeEventListener(
@@ -140,7 +140,7 @@ test "EventTarget mixin - addEventListener adds listener" {
     }.handle;
 
     var ctx: u32 = 42;
-    try target.addEventListener("test", callback, @ptrCast(&ctx), false, false, false);
+    try target.addEventListener("test", callback, @ptrCast(&ctx), false, false, false, null);
 
     try std.testing.expect(target.hasEventListeners("test"));
 }
@@ -156,7 +156,7 @@ test "EventTarget mixin - removeEventListener removes listener" {
     }.handle;
 
     var ctx: u32 = 42;
-    try target.addEventListener("test", callback, @ptrCast(&ctx), false, false, false);
+    try target.addEventListener("test", callback, @ptrCast(&ctx), false, false, false, null);
     try std.testing.expect(target.hasEventListeners("test"));
 
     target.removeEventListener("test", callback, false);
@@ -177,7 +177,7 @@ test "EventTarget mixin - dispatchEvent invokes listener" {
         }
     }.handle;
 
-    try target.addEventListener("test", callback, @ptrCast(&invoked), false, false, false);
+    try target.addEventListener("test", callback, @ptrCast(&invoked), false, false, false, null);
 
     var event = Event.init("test", .{});
     const result = try target.dispatchEvent(&event);
@@ -201,7 +201,7 @@ test "EventTarget mixin - once listener removed after dispatch" {
     }.handle;
 
     // Add "once" listener
-    try target.addEventListener("test", callback, @ptrCast(&count), false, true, false);
+    try target.addEventListener("test", callback, @ptrCast(&count), false, true, false, null);
 
     var event1 = Event.init("test", .{});
     _ = try target.dispatchEvent(&event1);
@@ -228,7 +228,7 @@ test "EventTarget mixin - passive listener flag set during dispatch" {
     }.handle;
 
     var ctx: u32 = 42;
-    try target.addEventListener("test", callback, @ptrCast(&ctx), false, false, true);
+    try target.addEventListener("test", callback, @ptrCast(&ctx), false, false, true, null);
 
     var event = Event.init("test", .{ .cancelable = true });
     _ = try target.dispatchEvent(&event);

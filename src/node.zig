@@ -1233,7 +1233,7 @@ pub const Node = struct {
     /// }.handle;
     ///
     /// var my_data = MyData{};
-    /// try node.addEventListener("click", callback, @ptrCast(&my_data), false, false, false);
+    /// try node.addEventListener("click", callback, @ptrCast(&my_data), false, false, false, null);
     /// ```
     pub fn addEventListener(
         self: *Node,
@@ -1243,9 +1243,10 @@ pub const Node = struct {
         capture: bool,
         once: bool,
         passive: bool,
+        signal: ?*anyopaque,
     ) !void {
         const Mixin = EventTargetMixin(Node);
-        return Mixin.addEventListener(self, event_type, callback, context, capture, once, passive);
+        return Mixin.addEventListener(self, event_type, callback, context, capture, once, passive, signal);
     }
 
     /// Removes an event listener from the node.
@@ -1980,7 +1981,7 @@ test "Node - addEventListener wrapper" {
     }.cb;
 
     // Test WHATWG-style API
-    try node.addEventListener("click", callback, @ptrCast(&ctx), false, false, false);
+    try node.addEventListener("click", callback, @ptrCast(&ctx), false, false, false, null);
 
     // Verify listener was added
     try std.testing.expect(node.hasEventListeners("click"));
@@ -3285,7 +3286,7 @@ test "Node.dispatchEvent - invokes listener with event" {
         }
     }.cb;
 
-    try elem.node.addEventListener("click", callback, @ptrCast(&invoked), false, false, false);
+    try elem.node.addEventListener("click", callback, @ptrCast(&invoked), false, false, false, null);
 
     var event = Event.init("click", .{});
     _ = try elem.node.dispatchEvent(&event);
@@ -3306,7 +3307,7 @@ test "Node.dispatchEvent - returns false when preventDefault called" {
         }
     }.cb;
 
-    try elem.node.addEventListener("click", callback, undefined, false, false, false);
+    try elem.node.addEventListener("click", callback, undefined, false, false, false, null);
 
     var event = Event.init("click", .{ .cancelable = true });
     const result = try elem.node.dispatchEvent(&event);
@@ -3332,7 +3333,7 @@ test "Node.dispatchEvent - once listener removed after dispatch" {
     }.cb;
 
     // Add listener with once=true
-    try elem.node.addEventListener("click", callback, @ptrCast(&count), false, true, false);
+    try elem.node.addEventListener("click", callback, @ptrCast(&count), false, true, false, null);
 
     // First dispatch
     var event1 = Event.init("click", .{});
@@ -3360,7 +3361,7 @@ test "Node.dispatchEvent - passive listener blocks preventDefault" {
     }.cb;
 
     // Add passive listener
-    try elem.node.addEventListener("click", callback, undefined, false, false, true);
+    try elem.node.addEventListener("click", callback, undefined, false, false, true, null);
 
     var event = Event.init("click", .{ .cancelable = true });
     const result = try elem.node.dispatchEvent(&event);
@@ -3402,9 +3403,9 @@ test "Node.dispatchEvent - stopImmediatePropagation prevents remaining listeners
         }
     }.cb;
 
-    try elem.node.addEventListener("click", callback1, @ptrCast(&count), false, false, false);
-    try elem.node.addEventListener("click", callback2, @ptrCast(&count), false, false, false);
-    try elem.node.addEventListener("click", callback3, @ptrCast(&count), false, false, false);
+    try elem.node.addEventListener("click", callback1, @ptrCast(&count), false, false, false, null);
+    try elem.node.addEventListener("click", callback2, @ptrCast(&count), false, false, false, null);
+    try elem.node.addEventListener("click", callback3, @ptrCast(&count), false, false, false, null);
 
     var event = Event.init("click", .{});
     _ = try elem.node.dispatchEvent(&event);
@@ -3447,7 +3448,7 @@ test "Node.dispatchEvent - sets event properties correctly" {
         }
     }.cb;
 
-    try elem.node.addEventListener("click", callback, @ptrCast(&elem.node), false, false, false);
+    try elem.node.addEventListener("click", callback, @ptrCast(&elem.node), false, false, false, null);
 
     var event = Event.init("click", .{});
     _ = try elem.node.dispatchEvent(&event);
