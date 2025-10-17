@@ -1,228 +1,324 @@
 # DOM Benchmarks
 
-Performance benchmarks for the WHATWG DOM implementation.
-
-## Directory Structure
-
-```
-benchmarks/
-├── README.md          (this file)
-├── zig/               Zig (native) benchmarks
-│   ├── benchmark.zig
-│   └── benchmark_runner.zig
-└── js/                JavaScript (browser) benchmarks
-    ├── benchmark.js
-    └── README.md
-```
+Cross-platform performance benchmarking suite comparing Zig DOM implementation with browser implementations.
 
 ## Quick Start
 
-### Zig Benchmarks (Native)
-
-Run native Zig benchmarks:
+Run all benchmarks with a single command:
 
 ```bash
-# Debug build (slow)
-zig build bench
+zig build benchmark-all
+```
 
-# Release build (recommended)
+This will:
+1. ✅ Run Zig benchmarks (ReleaseFast mode)
+2. ✅ Install Playwright and browsers (first time only)
+3. ✅ Run browser benchmarks (Chromium, Firefox, WebKit)
+4. ✅ Generate interactive HTML visualization
+
+**First run takes ~5 minutes** (downloads browsers). Subsequent runs take ~2-3 minutes.
+
+---
+
+## Output Files
+
+After running, you'll find:
+
+```
+benchmark_results/
+├── phase4_release_fast.txt           # Zig benchmark results (text)
+├── browser_benchmarks_latest.json     # Browser results (JSON)
+└── benchmark_report.html              # 🎨 Interactive visualization (OPEN THIS!)
+```
+
+**Open the HTML report:**
+```bash
+open benchmark_results/benchmark_report.html
+```
+
+---
+
+## Individual Components
+
+### 1. Zig Benchmarks Only
+
+```bash
 zig build bench -Doptimize=ReleaseFast
 ```
 
-**Expected Results (ReleaseFast):**
-- getElementById: ~7ns (142M ops/sec)
-- querySelector("#id"): ~16ns (62M ops/sec)
+Runs 24 benchmarks:
+- ID queries (`getElementById`, `querySelector("#id")`)
+- Tag queries (`getElementsByTagName`, `querySelector("tag")`)
+- Class queries (`getElementsByClassName`, `querySelector(".class")`)
+- Other query patterns
 
-### JavaScript Benchmarks (Browser)
+**Output:** `benchmark_results/phase4_release_fast.txt`
 
-Run in browser for comparison:
+### 2. Browser Benchmarks Only
 
-1. Open browser console (F12)
-2. Copy contents of `js/benchmark.js`
-3. Paste into console
-4. Run: `runAllBenchmarks()`
+```bash
+cd benchmarks/js
+npm install           # First time only
+npx playwright install  # First time only
+node playwright-runner.js
+```
 
-**Expected Results (Chrome V8):**
-- getElementById: ~50-100ns (10-20M ops/sec)
-- querySelector("#id"): ~200-500ns (2-5M ops/sec)
+Runs same 24 benchmarks in:
+- Chromium (headless)
+- Firefox (headless)
+- WebKit (headless)
 
-## Performance Comparison
+**Output:** `benchmark_results/browser_benchmarks_latest.json`
 
-| Operation | Zig | JavaScript | Zig Speedup |
-|-----------|-----|------------|-------------|
-| getElementById | 7ns | 80ns | **11x faster** |
-| querySelector("#id") | 16ns | 400ns | **25x faster** |
+### 3. Visualization Only
 
-### Why is Zig Faster?
+```bash
+cd benchmarks
+node visualize.js
+```
 
-1. **No JavaScript bridge** - Direct native execution
-2. **No GC overhead** - Manual memory management
-3. **LLVM optimizations** - Aggressive compiler optimizations
-4. **Better memory layout** - Cache-friendly data structures
-5. **Zero-cost abstractions** - No runtime overhead
+Generates HTML report from existing results.
+
+**Output:** `benchmark_results/benchmark_report.html`
+
+---
 
 ## Benchmark Categories
 
-### 1. Full Benchmarks (DOM Creation + Query)
+The suite measures performance across four categories:
 
-Measures end-to-end performance including DOM creation:
+### ID Queries (O(1) in Zig via hash map)
+- `getElementById()`
+- `querySelector("#id")`
+- Sizes: 100, 1000, 10000 elements
 
-- `querySelector: Small DOM (100)`
-- `querySelector: Medium DOM (1000)`
-- `querySelector: Large DOM (10000)`
-- `getElementById: Small/Medium/Large DOM`
+### Tag Queries (O(1) first match in Zig via tag map)
+- `getElementsByTagName()`
+- `querySelector("tag")`
+- Sizes: 100, 1000, 10000 elements
 
-**Use case:** Simulates real-world scenarios where DOM is built and queried.
+### Class Queries (O(1) first match in Zig via class map)
+- `getElementsByClassName()`
+- `querySelector(".class")`
+- Sizes: 100, 1000, 10000 elements
 
-### 2. Pure Query Benchmarks (DOM Pre-Built)
+### Complex Queries
+- SPA patterns (repeated queries)
+- Mixed selectors
+- Cache behavior
 
-Isolates query performance by building DOM once:
+---
 
-- `Pure query: getElementById (100/1000/10000 elem)`
-- `Pure query: querySelector #id (100/1000/10000 elem)`
+## Visualization Features
 
-**Use case:** Shows true query performance without DOM creation overhead.
+The HTML report includes:
 
-### 3. SPA Benchmarks
+**📊 Interactive Charts**
+- Logarithmic bar charts (handles ns to ms range)
+- Grouped by category
+- Color-coded by implementation
+- Powered by Chart.js
 
-Simulates Single Page Application usage patterns:
+**📈 Performance Tables**
+- Raw numbers for each implementation
+- Winner highlighted
+- Speedup factors (e.g., "2.5x slower")
 
-- `SPA: Repeated queries` - Multiple selector types
-- `SPA: Cold vs Hot cache` - Cache warming behavior
+**🎨 Beautiful Design**
+- Gradient purple background
+- Clean white cards
+- Responsive layout
+- Implementation badges
 
-**Use case:** Real-world SPA performance with repeated queries.
-
-## Understanding Results
-
-### Time Units
-
-- **ns** (nanoseconds): 1/1,000,000,000 second
-- **µs** (microseconds): 1/1,000,000 second  
-- **ms** (milliseconds): 1/1,000 second
-
-### What's Fast?
-
-**getElementById:**
-- ✅ Good: < 100ns
-- ⚠️ Acceptable: 100-1000ns
-- ❌ Slow: > 1µs
-
-**querySelector("#id"):**
-- ✅ Good: < 500ns
-- ⚠️ Acceptable: 500-5000ns
-- ❌ Slow: > 5µs
-
-### O(1) vs O(n) Behavior
-
-**Good (O(1)):**
-```
-100 elements:   10ns
-1,000 elements: 10ns  ✅ Constant time
-10,000 elements: 10ns
-```
-
-**Bad (O(n)):**
-```
-100 elements:   10ns
-1,000 elements: 100ns   ❌ Linear growth
-10,000 elements: 1000ns
-```
-
-## Benchmark Results
-
-See `../benchmark_results/` for detailed results:
-
-- `baseline.txt` - Before optimization
-- `phase1.txt` - Fast paths + selector cache
-- `phase2.txt` - O(1) getElementById
-- `phase2_release_fast.txt` - Final ReleaseFast results
-
-## Running Benchmarks
-
-### Zig
-
-```bash
-# Quick benchmark (Debug, ~2-3x slower)
-zig build bench
-
-# Production benchmark (ReleaseFast, accurate)
-zig build bench -Doptimize=ReleaseFast
-
-# Save results
-zig build bench -Doptimize=ReleaseFast > results.txt
-```
-
-### JavaScript
-
-```javascript
-// Browser console
-runAllBenchmarks();
-
-// Compare with Zig
-compareWithZig();
-
-// Individual benchmarks
-benchmarkFn('getElementById test', 10000, () => {
-    document.getElementById('test');
-});
-```
-
-### Node.js
-
-```bash
-# Install jsdom
-npm install jsdom
-
-# Run benchmarks
-node -e "
-const { JSDOM } = require('jsdom');
-const dom = new JSDOM('<!DOCTYPE html>');
-global.document = dom.window.document;
-global.performance = require('perf_hooks').performance;
-eval(require('fs').readFileSync('js/benchmark.js', 'utf8'));
-runAllBenchmarks();
-"
-```
-
-## Performance Tips
-
-### For Accurate Benchmarks
-
-1. **Use ReleaseFast** for Zig benchmarks
-2. **Close other applications** to reduce system noise
-3. **Run multiple times** to account for variance
-4. **Use private/incognito** mode for browser tests
-5. **Disable extensions** that might interfere
-
-### Common Issues
-
-**Zig benchmarks slower than expected?**
-- Make sure you're using `-Doptimize=ReleaseFast`
-- Check CPU isn't throttled (laptops on battery)
-
-**JavaScript benchmarks inconsistent?**
-- JIT warmup - first runs may be slower
-- GC pauses - run with `--expose-gc` flag
-- Other tabs/extensions interfering
+---
 
 ## Adding New Benchmarks
 
-### Zig
+**⚠️ IMPORTANT:** Zig and JavaScript benchmarks must stay synchronized!
 
-1. Add benchmark function to `zig/benchmark.zig`
-2. Add to `runAllBenchmarks()`
-3. Run and verify results
-4. Update documentation
+See `skills/benchmark_parity/SKILL.md` for complete guide.
 
-### JavaScript
+### Quick Steps:
 
-1. Mirror the Zig benchmark in `js/benchmark.js`
-2. Use same test data and iteration counts
-3. Add to `runAllBenchmarks()`
-4. Update `js/README.md`
+1. **Add to Zig** (`zig/benchmark.zig`):
+```zig
+fn setupNewTest(allocator: Allocator) !*Document {
+    // Setup DOM
+}
 
-## See Also
+fn benchNewTest(doc: *Document) !void {
+    // Run query
+}
 
-- [Phase 2 Results](../PHASE2_FINAL_RESULTS.md) - Detailed performance analysis
-- [Optimization Strategy](../OPTIMIZATION_STRATEGY.md) - Performance approach
-- [Browser Analysis](../BROWSER_SELECTOR_DEEP_ANALYSIS.md) - How browsers optimize
+// Register:
+try results.append(allocator, try benchmarkWithSetup(
+    allocator,
+    "Pure query: newTest (100 elem)",  // Must match JS name exactly
+    100000,
+    setupNewTest,
+    benchNewTest
+));
+```
+
+2. **Add to JavaScript** (`js/benchmark.js`):
+```javascript
+function setupNewTest() {
+    // Setup DOM (must match Zig structure)
+    return { container, cleanup };
+}
+
+function benchNewTest(context) {
+    // Run query (must match Zig operation)
+}
+
+// Register:
+results.push(benchmarkWithSetup(
+    'Pure query: newTest (100 elem)',  // Must match Zig name exactly
+    100000,
+    setupNewTest,
+    benchNewTest
+));
+```
+
+3. **Verify:**
+```bash
+zig build benchmark-all
+# Check HTML report - new benchmark should appear across all implementations
+```
+
+---
+
+## File Structure
+
+```
+benchmarks/
+├── zig/
+│   ├── benchmark.zig          # Zig benchmark suite
+│   └── benchmark_runner.zig   # Runner that prints results
+├── js/
+│   ├── benchmark.js           # JavaScript benchmark suite
+│   ├── playwright-runner.js   # Automated browser testing
+│   ├── package.json           # Playwright dependency
+│   └── node_modules/          # (created by npm install)
+├── run-all.sh                 # Pipeline orchestration
+├── visualize.js               # HTML report generator
+└── README.md                  # This file
+```
+
+---
+
+## Requirements
+
+**System:**
+- Zig 0.15.1+
+- Node.js 18+
+- Bash (for run-all.sh)
+- Internet (first run, to download browsers)
+
+**Disk Space:**
+- ~500MB for Playwright browsers (first time only)
+
+**Time:**
+- First run: ~5 minutes (downloads + benchmarks)
+- Subsequent runs: ~2-3 minutes (benchmarks only)
+
+---
+
+## Troubleshooting
+
+### "command not found: node"
+
+Install Node.js:
+```bash
+# macOS
+brew install node
+
+# Ubuntu/Debian
+sudo apt install nodejs npm
+```
+
+### "Playwright browsers not installed"
+
+```bash
+cd benchmarks/js
+npx playwright install
+```
+
+### "Benchmark names don't match"
+
+Ensure Zig and JavaScript benchmark names are **exactly** the same (case-sensitive).
+
+### "Results file not found"
+
+Run Zig benchmarks first:
+```bash
+zig build bench -Doptimize=ReleaseFast
+```
+
+### "No chart displayed"
+
+Check browser console for errors. Ensure:
+- JSON files are valid
+- At least one implementation has results
+
+---
+
+## CI/CD Integration
+
+For automated testing:
+
+```yaml
+# .github/workflows/benchmarks.yml
+- name: Run benchmarks
+  run: |
+    zig build benchmark-all
+    
+- name: Upload results
+  uses: actions/upload-artifact@v3
+  with:
+    name: benchmark-report
+    path: benchmark_results/benchmark_report.html
+```
+
+---
+
+## Performance Notes
+
+**Zig Implementation Optimizations:**
+- **Phase 2:** O(1) getElementById via hash map
+- **Phase 3:** O(1) querySelector("tag") via tag map
+- **Phase 4:** O(1) querySelector(".class") via class map
+
+**Browser Implementations:**
+- Highly optimized native code
+- JIT compiled JavaScript
+- Decades of optimization work
+
+**Expected Results:**
+- Zig competitive with browsers for simple queries
+- Browsers may be faster for complex selectors (more optimizations)
+- Results vary by browser engine
+
+---
+
+## Contributing
+
+When adding benchmarks:
+
+1. ✅ Add to both Zig and JavaScript
+2. ✅ Match DOM structures exactly
+3. ✅ Use same benchmark names
+4. ✅ Document what you're measuring
+5. ✅ Run `zig build benchmark-all` to verify
+
+See `skills/benchmark_parity/SKILL.md` for complete guidelines.
+
+---
+
+## License
+
+Same as parent project.
+
+---
+
+**Happy benchmarking!** 🚀
