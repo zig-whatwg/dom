@@ -550,19 +550,19 @@ function runAllBenchmarks() {
     results.push(benchmarkWithSetup('Pure query: querySelector #id (10000 elem)', 100000, setupLargeDom, benchQuerySelectorId));
     
     console.log('Running tag query benchmarks...');
-    // Use 1M iterations for getElementsByTagName (very fast)
-    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (100 elem)', 1000000, setupTagSmall, benchGetElementsByTagName));
-    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (1000 elem)', 1000000, setupTagMedium, benchGetElementsByTagName));
-    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (10000 elem)', 1000000, setupTagLarge, benchGetElementsByTagName));
+    // Reduced iterations: Array.from() materialization is expensive (allocation + copy)
+    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (100 elem)', 100000, setupTagSmall, benchGetElementsByTagName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (1000 elem)', 10000, setupTagMedium, benchGetElementsByTagName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (10000 elem)', 1000, setupTagLarge, benchGetElementsByTagName));
     results.push(benchmarkWithSetup('Pure query: querySelector tag (100 elem)', 100000, setupTagSmall, benchQuerySelectorTag));
     results.push(benchmarkWithSetup('Pure query: querySelector tag (1000 elem)', 100000, setupTagMedium, benchQuerySelectorTag));
     results.push(benchmarkWithSetup('Pure query: querySelector tag (10000 elem)', 100000, setupTagLarge, benchQuerySelectorTag));
     
     console.log('Running class query benchmarks...');
-    // Use 1M iterations for getElementsByClassName (very fast)
-    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (100 elem)', 1000000, setupClassSmall, benchGetElementsByClassName));
-    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (1000 elem)', 1000000, setupClassMedium, benchGetElementsByClassName));
-    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (10000 elem)', 1000000, setupClassLarge, benchGetElementsByClassName));
+    // Reduced iterations: Array.from() materialization is expensive (allocation + copy)
+    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (100 elem)', 100000, setupClassSmall, benchGetElementsByClassName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (1000 elem)', 10000, setupClassMedium, benchGetElementsByClassName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (10000 elem)', 1000, setupClassLarge, benchGetElementsByClassName));
     results.push(benchmarkWithSetup('Pure query: querySelector .class (100 elem)', 100000, setupClassSmall, benchQuerySelectorClass));
     results.push(benchmarkWithSetup('Pure query: querySelector .class (1000 elem)', 100000, setupClassMedium, benchQuerySelectorClass));
     results.push(benchmarkWithSetup('Pure query: querySelector .class (10000 elem)', 100000, setupClassLarge, benchQuerySelectorClass));
