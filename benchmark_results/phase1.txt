@@ -1,0 +1,26 @@
+DOM Selector Benchmark Suite
+=============================
+
+Running tokenizer benchmarks...
+Running parser benchmarks...
+Running matcher benchmarks...
+Running querySelector benchmarks...
+Running SPA benchmarks...
+
+Results:
+--------
+Tokenizer: Simple ID (#main): 18µs/op (53498 ops/sec)
+Tokenizer: Simple Class (.button): 19µs/op (50276 ops/sec)
+Tokenizer: Complex: 54µs/op (18448 ops/sec)
+Parser: Simple ID (#main): 63µs/op (15648 ops/sec)
+Parser: Simple Class (.button): 64µs/op (15395 ops/sec)
+Parser: Complex: 184µs/op (5418 ops/sec)
+Matcher: Simple ID: 160µs/op (6220 ops/sec)
+Matcher: Simple Class: 161µs/op (6181 ops/sec)
+querySelector: Small DOM (100): 1ms/op (713 ops/sec)
+querySelector: Medium DOM (1000): 11ms/op (85 ops/sec)
+querySelector: Large DOM (10000): 118ms/op (8 ops/sec)
+querySelector: Class selector: 12ms/op (82 ops/sec)
+SPA: Repeated queries (1000x): 12ms/op (78 ops/sec)
+
+Benchmark complete!

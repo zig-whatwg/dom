@@ -224,6 +224,12 @@ pub const selector = struct {
     pub const Combinator = @import("selector/parser.zig").Combinator;
 };
 
+// Export fast path optimization modules
+pub const FastPathType = @import("fast_path.zig").FastPathType;
+pub const detectFastPath = @import("fast_path.zig").detectFastPath;
+pub const extractIdentifier = @import("fast_path.zig").extractIdentifier;
+pub const ElementIterator = @import("element_iterator.zig").ElementIterator;
+
 test {
     // Run tests from all modules
     std.testing.refAllDecls(@This());
@@ -246,4 +252,7 @@ test {
     _ = @import("selector/parser.zig");
     _ = @import("selector/matcher.zig");
     _ = @import("query_selector_test.zig");
+    // Fast path optimizations
+    _ = @import("fast_path.zig");
+    _ = @import("element_iterator.zig");
 }
