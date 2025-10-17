@@ -486,10 +486,10 @@ function benchQuerySelectorId(context) {
 }
 
 function benchGetElementsByTagName(context) {
-    const result = context.container.getElementsByTagName('button');
-    // Force evaluation of live collection
-    const length = result.length;
-    resultAccumulator.push(length);
+    const collection = context.container.getElementsByTagName('button');
+    // Force array materialization to match Zig's behavior (snapshot, not live)
+    const result = Array.from(collection);
+    resultAccumulator.push(result);
     blackHole(result);
 }
 
@@ -500,10 +500,10 @@ function benchQuerySelectorTag(context) {
 }
 
 function benchGetElementsByClassName(context) {
-    const result = context.container.getElementsByClassName('btn');
-    // Force evaluation of live collection
-    const length = result.length;
-    resultAccumulator.push(length);
+    const collection = context.container.getElementsByClassName('btn');
+    // Force array materialization to match Zig's behavior (snapshot, not live)
+    const result = Array.from(collection);
+    resultAccumulator.push(result);
     blackHole(result);
 }
 
