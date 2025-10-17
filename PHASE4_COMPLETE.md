@@ -590,7 +590,7 @@ Pure Query Performance (DOM pre-built):
 ## Commit Hash
 
 ```
-[To be added after commit]
+bfb96e8 perf: Phase 4 optimization - O(k) getElementsByClassName with class map
 ```
 
 ---
