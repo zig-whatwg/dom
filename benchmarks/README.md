@@ -4,19 +4,37 @@ Cross-platform performance benchmarking suite comparing Zig DOM implementation w
 
 ## Quick Start
 
+### First Time Setup
+
+Install Playwright and browsers (one-time, ~500MB download):
+
+```bash
+# Easy way
+./benchmarks/setup.sh
+
+# Or manually
+cd benchmarks/js
+npm install
+npx playwright install
+cd ../..
+```
+
+### Run Benchmarks
+
 Run all benchmarks with a single command:
 
 ```bash
-zig build benchmark-all
+zig build benchmark-all -Doptimize=ReleaseFast
 ```
+
+**⚠️ IMPORTANT:** Always use `-Doptimize=ReleaseFast` for accurate performance measurements!
 
 This will:
 1. ✅ Run Zig benchmarks (ReleaseFast mode)
-2. ✅ Install Playwright and browsers (first time only)
-3. ✅ Run browser benchmarks (Chromium, Firefox, WebKit)
-4. ✅ Generate interactive HTML visualization
+2. ✅ Run browser benchmarks (Chromium, Firefox, WebKit)
+3. ✅ Generate interactive HTML visualization
 
-**First run takes ~5 minutes** (downloads browsers). Subsequent runs take ~2-3 minutes.
+**Time:** ~2-3 minutes per run.
 
 ---
 
@@ -56,10 +74,16 @@ Runs 24 benchmarks:
 
 ### 2. Browser Benchmarks Only
 
+**First time setup:**
 ```bash
 cd benchmarks/js
-npm install           # First time only
-npx playwright install  # First time only
+npm install
+npx playwright install
+```
+
+**Run benchmarks:**
+```bash
+cd benchmarks/js
 node playwright-runner.js
 ```
 

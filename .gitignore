@@ -38,3 +38,8 @@ summaries/
 
 # tmp files
 .bak
+
+# Benchmark artifacts
+benchmarks/js/node_modules/
+benchmarks/js/package-lock.json
+benchmarks/js/benchmark.html

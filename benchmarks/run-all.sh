@@ -30,15 +30,19 @@ zig build bench -Doptimize=ReleaseFast > benchmark_results/phase4_release_fast.t
 echo -e "${GREEN}✓ Zig benchmarks complete${NC}"
 echo ""
 
-# Step 2: Install Playwright browsers if needed
+# Step 2: Check if Playwright is set up
 if [ ! -d "benchmarks/js/node_modules" ]; then
-    echo -e "${YELLOW}Installing Playwright and browsers (first time only)...${NC}"
-    cd benchmarks/js
-    npm install
-    npx playwright install
-    cd ../..
-    echo -e "${GREEN}✓ Playwright installed${NC}"
+    echo -e "${RED}❌ Playwright not installed${NC}"
     echo ""
+    echo "Please run the following commands first:"
+    echo ""
+    echo "  cd benchmarks/js"
+    echo "  npm install"
+    echo "  npx playwright install"
+    echo "  cd ../.."
+    echo ""
+    echo "Then run this command again."
+    exit 1
 fi
 
 # Step 3: Run browser benchmarks
