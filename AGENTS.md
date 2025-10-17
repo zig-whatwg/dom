@@ -153,6 +153,26 @@ Claude automatically loads skills when relevant to your task. You don't need to 
 
 **Location:** `skills/documentation_standards/`
 
+### 6. **benchmark_parity** - Benchmark Synchronization
+
+**Automatically loaded when:**
+- Adding new benchmarks
+- Modifying existing benchmarks
+- Adding performance-critical features
+- Running benchmark pipeline
+
+**Provides:**
+- Zig ↔ JavaScript benchmark parity rules
+- Benchmark structure patterns
+- DOM setup conventions for fair comparison
+- Naming conventions
+- Verification checklist
+- Troubleshooting guide
+
+**Critical Rule:** When Zig benchmarks change, JavaScript benchmarks MUST be updated to match.
+
+**Location:** `skills/benchmark_parity/`
+
 ---
 
 ## Golden Rules

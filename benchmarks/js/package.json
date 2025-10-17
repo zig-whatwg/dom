@@ -1,0 +1,13 @@
+{
+  "name": "dom-benchmarks",
+  "version": "1.0.0",
+  "description": "Cross-browser DOM performance benchmarks",
+  "private": true,
+  "scripts": {
+    "benchmark": "node playwright-runner.js",
+    "install-browsers": "npx playwright install"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0"
+  }
+}

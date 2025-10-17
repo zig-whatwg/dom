@@ -170,4 +170,13 @@ pub fn build(b: *std.Build) void {
     const bench_step = b.step("bench", "Run benchmarks");
     const bench_run = b.addRunArtifact(bench_exe);
     bench_step.dependOn(&bench_run.step);
+
+    // Benchmark-all: Run Zig + Browser benchmarks + Generate visualization
+    const bench_all_step = b.step("benchmark-all", "Run all benchmarks (Zig + Browsers) and generate visualization");
+    const bench_all_script = b.addSystemCommand(&.{
+        "bash",
+        "benchmarks/run-all.sh",
+    });
+    bench_all_script.setCwd(b.path("."));
+    bench_all_step.dependOn(&bench_all_script.step);
 }

@@ -244,6 +244,136 @@ function setupLargeDom() {
     };
 }
 
+// Setup functions for tag query benchmarks
+
+function setupTagSmall() {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    
+    // Create mix of elements - 50 divs, 50 buttons
+    for (let i = 0; i < 50; i++) {
+        const div = document.createElement('div');
+        container.appendChild(div);
+    }
+    for (let i = 0; i < 50; i++) {
+        const button = document.createElement('button');
+        container.appendChild(button);
+    }
+    
+    return {
+        container,
+        cleanup: () => document.body.removeChild(container)
+    };
+}
+
+function setupTagMedium() {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    
+    // Create mix of elements - 500 divs, 500 buttons
+    for (let i = 0; i < 500; i++) {
+        const div = document.createElement('div');
+        container.appendChild(div);
+    }
+    for (let i = 0; i < 500; i++) {
+        const button = document.createElement('button');
+        container.appendChild(button);
+    }
+    
+    return {
+        container,
+        cleanup: () => document.body.removeChild(container)
+    };
+}
+
+function setupTagLarge() {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    
+    // Create mix of elements - 5000 divs, 5000 buttons
+    for (let i = 0; i < 5000; i++) {
+        const div = document.createElement('div');
+        container.appendChild(div);
+    }
+    for (let i = 0; i < 5000; i++) {
+        const button = document.createElement('button');
+        container.appendChild(button);
+    }
+    
+    return {
+        container,
+        cleanup: () => document.body.removeChild(container)
+    };
+}
+
+// Setup functions for class query benchmarks
+
+function setupClassSmall() {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    
+    // Create mix of elements - 50 with "btn", 50 with "container"
+    for (let i = 0; i < 50; i++) {
+        const button = document.createElement('button');
+        button.className = 'btn primary';
+        container.appendChild(button);
+    }
+    for (let i = 0; i < 50; i++) {
+        const div = document.createElement('div');
+        div.className = 'container';
+        container.appendChild(div);
+    }
+    
+    return {
+        container,
+        cleanup: () => document.body.removeChild(container)
+    };
+}
+
+function setupClassMedium() {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    
+    // Create mix of elements - 500 with "btn", 500 with "container"
+    for (let i = 0; i < 500; i++) {
+        const button = document.createElement('button');
+        button.className = 'btn primary';
+        container.appendChild(button);
+    }
+    for (let i = 0; i < 500; i++) {
+        const div = document.createElement('div');
+        div.className = 'container';
+        container.appendChild(div);
+    }
+    
+    return {
+        container,
+        cleanup: () => document.body.removeChild(container)
+    };
+}
+
+function setupClassLarge() {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    
+    // Create mix of elements - 5000 with "btn", 5000 with "container"
+    for (let i = 0; i < 5000; i++) {
+        const button = document.createElement('button');
+        button.className = 'btn primary';
+        container.appendChild(button);
+    }
+    for (let i = 0; i < 5000; i++) {
+        const div = document.createElement('div');
+        div.className = 'container';
+        container.appendChild(div);
+    }
+    
+    return {
+        container,
+        cleanup: () => document.body.removeChild(container)
+    };
+}
+
 // Query benchmark functions
 function benchGetElementById(context) {
     const result = document.getElementById('target');
@@ -251,6 +381,22 @@ function benchGetElementById(context) {
 
 function benchQuerySelectorId(context) {
     const result = context.container.querySelector('#target');
+}
+
+function benchGetElementsByTagName(context) {
+    const result = context.container.getElementsByTagName('button');
+}
+
+function benchQuerySelectorTag(context) {
+    const result = context.container.querySelector('button');
+}
+
+function benchGetElementsByClassName(context) {
+    const result = context.container.getElementsByClassName('btn');
+}
+
+function benchQuerySelectorClass(context) {
+    const result = context.container.querySelector('.btn');
 }
 
 // Main benchmark runner
@@ -282,6 +428,22 @@ function runAllBenchmarks() {
     results.push(benchmarkWithSetup('Pure query: querySelector #id (100 elem)', 100000, setupSmallDom, benchQuerySelectorId));
     results.push(benchmarkWithSetup('Pure query: querySelector #id (1000 elem)', 100000, setupMediumDom, benchQuerySelectorId));
     results.push(benchmarkWithSetup('Pure query: querySelector #id (10000 elem)', 100000, setupLargeDom, benchQuerySelectorId));
+    
+    console.log('Running tag query benchmarks...');
+    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (100 elem)', 100000, setupTagSmall, benchGetElementsByTagName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (1000 elem)', 100000, setupTagMedium, benchGetElementsByTagName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (10000 elem)', 100000, setupTagLarge, benchGetElementsByTagName));
+    results.push(benchmarkWithSetup('Pure query: querySelector tag (100 elem)', 100000, setupTagSmall, benchQuerySelectorTag));
+    results.push(benchmarkWithSetup('Pure query: querySelector tag (1000 elem)', 100000, setupTagMedium, benchQuerySelectorTag));
+    results.push(benchmarkWithSetup('Pure query: querySelector tag (10000 elem)', 100000, setupTagLarge, benchQuerySelectorTag));
+    
+    console.log('Running class query benchmarks...');
+    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (100 elem)', 100000, setupClassSmall, benchGetElementsByClassName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (1000 elem)', 100000, setupClassMedium, benchGetElementsByClassName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (10000 elem)', 100000, setupClassLarge, benchGetElementsByClassName));
+    results.push(benchmarkWithSetup('Pure query: querySelector .class (100 elem)', 100000, setupClassSmall, benchQuerySelectorClass));
+    results.push(benchmarkWithSetup('Pure query: querySelector .class (1000 elem)', 100000, setupClassMedium, benchQuerySelectorClass));
+    results.push(benchmarkWithSetup('Pure query: querySelector .class (10000 elem)', 100000, setupClassLarge, benchQuerySelectorClass));
     
     // Display results
     console.log('\nResults:');
@@ -341,6 +503,32 @@ function compareWithZig(zigResults) {
     });
 }
 
+// Export results as JSON for programmatic access
+function exportResults(results) {
+    return results.map(result => ({
+        name: result.name,
+        operations: result.operations,
+        totalMs: result.totalMs,
+        msPerOp: result.msPerOp,
+        opsPerSec: result.opsPerSec,
+        nsPerOp: result.msPerOp * 1000000  // Convert to nanoseconds for comparison with Zig
+    }));
+}
+
+// Run benchmarks and return results (for Playwright)
+function runBenchmarksAndExport() {
+    const results = runAllBenchmarks();
+    return exportResults(results);
+}
+
+// Make functions available globally
+if (typeof window !== 'undefined') {
+    window.runAllBenchmarks = runAllBenchmarks;
+    window.runBenchmarksAndExport = runBenchmarksAndExport;
+    window.compareWithZig = compareWithZig;
+}
+
 console.log('DOM Benchmark Suite loaded!');
 console.log('Run: runAllBenchmarks() to start benchmarks');
 console.log('Or: compareWithZig() to compare with Zig results');
+console.log('Or: runBenchmarksAndExport() to get results as JSON');
