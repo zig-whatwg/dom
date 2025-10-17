@@ -53,6 +53,50 @@ pub fn benchmarkFn(
     };
 }
 
+/// Run a benchmark with setup phase (setup runs once, func runs multiple times)
+/// This is useful for benchmarks where you want to build the DOM once and then
+/// measure just the query operations.
+pub fn benchmarkWithSetup(
+    allocator: std.mem.Allocator,
+    comptime name: []const u8,
+    iterations: usize,
+    setup: *const fn (std.mem.Allocator) anyerror!*Document,
+    func: *const fn (*Document) anyerror!void,
+) !BenchmarkResult {
+    // Setup: build DOM once
+    const doc = try setup(allocator);
+    defer doc.release();
+
+    // Warmup
+    var i: usize = 0;
+    while (i < 10) : (i += 1) {
+        try func(doc);
+    }
+
+    // Actual benchmark: only measure the func execution
+    const start = std.time.nanoTimestamp();
+    i = 0;
+    while (i < iterations) : (i += 1) {
+        try func(doc);
+    }
+    const end = std.time.nanoTimestamp();
+
+    const total_ns: u64 = @intCast(end - start);
+    const ns_per_op = total_ns / iterations;
+    const ops_per_sec = if (ns_per_op > 0)
+        (1_000_000_000 / ns_per_op)
+    else
+        0;
+
+    return BenchmarkResult{
+        .name = name,
+        .operations = iterations,
+        .total_ns = total_ns,
+        .ns_per_op = ns_per_op,
+        .ops_per_sec = ops_per_sec,
+    };
+}
+
 /// Run all benchmarks and return results
 pub fn runAllBenchmarks(allocator: std.mem.Allocator) ![]BenchmarkResult {
     var results: std.ArrayList(BenchmarkResult) = .empty;
@@ -81,6 +125,19 @@ pub fn runAllBenchmarks(allocator: std.mem.Allocator) ![]BenchmarkResult {
     std.debug.print("Running SPA benchmarks...\n", .{});
     try results.append(allocator, try benchmarkFn(allocator, "SPA: Repeated queries (1000x)", 1000, spaRepeated));
     try results.append(allocator, try benchmarkFn(allocator, "SPA: Cold vs Hot cache (100x)", 100, spaColdVsHot));
+
+    std.debug.print("Running getElementById benchmarks...\n", .{});
+    try results.append(allocator, try benchmarkFn(allocator, "getElementById: Small DOM (100)", 1000, getElementByIdSmall));
+    try results.append(allocator, try benchmarkFn(allocator, "getElementById: Medium DOM (1000)", 1000, getElementByIdMedium));
+    try results.append(allocator, try benchmarkFn(allocator, "getElementById: Large DOM (10000)", 100, getElementByIdLarge));
+
+    std.debug.print("Running query-only benchmarks (DOM pre-built)...\n", .{});
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: getElementById (100 elem)", 100000, setupSmallDom, benchGetElementById));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: getElementById (1000 elem)", 100000, setupMediumDom, benchGetElementById));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: getElementById (10000 elem)", 100000, setupLargeDom, benchGetElementById));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector #id (100 elem)", 100000, setupSmallDom, benchQuerySelectorId));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector #id (1000 elem)", 100000, setupMediumDom, benchQuerySelectorId));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector #id (10000 elem)", 100000, setupLargeDom, benchQuerySelectorId));
 
     return results.toOwnedSlice(allocator);
 }
@@ -295,4 +352,124 @@ fn spaColdVsHot(allocator: std.mem.Allocator) !void {
     while (i < 100) : (i += 1) {
         _ = try doc.querySelector(".item");
     }
+}
+
+fn getElementByIdSmall(allocator: std.mem.Allocator) !void {
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 100) : (i += 1) {
+        const div = try doc.createElement("div");
+        if (i == 50) try div.setAttribute("id", "target");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    // Direct O(1) lookup!
+    const result = doc.getElementById("target");
+    _ = result;
+}
+
+fn getElementByIdMedium(allocator: std.mem.Allocator) !void {
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 1000) : (i += 1) {
+        const div = try doc.createElement("div");
+        if (i == 500) try div.setAttribute("id", "target");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    const result = doc.getElementById("target");
+    _ = result;
+}
+
+fn getElementByIdLarge(allocator: std.mem.Allocator) !void {
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 10000) : (i += 1) {
+        const div = try doc.createElement("div");
+        if (i == 5000) try div.setAttribute("id", "target");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    const result = doc.getElementById("target");
+    _ = result;
+}
+
+// Setup functions for query-only benchmarks
+
+fn setupSmallDom(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 100) : (i += 1) {
+        const div = try doc.createElement("div");
+        if (i == 50) try div.setAttribute("id", "target");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    return doc;
+}
+
+fn setupMediumDom(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 1000) : (i += 1) {
+        const div = try doc.createElement("div");
+        if (i == 500) try div.setAttribute("id", "target");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    return doc;
+}
+
+fn setupLargeDom(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 10000) : (i += 1) {
+        const div = try doc.createElement("div");
+        if (i == 5000) try div.setAttribute("id", "target");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    return doc;
+}
+
+// Query benchmark functions (measure only query time)
+
+fn benchGetElementById(doc: *Document) !void {
+    const result = doc.getElementById("target");
+    _ = result;
+}
+
+fn benchQuerySelectorId(doc: *Document) !void {
+    const result = try doc.querySelector("#target");
+    _ = result;
 }

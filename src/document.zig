@@ -482,6 +482,10 @@ pub const Document = struct {
     /// Selector cache for querySelector optimization
     selector_cache: SelectorCache,
 
+    /// ID map for O(1) getElementById lookups
+    /// Maps id attribute values to elements
+    id_map: std.StringHashMap(*Element),
+
     /// Next node ID to assign
     next_node_id: u16,
 
@@ -532,6 +536,10 @@ pub const Document = struct {
         const selector_cache = SelectorCache.init(allocator);
         errdefer selector_cache.deinit();
 
+        // Initialize ID map
+        var id_map = std.StringHashMap(*Element).init(allocator);
+        errdefer id_map.deinit();
+
         // Initialize base Node
         doc.node = .{
             .vtable = &vtable,
@@ -555,6 +563,7 @@ pub const Document = struct {
         doc.node_ref_count = std.atomic.Value(usize).init(0);
         doc.string_pool = string_pool;
         doc.selector_cache = selector_cache;
+        doc.id_map = id_map;
         doc.next_node_id = 1; // 0 reserved for document itself
         doc.is_destroying = false;
 
@@ -824,6 +833,64 @@ pub const Document = struct {
     }
 
     // ========================================================================
+    // Document Query Methods
+    // ========================================================================
+
+    /// Returns the element with the specified ID (O(1) lookup).
+    ///
+    /// Implements WHATWG DOM Document.getElementById() per §4.5.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.5 Interface Document**: https://dom.spec.whatwg.org/#dom-document-getelementbyid
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// Element? getElementById(DOMString elementId);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Document.getElementById(): https://developer.mozilla.org/en-US/docs/Web/API/Document/getElementById
+    ///
+    /// ## Algorithm (WHATWG DOM §4.5)
+    /// Return the first element in tree order with an id attribute equal to elementId,
+    /// or null if no such element exists.
+    ///
+    /// ## Performance
+    /// **O(1)** hash map lookup via document ID map.
+    /// This is dramatically faster than querySelector("#id") which requires:
+    /// - Parsing the selector string
+    /// - Traversing the DOM tree
+    ///
+    /// ## Returns
+    /// Element with matching id attribute, or null if not found
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const button = try doc.createElement("button");
+    /// try button.setAttribute("id", "submit");
+    /// _ = try doc.node.appendChild(&button.node);
+    ///
+    /// const found = doc.getElementById("submit");
+    /// // found == button (O(1) lookup!)
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// const button = document.getElementById('submit');
+    /// // Returns: Element or null
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-getelementbyid
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:515
+    pub fn getElementById(self: *const Document, element_id: []const u8) ?*Element {
+        return self.id_map.get(element_id);
+    }
+
+    // ========================================================================
     // ParentNode Mixin - Query Selector
     // ========================================================================
 
@@ -999,6 +1066,9 @@ pub const Document = struct {
 
         // Clean up selector cache
         self.selector_cache.deinit();
+
+        // Clean up ID map
+        self.id_map.deinit();
 
         // Free document structure
         self.node.allocator.destroy(self);
@@ -1564,4 +1634,128 @@ test "Document - selector cache integration" {
     try std.testing.expectEqual(@as(usize, 0), doc.selector_cache.count());
 
     // We'll test actual usage in the next step when we integrate with querySelector
+}
+
+// ============================================================================
+// ID MAP TESTS (Phase 2)
+// ============================================================================
+
+test "Document - getElementById basic" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button = try doc.createElement("button");
+    try button.setAttribute("id", "submit");
+    _ = try root.node.appendChild(&button.node);
+
+    // O(1) lookup!
+    const found = doc.getElementById("submit");
+    try std.testing.expect(found != null);
+    try std.testing.expect(found.? == button);
+
+    // Not found
+    const not_found = doc.getElementById("missing");
+    try std.testing.expect(not_found == null);
+}
+
+test "Document - getElementById updates on setAttribute" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button = try doc.createElement("button");
+    _ = try root.node.appendChild(&button.node);
+
+    // Initially no ID
+    try std.testing.expect(doc.getElementById("test") == null);
+
+    // Set ID
+    try button.setAttribute("id", "test");
+    const found1 = doc.getElementById("test");
+    try std.testing.expect(found1 != null);
+    try std.testing.expect(found1.? == button);
+
+    // Change ID
+    try button.setAttribute("id", "changed");
+    try std.testing.expect(doc.getElementById("test") == null);
+    const found2 = doc.getElementById("changed");
+    try std.testing.expect(found2 != null);
+    try std.testing.expect(found2.? == button);
+}
+
+test "Document - getElementById cleans up on removeAttribute" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button = try doc.createElement("button");
+    try button.setAttribute("id", "remove-test");
+    _ = try root.node.appendChild(&button.node);
+
+    // ID exists
+    try std.testing.expect(doc.getElementById("remove-test") != null);
+
+    // Remove ID attribute
+    button.removeAttribute("id");
+    try std.testing.expect(doc.getElementById("remove-test") == null);
+}
+
+test "Document - getElementById multiple elements" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    // Create multiple elements with IDs
+    const button1 = try doc.createElement("button");
+    try button1.setAttribute("id", "btn1");
+    _ = try root.node.appendChild(&button1.node);
+
+    const button2 = try doc.createElement("button");
+    try button2.setAttribute("id", "btn2");
+    _ = try root.node.appendChild(&button2.node);
+
+    const button3 = try doc.createElement("button");
+    try button3.setAttribute("id", "btn3");
+    _ = try root.node.appendChild(&button3.node);
+
+    // All should be findable
+    try std.testing.expect(doc.getElementById("btn1").? == button1);
+    try std.testing.expect(doc.getElementById("btn2").? == button2);
+    try std.testing.expect(doc.getElementById("btn3").? == button3);
+}
+
+test "Document - querySelector uses getElementById for #id" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button = try doc.createElement("button");
+    try button.setAttribute("id", "target");
+    _ = try root.node.appendChild(&button.node);
+
+    // querySelector("#id") should use fast path with O(1) lookup
+    const found = try doc.querySelector("#target");
+    try std.testing.expect(found != null);
+    try std.testing.expect(found.? == button);
 }

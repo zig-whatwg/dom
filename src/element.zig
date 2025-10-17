@@ -428,11 +428,37 @@ pub const Element = struct {
     /// See: https://dom.spec.whatwg.org/#dom-element-setattribute
     /// See: https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttribute
     pub fn setAttribute(self: *Element, name: []const u8, value: []const u8) !void {
+        // Handle ID attribute changes (maintain document ID map)
+        if (std.mem.eql(u8, name, "id")) {
+            // Remove old ID from document map if it exists
+            if (self.getAttribute("id")) |old_id| {
+                if (self.node.owner_document) |owner| {
+                    if (owner.node_type == .document) {
+                        const Document = @import("document.zig").Document;
+                        const doc: *Document = @fieldParentPtr("node", owner);
+                        _ = doc.id_map.remove(old_id);
+                    }
+                }
+            }
+        }
+
+        // Set the attribute
         try self.attributes.set(name, value);
 
         // Update bloom filter for class attribute
         if (std.mem.eql(u8, name, "class")) {
             self.updateClassBloom(value);
+        }
+
+        // Add new ID to document map
+        if (std.mem.eql(u8, name, "id")) {
+            if (self.node.owner_document) |owner| {
+                if (owner.node_type == .document) {
+                    const Document = @import("document.zig").Document;
+                    const doc: *Document = @fieldParentPtr("node", owner);
+                    try doc.id_map.put(value, self);
+                }
+            }
         }
     }
 
@@ -475,6 +501,19 @@ pub const Element = struct {
     /// ## Parameters
     /// - `name`: Attribute name to remove
     pub fn removeAttribute(self: *Element, name: []const u8) void {
+        // Remove ID from document map before removing attribute
+        if (std.mem.eql(u8, name, "id")) {
+            if (self.getAttribute("id")) |old_id| {
+                if (self.node.owner_document) |owner| {
+                    if (owner.node_type == .document) {
+                        const Document = @import("document.zig").Document;
+                        const doc: *Document = @fieldParentPtr("node", owner);
+                        _ = doc.id_map.remove(old_id);
+                    }
+                }
+            }
+        }
+
         const removed = self.attributes.remove(name);
 
         // Rebuild bloom filter if removing class attribute
@@ -1001,6 +1040,32 @@ pub const Element = struct {
     /// // found == button
     /// ```
     pub fn queryById(self: *Element, id: []const u8) ?*Element {
+        // Fast path: Use document ID map if available (O(1) lookup!)
+        if (self.node.owner_document) |owner| {
+            if (owner.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("node", owner);
+
+                // Check if element with this ID exists
+                if (doc.id_map.get(id)) |elem| {
+                    // Fast case: if self is the document element, all elements are descendants
+                    if (self == doc.documentElement()) {
+                        return elem;
+                    }
+
+                    // Otherwise verify the element is actually a descendant of self
+                    var current = elem.node.parent_node;
+                    while (current) |parent| {
+                        if (parent == &self.node) {
+                            return elem;
+                        }
+                        current = parent.parent_node;
+                    }
+                }
+            }
+        }
+
+        // Fallback: O(n) scan if no document or element not in our subtree
         const ElementIterator = @import("element_iterator.zig").ElementIterator;
         var iter = ElementIterator.init(&self.node);
 
@@ -2036,4 +2101,133 @@ test "Element - multiple different selectors cached" {
     // Query by ID again (cached)
     _ = try container.querySelector(allocator, "#submit");
     try std.testing.expectEqual(@as(usize, 3), doc.selector_cache.count());
+}
+
+// ============================================================================
+// ID MAP INTEGRATION TESTS (Phase 2)
+// ============================================================================
+
+test "Element - queryById uses id_map when available" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    // Build nested structure
+    const container = try doc.createElement("div");
+    _ = try root.node.appendChild(&container.node);
+
+    const button = try doc.createElement("button");
+    try button.setAttribute("id", "deep-button");
+    _ = try container.node.appendChild(&button.node);
+
+    // queryById on root should find button via O(1) id_map lookup
+    const found = root.queryById("deep-button");
+    try std.testing.expect(found != null);
+    try std.testing.expect(found.? == button);
+}
+
+test "Element - queryById only returns descendants" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    // Create two separate branches
+    const branch1 = try doc.createElement("div");
+    _ = try root.node.appendChild(&branch1.node);
+
+    const branch2 = try doc.createElement("div");
+    _ = try root.node.appendChild(&branch2.node);
+
+    const button = try doc.createElement("button");
+    try button.setAttribute("id", "target");
+    _ = try branch2.node.appendChild(&button.node);
+
+    // queryById on branch1 should NOT find button (different subtree)
+    const not_found = branch1.queryById("target");
+    try std.testing.expect(not_found == null);
+
+    // queryById on branch2 should find button
+    const found = branch2.queryById("target");
+    try std.testing.expect(found != null);
+    try std.testing.expect(found.? == button);
+}
+
+test "Element - querySelector #id uses id_map" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    // Create deeply nested structure
+    const div1 = try doc.createElement("div");
+    _ = try root.node.appendChild(&div1.node);
+
+    const div2 = try doc.createElement("div");
+    _ = try div1.node.appendChild(&div2.node);
+
+    const div3 = try doc.createElement("div");
+    _ = try div2.node.appendChild(&div3.node);
+
+    const button = try doc.createElement("button");
+    try button.setAttribute("id", "deep-target");
+    _ = try div3.node.appendChild(&button.node);
+
+    // querySelector should use O(1) id_map lookup
+    const found = try root.querySelector(allocator, "#deep-target");
+    try std.testing.expect(found != null);
+    try std.testing.expect(found.? == button);
+}
+
+test "Element - setAttribute updates id_map" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button = try doc.createElement("button");
+    _ = try root.node.appendChild(&button.node);
+
+    // Set ID
+    try button.setAttribute("id", "original");
+    try std.testing.expect(doc.getElementById("original").? == button);
+
+    // Change ID - should update map
+    try button.setAttribute("id", "changed");
+    try std.testing.expect(doc.getElementById("original") == null);
+    try std.testing.expect(doc.getElementById("changed").? == button);
+}
+
+test "Element - removeAttribute cleans id_map" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button = try doc.createElement("button");
+    try button.setAttribute("id", "temp");
+    _ = try root.node.appendChild(&button.node);
+
+    // ID should be in map
+    try std.testing.expect(doc.getElementById("temp").? == button);
+
+    // Remove ID
+    button.removeAttribute("id");
+    try std.testing.expect(doc.getElementById("temp") == null);
 }
