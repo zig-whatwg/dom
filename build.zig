@@ -158,7 +158,7 @@ pub fn build(b: *std.Build) void {
     const bench_exe = b.addExecutable(.{
         .name = "benchmark",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/benchmark_runner.zig"),
+            .root_source_file = b.path("benchmarks/benchmark_runner.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{

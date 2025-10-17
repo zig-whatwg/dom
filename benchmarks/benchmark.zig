@@ -1,11 +1,12 @@
 //! Benchmark suite for DOM selector performance
 
 const std = @import("std");
-const Document = @import("document.zig").Document;
-const Element = @import("element.zig").Element;
-const Tokenizer = @import("selector/tokenizer.zig").Tokenizer;
-const Parser = @import("selector/parser.zig").Parser;
-const Matcher = @import("selector/matcher.zig").Matcher;
+const dom = @import("dom");
+const Document = dom.Document;
+const Element = dom.Element;
+const Tokenizer = dom.selector.Tokenizer;
+const Parser = dom.selector.Parser;
+const Matcher = dom.selector.Matcher;
 
 /// Single benchmark result
 pub const BenchmarkResult = struct {
