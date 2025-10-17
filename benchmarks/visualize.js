@@ -117,36 +117,32 @@ function generateHTML(groupedResults, browserResults) {
     
     const implementations = ['Zig', ...browsers];
     
+    // Filter out Zig internal components - they're not comparable
+    const comparableResults = groupedResults.filter(r => 
+        !r.name.includes('Tokenizer') && 
+        !r.name.includes('Parser') && 
+        !r.name.includes('Matcher')
+    );
+    
     // Group benchmarks by category
     const categories = {
-        'Zig Internal Components': groupedResults.filter(r => 
-            r.name.includes('Tokenizer') || 
-            r.name.includes('Parser') || 
-            r.name.includes('Matcher')
+        'ID Queries': comparableResults.filter(r => 
+            r.name.includes('getElementById') || r.name.includes('#id')
         ),
-        'ID Queries': groupedResults.filter(r => 
-            (r.name.includes('getElementById') || r.name.includes('#id')) &&
-            !r.name.includes('Tokenizer') && !r.name.includes('Parser') && !r.name.includes('Matcher')
-        ),
-        'Tag Queries': groupedResults.filter(r => 
+        'Tag Queries': comparableResults.filter(r => 
             (r.name.includes('TagName') || r.name.includes('tag (')) && 
-            !r.name.includes('#') &&
-            !r.name.includes('Tokenizer') && !r.name.includes('Parser') && !r.name.includes('Matcher')
+            !r.name.includes('#')
         ),
-        'Class Queries': groupedResults.filter(r => 
-            (r.name.includes('ClassName') || r.name.includes('.class')) &&
-            !r.name.includes('Tokenizer') && !r.name.includes('Parser') && !r.name.includes('Matcher')
+        'Class Queries': comparableResults.filter(r => 
+            r.name.includes('ClassName') || r.name.includes('.class')
         ),
-        'Complex Queries': groupedResults.filter(r => 
+        'Complex Queries': comparableResults.filter(r => 
             !r.name.includes('getElementById') &&
             !r.name.includes('#id') &&
             !r.name.includes('TagName') &&
             !r.name.includes('tag (') &&
             !r.name.includes('ClassName') &&
-            !r.name.includes('.class') &&
-            !r.name.includes('Tokenizer') &&
-            !r.name.includes('Parser') &&
-            !r.name.includes('Matcher')
+            !r.name.includes('.class')
         )
     };
     
@@ -328,15 +324,9 @@ function generateHTML(groupedResults, browserResults) {
         ${Object.entries(categories).map(([categoryName, benchmarks], index) => {
             if (benchmarks.length === 0) return '';
             
-            const isZigInternal = categoryName === 'Zig Internal Components';
-            const categoryNote = isZigInternal 
-                ? '<p style="color: #666; font-style: italic; margin-bottom: 15px;">⚙️ These benchmarks measure Zig internal components (Tokenizer, Parser, Matcher) that browsers don\'t expose as APIs.</p>'
-                : '';
-            
             return `
             <div class="category">
                 <h2>${categoryName}</h2>
-                ${categoryNote}
                 <div class="chart-container">
                     <canvas id="chart-${index}"></canvas>
                 </div>

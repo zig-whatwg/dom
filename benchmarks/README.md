@@ -109,14 +109,9 @@ Generates HTML report from existing results.
 
 ## Benchmark Categories
 
-The suite measures performance across five categories:
+The suite measures performance across four categories:
 
-### Zig Internal Components (Zig-only)
-- Tokenizer (CSS selector tokenization)
-- Parser (selector AST generation)
-- Matcher (element matching logic)
-
-**Note**: These are Zig implementation details. Browsers don't expose these APIs, so they show as "-" in browser columns. These benchmarks are informational, showing the performance of Zig's internal querySelector components.
+**Note**: Zig's internal components (Tokenizer, Parser, Matcher) are benchmarked in Zig but **not included in the comparison report** since browsers don't expose these APIs. The comparison focuses on public DOM APIs available in all implementations.
 
 ### ID Queries (O(1) in Zig via hash map)
 - `getElementById()`
