@@ -442,12 +442,35 @@ pub const Element = struct {
             }
         }
 
+        // Handle class attribute changes (maintain document class map)
+        if (std.mem.eql(u8, name, "class")) {
+            // Remove old classes from class map
+            if (self.getAttribute("class")) |old_classes| {
+                if (self.node.owner_document) |owner| {
+                    if (owner.node_type == .document) {
+                        const Document = @import("document.zig").Document;
+                        const doc: *Document = @fieldParentPtr("node", owner);
+                        try self.removeFromClassMap(doc, old_classes);
+                    }
+                }
+            }
+        }
+
         // Set the attribute
         try self.attributes.set(name, value);
 
-        // Update bloom filter for class attribute
+        // Update bloom filter and class map for class attribute
         if (std.mem.eql(u8, name, "class")) {
             self.updateClassBloom(value);
+
+            // Add new classes to class map
+            if (self.node.owner_document) |owner| {
+                if (owner.node_type == .document) {
+                    const Document = @import("document.zig").Document;
+                    const doc: *Document = @fieldParentPtr("node", owner);
+                    try self.addToClassMap(doc, value);
+                }
+            }
         }
 
         // Add new ID to document map
@@ -514,12 +537,25 @@ pub const Element = struct {
             }
         }
 
+        // Remove classes from class map before removing attribute
+        if (std.mem.eql(u8, name, "class")) {
+            if (self.getAttribute("class")) |old_classes| {
+                if (self.node.owner_document) |owner| {
+                    if (owner.node_type == .document) {
+                        const Document = @import("document.zig").Document;
+                        const doc: *Document = @fieldParentPtr("node", owner);
+                        // removeFromClassMap can't fail since we're only removing
+                        self.removeFromClassMap(doc, old_classes) catch unreachable;
+                    }
+                }
+            }
+        }
+
         const removed = self.attributes.remove(name);
 
-        // Rebuild bloom filter if removing class attribute
+        // Clear bloom filter if removing class attribute
         if (removed and std.mem.eql(u8, name, "class")) {
             self.class_bloom.clear();
-            // Note: In full implementation, we'd rebuild from classList
         }
     }
 
@@ -1107,6 +1143,38 @@ pub const Element = struct {
     /// // found == button
     /// ```
     pub fn queryByClass(self: *Element, class_name: []const u8) ?*Element {
+        // Fast path: Use document class map if available
+        if (self.node.owner_document) |owner| {
+            if (owner.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("node", owner);
+
+                // Check if any elements with this class exist
+                if (doc.class_map.get(class_name)) |list| {
+                    // Find first element that is a descendant of self
+                    for (list.items) |elem| {
+                        // Skip self (we only want descendants)
+                        if (elem == self) continue;
+
+                        // Fast case: if self is the document element, all other elements are descendants
+                        if (self == doc.documentElement()) {
+                            return elem;
+                        }
+
+                        // Verify element is descendant of self
+                        var current = elem.node.parent_node;
+                        while (current) |parent| {
+                            if (parent == &self.node) {
+                                return elem;
+                            }
+                            current = parent.parent_node;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: O(n) scan with bloom filter if no document or no elements in our subtree
         const ElementIterator = @import("element_iterator.zig").ElementIterator;
         var iter = ElementIterator.init(&self.node);
 
@@ -1208,6 +1276,47 @@ pub const Element = struct {
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate result array
     pub fn queryAllByClass(self: *Element, allocator: Allocator, class_name: []const u8) ![]const *Element {
+        // Fast path: Use document class map if available
+        if (self.node.owner_document) |owner| {
+            if (owner.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("node", owner);
+
+                // Check if any elements with this class exist
+                if (doc.class_map.get(class_name)) |list| {
+                    var results = std.ArrayList(*Element){};
+                    defer results.deinit(allocator);
+
+                    for (list.items) |elem| {
+                        // Skip self (we only want descendants)
+                        if (elem == self) continue;
+
+                        // Fast case: if self is the document element, all other elements are descendants
+                        if (self == doc.documentElement()) {
+                            try results.append(allocator, elem);
+                            continue;
+                        }
+
+                        // Verify element is descendant of self
+                        var current = elem.node.parent_node;
+                        while (current) |parent| {
+                            if (parent == &self.node) {
+                                try results.append(allocator, elem);
+                                break;
+                            }
+                            current = parent.parent_node;
+                        }
+                    }
+
+                    return try results.toOwnedSlice(allocator);
+                }
+
+                // No elements with this class
+                return &[_]*Element{};
+            }
+        }
+
+        // Fallback: O(n) scan with bloom filter
         const ElementIterator = @import("element_iterator.zig").ElementIterator;
         var results = std.ArrayList(*Element){};
         defer results.deinit(allocator);
@@ -1469,6 +1578,38 @@ pub const Element = struct {
         }
     }
 
+    /// Adds element to class map for all classes in the class_value string
+    fn addToClassMap(self: *Element, doc: anytype, class_value: []const u8) !void {
+        var iter = std.mem.splitSequence(u8, class_value, " ");
+        while (iter.next()) |class| {
+            if (class.len == 0) continue;
+
+            const result = try doc.class_map.getOrPut(class);
+            if (!result.found_existing) {
+                result.value_ptr.* = std.ArrayList(*Element){};
+            }
+            try result.value_ptr.append(doc.node.allocator, self);
+        }
+    }
+
+    /// Removes element from class map for all classes in the class_value string
+    fn removeFromClassMap(self: *Element, doc: anytype, class_value: []const u8) !void {
+        var iter = std.mem.splitSequence(u8, class_value, " ");
+        while (iter.next()) |class| {
+            if (class.len == 0) continue;
+
+            if (doc.class_map.getPtr(class)) |list_ptr| {
+                // Find and remove this element from the list
+                for (list_ptr.items, 0..) |item, i| {
+                    if (item == self) {
+                        _ = list_ptr.swapRemove(i);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {
         const elem: *Element = @fieldParentPtr("node", node);
@@ -1489,6 +1630,12 @@ pub const Element = struct {
                             break;
                         }
                     }
+                }
+
+                // Remove from class map
+                if (elem.getAttribute("class")) |classes| {
+                    // removeFromClassMap can't fail since we're only removing
+                    elem.removeFromClassMap(doc, classes) catch unreachable;
                 }
 
                 doc.releaseNodeRef();
@@ -2385,4 +2532,127 @@ test "Element - querySelector tag uses tag_map" {
     const found = try root.querySelector(allocator, "button");
     try std.testing.expect(found != null);
     try std.testing.expect(found.? == button);
+}
+
+// ============================================================================
+// CLASS MAP INTEGRATION TESTS (Phase 4)
+// ============================================================================
+
+test "Element - queryByClass uses class_map" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const div1 = try doc.createElement("div");
+    _ = try root.node.appendChild(&div1.node);
+
+    const button = try doc.createElement("button");
+    try button.setAttribute("class", "btn primary");
+    _ = try div1.node.appendChild(&button.node);
+
+    const div2 = try doc.createElement("div");
+    try div2.setAttribute("class", "container");
+    _ = try root.node.appendChild(&div2.node);
+
+    // queryByClass should use O(k) class_map lookup
+    const found = root.queryByClass("btn");
+    try std.testing.expect(found != null);
+    try std.testing.expect(found.? == button);
+
+    // Should also find "primary"
+    const primary = root.queryByClass("primary");
+    try std.testing.expect(primary != null);
+    try std.testing.expect(primary.? == button);
+}
+
+test "Element - queryAllByClass uses class_map" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button1 = try doc.createElement("button");
+    try button1.setAttribute("class", "btn");
+    _ = try root.node.appendChild(&button1.node);
+
+    const button2 = try doc.createElement("button");
+    try button2.setAttribute("class", "btn primary");
+    _ = try root.node.appendChild(&button2.node);
+
+    const div = try doc.createElement("div");
+    try div.setAttribute("class", "container");
+    _ = try root.node.appendChild(&div.node);
+
+    // queryAllByClass should use class_map
+    const btns = try root.queryAllByClass(allocator, "btn");
+    defer allocator.free(btns);
+    try std.testing.expectEqual(@as(usize, 2), btns.len);
+}
+
+test "Element - querySelector .class uses class_map" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button = try doc.createElement("button");
+    try button.setAttribute("class", "btn");
+    _ = try root.node.appendChild(&button.node);
+
+    // querySelector(".class") should use O(k) class_map lookup
+    const found = try root.querySelector(allocator, ".btn");
+    try std.testing.expect(found != null);
+    try std.testing.expect(found.? == button);
+}
+
+test "Element - class_map with multiple classes per element" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button = try doc.createElement("button");
+    try button.setAttribute("class", "btn btn-primary active");
+    _ = try root.node.appendChild(&button.node);
+
+    // Should find element by any of its classes
+    const by_btn = root.queryByClass("btn");
+    try std.testing.expect(by_btn == button);
+
+    const by_primary = root.queryByClass("btn-primary");
+    try std.testing.expect(by_primary == button);
+
+    const by_active = root.queryByClass("active");
+    try std.testing.expect(by_active == button);
+}
+
+test "Element - queryByClass only returns descendants" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const div = try doc.createElement("div");
+    try div.setAttribute("class", "container");
+    _ = try root.node.appendChild(&div.node);
+
+    // Querying from div for "container" should not find itself
+    const found = div.queryByClass("container");
+    try std.testing.expect(found == null);
 }

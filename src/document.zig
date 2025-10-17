@@ -491,6 +491,11 @@ pub const Document = struct {
     /// k = number of matching elements
     tag_map: std.StringHashMap(std.ArrayList(*Element)),
 
+    /// Class map for O(k) getElementsByClassName lookups
+    /// Maps class names to lists of elements with that class
+    /// k = number of matching elements
+    class_map: std.StringHashMap(std.ArrayList(*Element)),
+
     /// Next node ID to assign
     next_node_id: u16,
 
@@ -549,6 +554,10 @@ pub const Document = struct {
         var tag_map = std.StringHashMap(std.ArrayList(*Element)).init(allocator);
         errdefer tag_map.deinit();
 
+        // Initialize class map
+        var class_map = std.StringHashMap(std.ArrayList(*Element)).init(allocator);
+        errdefer class_map.deinit();
+
         // Initialize base Node
         doc.node = .{
             .vtable = &vtable,
@@ -574,6 +583,7 @@ pub const Document = struct {
         doc.selector_cache = selector_cache;
         doc.id_map = id_map;
         doc.tag_map = tag_map;
+        doc.class_map = class_map;
         doc.next_node_id = 1; // 0 reserved for document itself
         doc.is_destroying = false;
 
@@ -970,6 +980,78 @@ pub const Document = struct {
         return &[_]*Element{};
     }
 
+    /// Returns all elements with the specified class name (O(k) lookup).
+    ///
+    /// Implements WHATWG DOM Document.getElementsByClassName() per §4.5.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.5 Interface Document**: https://dom.spec.whatwg.org/#dom-document-getelementsbyclassname
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// HTMLCollection getElementsByClassName(DOMString classNames);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Document.getElementsByClassName(): https://developer.mozilla.org/en-US/docs/Web/API/Document/getElementsByClassName
+    ///
+    /// ## Algorithm (WHATWG DOM §4.5)
+    /// Return a live HTMLCollection of all elements with the given class name.
+    ///
+    /// ## Performance
+    /// **O(k)** where k = number of matching elements.
+    /// Uses class map for direct lookup, avoiding O(n) tree traversal.
+    ///
+    /// ## Parameters
+    /// - `allocator`: Allocator for result array
+    /// - `class_name`: Single class name to match (without "." prefix)
+    ///
+    /// ## Returns
+    /// Slice of elements with matching class name (caller owns, must free)
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate result array
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const button1 = try doc.createElement("button");
+    /// try button1.setAttribute("class", "btn primary");
+    /// _ = try doc.node.appendChild(&button1.node);
+    ///
+    /// const button2 = try doc.createElement("button");
+    /// try button2.setAttribute("class", "btn");
+    /// _ = try doc.node.appendChild(&button2.node);
+    ///
+    /// const btns = try doc.getElementsByClassName(allocator, "btn");
+    /// defer allocator.free(btns);
+    /// // btns.len == 2 (both buttons have "btn" class)
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// const buttons = document.getElementsByClassName('btn');
+    /// // Returns: HTMLCollection (live)
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-getelementsbyclassname
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:519
+    ///
+    /// ## Note
+    /// This returns a snapshot (not live). Live collections require additional tracking.
+    /// Only supports single class name lookup (not space-separated list yet).
+    pub fn getElementsByClassName(self: *const Document, allocator: Allocator, class_name: []const u8) ![]const *Element {
+        if (self.class_map.get(class_name)) |list| {
+            // Return a copy of the list
+            return try allocator.dupe(*Element, list.items);
+        }
+        // No elements with this class
+        return &[_]*Element{};
+    }
+
     // ========================================================================
     // ParentNode Mixin - Query Selector
     // ========================================================================
@@ -1156,6 +1238,13 @@ pub const Document = struct {
             list_ptr.deinit(self.node.allocator);
         }
         self.tag_map.deinit();
+
+        // Clean up class map
+        var class_it = self.class_map.valueIterator();
+        while (class_it.next()) |list_ptr| {
+            list_ptr.deinit(self.node.allocator);
+        }
+        self.class_map.deinit();
 
         // Free document structure
         self.node.allocator.destroy(self);
@@ -1945,5 +2034,176 @@ test "Document - tag map cleaned up on element removal" {
         defer allocator.free(divs);
         try std.testing.expectEqual(@as(usize, 1), divs.len);
         try std.testing.expect(divs[0] == div2);
+    }
+}
+
+test "Document - getElementsByClassName basic" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button1 = try doc.createElement("button");
+    try button1.setAttribute("class", "btn primary");
+    _ = try root.node.appendChild(&button1.node);
+
+    const button2 = try doc.createElement("button");
+    try button2.setAttribute("class", "btn");
+    _ = try root.node.appendChild(&button2.node);
+
+    const div = try doc.createElement("div");
+    try div.setAttribute("class", "container");
+    _ = try root.node.appendChild(&div.node);
+
+    // Get all "btn" elements
+    const btns = try doc.getElementsByClassName(allocator, "btn");
+    defer allocator.free(btns);
+    try std.testing.expectEqual(@as(usize, 2), btns.len);
+    try std.testing.expect(btns[0] == button1);
+    try std.testing.expect(btns[1] == button2);
+
+    // Get all "primary" elements
+    const primaries = try doc.getElementsByClassName(allocator, "primary");
+    defer allocator.free(primaries);
+    try std.testing.expectEqual(@as(usize, 1), primaries.len);
+    try std.testing.expect(primaries[0] == button1);
+
+    // Get all "container" elements
+    const containers = try doc.getElementsByClassName(allocator, "container");
+    defer allocator.free(containers);
+    try std.testing.expectEqual(@as(usize, 1), containers.len);
+    try std.testing.expect(containers[0] == div);
+
+    // Not found
+    const notfound = try doc.getElementsByClassName(allocator, "notfound");
+    defer allocator.free(notfound);
+    try std.testing.expectEqual(@as(usize, 0), notfound.len);
+}
+
+test "Document - class map maintained on setAttribute" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const div = try doc.createElement("div");
+    _ = try root.node.appendChild(&div.node);
+
+    // Initially no class
+    {
+        const elements = try doc.getElementsByClassName(allocator, "foo");
+        defer allocator.free(elements);
+        try std.testing.expectEqual(@as(usize, 0), elements.len);
+    }
+
+    // Add class
+    try div.setAttribute("class", "foo bar");
+    {
+        const foos = try doc.getElementsByClassName(allocator, "foo");
+        defer allocator.free(foos);
+        try std.testing.expectEqual(@as(usize, 1), foos.len);
+        try std.testing.expect(foos[0] == div);
+
+        const bars = try doc.getElementsByClassName(allocator, "bar");
+        defer allocator.free(bars);
+        try std.testing.expectEqual(@as(usize, 1), bars.len);
+        try std.testing.expect(bars[0] == div);
+    }
+
+    // Change class
+    try div.setAttribute("class", "baz");
+    {
+        // Old classes should be gone
+        const foos = try doc.getElementsByClassName(allocator, "foo");
+        defer allocator.free(foos);
+        try std.testing.expectEqual(@as(usize, 0), foos.len);
+
+        const bars = try doc.getElementsByClassName(allocator, "bar");
+        defer allocator.free(bars);
+        try std.testing.expectEqual(@as(usize, 0), bars.len);
+
+        // New class should be present
+        const bazs = try doc.getElementsByClassName(allocator, "baz");
+        defer allocator.free(bazs);
+        try std.testing.expectEqual(@as(usize, 1), bazs.len);
+        try std.testing.expect(bazs[0] == div);
+    }
+}
+
+test "Document - class map cleaned up on removeAttribute" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const div = try doc.createElement("div");
+    try div.setAttribute("class", "foo bar");
+    _ = try root.node.appendChild(&div.node);
+
+    // Should have classes
+    {
+        const foos = try doc.getElementsByClassName(allocator, "foo");
+        defer allocator.free(foos);
+        try std.testing.expectEqual(@as(usize, 1), foos.len);
+    }
+
+    // Remove class attribute
+    div.removeAttribute("class");
+
+    // Should be empty
+    {
+        const foos = try doc.getElementsByClassName(allocator, "foo");
+        defer allocator.free(foos);
+        try std.testing.expectEqual(@as(usize, 0), foos.len);
+
+        const bars = try doc.getElementsByClassName(allocator, "bar");
+        defer allocator.free(bars);
+        try std.testing.expectEqual(@as(usize, 0), bars.len);
+    }
+}
+
+test "Document - class map cleaned up on element removal" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const div1 = try doc.createElement("div");
+    try div1.setAttribute("class", "foo");
+    _ = try root.node.appendChild(&div1.node);
+
+    const div2 = try doc.createElement("div");
+    try div2.setAttribute("class", "foo");
+    _ = try root.node.appendChild(&div2.node);
+
+    // Should have 2 elements with "foo"
+    {
+        const foos = try doc.getElementsByClassName(allocator, "foo");
+        defer allocator.free(foos);
+        try std.testing.expectEqual(@as(usize, 2), foos.len);
+    }
+
+    // Remove one div
+    _ = try root.node.removeChild(&div1.node);
+    div1.node.release();
+
+    // Should have 1 element with "foo"
+    {
+        const foos = try doc.getElementsByClassName(allocator, "foo");
+        defer allocator.free(foos);
+        try std.testing.expectEqual(@as(usize, 1), foos.len);
+        try std.testing.expect(foos[0] == div2);
     }
 }

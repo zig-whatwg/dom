@@ -148,6 +148,14 @@ pub fn runAllBenchmarks(allocator: std.mem.Allocator) ![]BenchmarkResult {
     try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector tag (1000 elem)", 100000, setupTagMedium, benchQuerySelectorTag));
     try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector tag (10000 elem)", 100000, setupTagLarge, benchQuerySelectorTag));
 
+    // Phase 4: Class query benchmarks
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: getElementsByClassName (100 elem)", 100000, setupClassSmall, benchGetElementsByClassName));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: getElementsByClassName (1000 elem)", 100000, setupClassMedium, benchGetElementsByClassName));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: getElementsByClassName (10000 elem)", 100000, setupClassLarge, benchGetElementsByClassName));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector .class (100 elem)", 100000, setupClassSmall, benchQuerySelectorClass));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector .class (1000 elem)", 100000, setupClassMedium, benchQuerySelectorClass));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector .class (10000 elem)", 100000, setupClassLarge, benchQuerySelectorClass));
+
     return results.toOwnedSlice(allocator);
 }
 
@@ -563,5 +571,94 @@ fn benchGetElementsByTagName(doc: *Document) !void {
 
 fn benchQuerySelectorTag(doc: *Document) !void {
     const result = try doc.querySelector("button");
+    _ = result;
+}
+
+// Setup functions for class query benchmarks (Phase 4)
+
+fn setupClassSmall(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    // Create mix of elements - 50 with "btn", 50 with "container"
+    var i: usize = 0;
+    while (i < 50) : (i += 1) {
+        const button = try doc.createElement("button");
+        try button.setAttribute("class", "btn primary");
+        _ = try root.node.appendChild(&button.node);
+    }
+
+    i = 0;
+    while (i < 50) : (i += 1) {
+        const div = try doc.createElement("div");
+        try div.setAttribute("class", "container");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    return doc;
+}
+
+fn setupClassMedium(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    // Create mix of elements - 500 with "btn", 500 with "container"
+    var i: usize = 0;
+    while (i < 500) : (i += 1) {
+        const button = try doc.createElement("button");
+        try button.setAttribute("class", "btn primary");
+        _ = try root.node.appendChild(&button.node);
+    }
+
+    i = 0;
+    while (i < 500) : (i += 1) {
+        const div = try doc.createElement("div");
+        try div.setAttribute("class", "container");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    return doc;
+}
+
+fn setupClassLarge(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    // Create mix of elements - 5000 with "btn", 5000 with "container"
+    var i: usize = 0;
+    while (i < 5000) : (i += 1) {
+        const button = try doc.createElement("button");
+        try button.setAttribute("class", "btn primary");
+        _ = try root.node.appendChild(&button.node);
+    }
+
+    i = 0;
+    while (i < 5000) : (i += 1) {
+        const div = try doc.createElement("div");
+        try div.setAttribute("class", "container");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    return doc;
+}
+
+// Class query benchmark functions (Phase 4)
+
+fn benchGetElementsByClassName(doc: *Document) !void {
+    const result = try doc.getElementsByClassName(doc.node.allocator, "btn");
+    doc.node.allocator.free(result);
+}
+
+fn benchQuerySelectorClass(doc: *Document) !void {
+    const result = try doc.querySelector(".btn");
     _ = result;
 }

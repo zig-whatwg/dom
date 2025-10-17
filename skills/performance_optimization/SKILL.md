@@ -392,9 +392,16 @@ pub const SmallString = union(enum) {
 
 ## Performance Verification
 
+**⚠️ CRITICAL: ALWAYS use -Doptimize=ReleaseFast for benchmarks!**
+
+Debug builds are 10-100x slower and DO NOT represent real performance.
+
 ```bash
-# Always verify performance hasn't regressed
+# ✅ CORRECT: Always use ReleaseFast for benchmarks
 zig build bench -Doptimize=ReleaseFast
+
+# ❌ WRONG: Never run benchmarks without optimization flags
+zig build bench  # This runs in Debug mode - results are MEANINGLESS
 
 # Profile hot paths
 zig build -Doptimize=ReleaseFast
@@ -404,6 +411,13 @@ perf report
 # Compare with previous benchmarks
 # Ensure < 10% regression for existing operations
 ```
+
+**Benchmark Workflow:**
+1. Run benchmarks BEFORE changes: `zig build bench -Doptimize=ReleaseFast > before.txt`
+2. Make changes
+3. Run benchmarks AFTER changes: `zig build bench -Doptimize=ReleaseFast > after.txt`
+4. Compare results: Look for regressions or improvements
+5. Save results to `benchmark_results/` directory with descriptive name
 
 ## Integration with Other Skills
 
