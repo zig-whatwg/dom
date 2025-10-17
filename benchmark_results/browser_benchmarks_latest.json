@@ -1,20 +1,671 @@
 [
   {
     "browser": "Chromium",
-    "error": "browserType.launch: Executable doesn't exist at /Users/bcardarella/Library/Caches/ms-playwright/chromium_headless_shell-1194/chrome-mac/headless_shell\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝",
-    "timestamp": "2025-10-17T18:59:31.581Z",
-    "results": []
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
+    "timestamp": "2025-10-17T19:25:32.729Z",
+    "results": [
+      {
+        "name": "querySelector: Small DOM (100)",
+        "operations": 1009,
+        "totalMs": 19.300000190734863,
+        "msPerOp": 0.01912784954483138,
+        "opsPerSec": 52279,
+        "nsPerOp": 19127.84954483138
+      },
+      {
+        "name": "querySelector: Medium DOM (1000)",
+        "operations": 1002,
+        "totalMs": 161,
+        "msPerOp": 0.16067864271457086,
+        "opsPerSec": 6223,
+        "nsPerOp": 160678.64271457086
+      },
+      {
+        "name": "querySelector: Large DOM (10000)",
+        "operations": 103,
+        "totalMs": 153.69999980926514,
+        "msPerOp": 1.492233007856943,
+        "opsPerSec": 670,
+        "nsPerOp": 1492233.007856943
+      },
+      {
+        "name": "querySelector: Class selector",
+        "operations": 1009,
+        "totalMs": 160.20000004768372,
+        "msPerOp": 0.15877106050315531,
+        "opsPerSec": 6298,
+        "nsPerOp": 158771.0605031553
+      },
+      {
+        "name": "SPA: Repeated queries (1000x)",
+        "operations": 1001,
+        "totalMs": 53.700000047683716,
+        "msPerOp": 0.05364635369398973,
+        "opsPerSec": 18640,
+        "nsPerOp": 53646.353693989724
+      },
+      {
+        "name": "SPA: Cold vs Hot cache (100x)",
+        "operations": 108,
+        "totalMs": 25.90000009536743,
+        "msPerOp": 0.2398148156978466,
+        "opsPerSec": 4169,
+        "nsPerOp": 239814.8156978466
+      },
+      {
+        "name": "getElementById: Small DOM (100)",
+        "operations": 1004,
+        "totalMs": 14,
+        "msPerOp": 0.013944223107569721,
+        "opsPerSec": 71714,
+        "nsPerOp": 13944.22310756972
+      },
+      {
+        "name": "getElementById: Medium DOM (1000)",
+        "operations": 1000,
+        "totalMs": 143.09999990463257,
+        "msPerOp": 0.14309999990463257,
+        "opsPerSec": 6988,
+        "nsPerOp": 143099.99990463257
+      },
+      {
+        "name": "getElementById: Large DOM (10000)",
+        "operations": 104,
+        "totalMs": 155.60000014305115,
+        "msPerOp": 1.4961538475293379,
+        "opsPerSec": 668,
+        "nsPerOp": 1496153.847529338
+      },
+      {
+        "name": "Pure query: getElementById (100 elem)",
+        "operations": 1000000,
+        "totalMs": 93.29999995231628,
+        "msPerOp": 0.00009329999995231628,
+        "opsPerSec": 10718113,
+        "nsPerOp": 93.29999995231628
+      },
+      {
+        "name": "Pure query: getElementById (1000 elem)",
+        "operations": 1000004,
+        "totalMs": 92.90000009536743,
+        "msPerOp": 0.00009289962849685344,
+        "opsPerSec": 10764305,
+        "nsPerOp": 92.89962849685344
+      },
+      {
+        "name": "Pure query: getElementById (10000 elem)",
+        "operations": 1000009,
+        "totalMs": 96.79999995231628,
+        "msPerOp": 0.00009679912876015744,
+        "opsPerSec": 10330671,
+        "nsPerOp": 96.79912876015743
+      },
+      {
+        "name": "Pure query: querySelector #id (100 elem)",
+        "operations": 100006,
+        "totalMs": 10.200000047683716,
+        "msPerOp": 0.00010199388084398652,
+        "opsPerSec": 9804509,
+        "nsPerOp": 101.99388084398652
+      },
+      {
+        "name": "Pure query: querySelector #id (1000 elem)",
+        "operations": 100006,
+        "totalMs": 9.400000095367432,
+        "msPerOp": 0.0000939943612919968,
+        "opsPerSec": 10638936,
+        "nsPerOp": 93.9943612919968
+      },
+      {
+        "name": "Pure query: querySelector #id (10000 elem)",
+        "operations": 100008,
+        "totalMs": 9.700000047683716,
+        "msPerOp": 0.00009699224109754935,
+        "opsPerSec": 10310103,
+        "nsPerOp": 96.99224109754935
+      },
+      {
+        "name": "Pure query: getElementsByTagName (100 elem)",
+        "operations": 1000008,
+        "totalMs": 89.5,
+        "msPerOp": 0.00008949928400572796,
+        "opsPerSec": 11173273,
+        "nsPerOp": 89.49928400572796
+      },
+      {
+        "name": "Pure query: getElementsByTagName (1000 elem)",
+        "operations": 1000007,
+        "totalMs": 85.70000004768372,
+        "msPerOp": 0.00008569940015188265,
+        "opsPerSec": 11668693,
+        "nsPerOp": 85.69940015188266
+      },
+      {
+        "name": "Pure query: getElementsByTagName (10000 elem)",
+        "operations": 1000005,
+        "totalMs": 83.90000009536743,
+        "msPerOp": 0.00008389958059746444,
+        "opsPerSec": 11919010,
+        "nsPerOp": 83.89958059746444
+      },
+      {
+        "name": "Pure query: querySelector tag (100 elem)",
+        "operations": 100000,
+        "totalMs": 20.59999990463257,
+        "msPerOp": 0.00020599999904632568,
+        "opsPerSec": 4854368,
+        "nsPerOp": 205.99999904632568
+      },
+      {
+        "name": "Pure query: querySelector tag (1000 elem)",
+        "operations": 100001,
+        "totalMs": 157.20000004768372,
+        "msPerOp": 0.0015719842806340308,
+        "opsPerSec": 636138,
+        "nsPerOp": 1571.9842806340307
+      },
+      {
+        "name": "Pure query: querySelector tag (10000 elem)",
+        "operations": 100000,
+        "totalMs": 1579.2000000476837,
+        "msPerOp": 0.015792000000476838,
+        "opsPerSec": 63323,
+        "nsPerOp": 15792.000000476837
+      },
+      {
+        "name": "Pure query: getElementsByClassName (100 elem)",
+        "operations": 1000009,
+        "totalMs": 101.5,
+        "msPerOp": 0.00010149908650822143,
+        "opsPerSec": 9852305,
+        "nsPerOp": 101.49908650822142
+      },
+      {
+        "name": "Pure query: getElementsByClassName (1000 elem)",
+        "operations": 1000001,
+        "totalMs": 91,
+        "msPerOp": 0.000090999909000091,
+        "opsPerSec": 10989021,
+        "nsPerOp": 90.99990900009101
+      },
+      {
+        "name": "Pure query: getElementsByClassName (10000 elem)",
+        "operations": 1000005,
+        "totalMs": 93.89999985694885,
+        "msPerOp": 0.00009389953035929705,
+        "opsPerSec": 10649680,
+        "nsPerOp": 93.89953035929705
+      },
+      {
+        "name": "Pure query: querySelector .class (100 elem)",
+        "operations": 100000,
+        "totalMs": 8.700000047683716,
+        "msPerOp": 0.00008700000047683716,
+        "opsPerSec": 11494252,
+        "nsPerOp": 87.00000047683716
+      },
+      {
+        "name": "Pure query: querySelector .class (1000 elem)",
+        "operations": 100009,
+        "totalMs": 8.599999904632568,
+        "msPerOp": 0.00008599225974294881,
+        "opsPerSec": 11628953,
+        "nsPerOp": 85.99225974294882
+      },
+      {
+        "name": "Pure query: querySelector .class (10000 elem)",
+        "operations": 100000,
+        "totalMs": 7.8999998569488525,
+        "msPerOp": 0.00007899999856948852,
+        "opsPerSec": 12658228,
+        "nsPerOp": 78.99999856948853
+      }
+    ]
   },
   {
     "browser": "Firefox",
-    "error": "browserType.launch: Executable doesn't exist at /Users/bcardarella/Library/Caches/ms-playwright/firefox-1495/firefox/Nightly.app/Contents/MacOS/firefox\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝",
-    "timestamp": "2025-10-17T18:59:31.583Z",
-    "results": []
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:142.0) Gecko/20100101 Firefox/142.0",
+    "timestamp": "2025-10-17T19:25:38.876Z",
+    "results": [
+      {
+        "name": "querySelector: Small DOM (100)",
+        "operations": 1008,
+        "totalMs": 29,
+        "msPerOp": 0.028769841269841268,
+        "opsPerSec": 34758,
+        "nsPerOp": 28769.84126984127
+      },
+      {
+        "name": "querySelector: Medium DOM (1000)",
+        "operations": 1002,
+        "totalMs": 266,
+        "msPerOp": 0.2654690618762475,
+        "opsPerSec": 3766,
+        "nsPerOp": 265469.0618762475
+      },
+      {
+        "name": "querySelector: Large DOM (10000)",
+        "operations": 102,
+        "totalMs": 268,
+        "msPerOp": 2.627450980392157,
+        "opsPerSec": 380,
+        "nsPerOp": 2627450.9803921566
+      },
+      {
+        "name": "querySelector: Class selector",
+        "operations": 1004,
+        "totalMs": 256,
+        "msPerOp": 0.2549800796812749,
+        "opsPerSec": 3921,
+        "nsPerOp": 254980.0796812749
+      },
+      {
+        "name": "SPA: Repeated queries (1000x)",
+        "operations": 1001,
+        "totalMs": 98,
+        "msPerOp": 0.0979020979020979,
+        "opsPerSec": 10214,
+        "nsPerOp": 97902.0979020979
+      },
+      {
+        "name": "SPA: Cold vs Hot cache (100x)",
+        "operations": 105,
+        "totalMs": 42,
+        "msPerOp": 0.4,
+        "opsPerSec": 2500,
+        "nsPerOp": 400000
+      },
+      {
+        "name": "getElementById: Small DOM (100)",
+        "operations": 1007,
+        "totalMs": 26,
+        "msPerOp": 0.025819265143992055,
+        "opsPerSec": 38730,
+        "nsPerOp": 25819.265143992056
+      },
+      {
+        "name": "getElementById: Medium DOM (1000)",
+        "operations": 1005,
+        "totalMs": 275,
+        "msPerOp": 0.2736318407960199,
+        "opsPerSec": 3654,
+        "nsPerOp": 273631.8407960199
+      },
+      {
+        "name": "getElementById: Large DOM (10000)",
+        "operations": 109,
+        "totalMs": 307,
+        "msPerOp": 2.81651376146789,
+        "opsPerSec": 355,
+        "nsPerOp": 2816513.7614678903
+      },
+      {
+        "name": "Pure query: getElementById (100 elem)",
+        "operations": 1000006,
+        "totalMs": 102,
+        "msPerOp": 0.00010199938800367198,
+        "opsPerSec": 9803980,
+        "nsPerOp": 101.99938800367198
+      },
+      {
+        "name": "Pure query: getElementById (1000 elem)",
+        "operations": 1000008,
+        "totalMs": 100,
+        "msPerOp": 0.00009999920000639995,
+        "opsPerSec": 10000080,
+        "nsPerOp": 99.99920000639996
+      },
+      {
+        "name": "Pure query: getElementById (10000 elem)",
+        "operations": 1000002,
+        "totalMs": 103,
+        "msPerOp": 0.000102999794000412,
+        "opsPerSec": 9708757,
+        "nsPerOp": 102.99979400041201
+      },
+      {
+        "name": "Pure query: querySelector #id (100 elem)",
+        "operations": 100004,
+        "totalMs": 17,
+        "msPerOp": 0.0001699932002719891,
+        "opsPerSec": 5882588,
+        "nsPerOp": 169.9932002719891
+      },
+      {
+        "name": "Pure query: querySelector #id (1000 elem)",
+        "operations": 100002,
+        "totalMs": 17,
+        "msPerOp": 0.00016999660006799863,
+        "opsPerSec": 5882470,
+        "nsPerOp": 169.99660006799863
+      },
+      {
+        "name": "Pure query: querySelector #id (10000 elem)",
+        "operations": 100003,
+        "totalMs": 17,
+        "msPerOp": 0.0001699949001529954,
+        "opsPerSec": 5882529,
+        "nsPerOp": 169.9949001529954
+      },
+      {
+        "name": "Pure query: getElementsByTagName (100 elem)",
+        "operations": 1000001,
+        "totalMs": 121,
+        "msPerOp": 0.000120999879000121,
+        "opsPerSec": 8264471,
+        "nsPerOp": 120.99987900012101
+      },
+      {
+        "name": "Pure query: getElementsByTagName (1000 elem)",
+        "operations": 1000002,
+        "totalMs": 123,
+        "msPerOp": 0.000122999754000492,
+        "opsPerSec": 8130097,
+        "nsPerOp": 122.999754000492
+      },
+      {
+        "name": "Pure query: getElementsByTagName (10000 elem)",
+        "operations": 1000001,
+        "totalMs": 137,
+        "msPerOp": 0.000136999863000137,
+        "opsPerSec": 7299277,
+        "nsPerOp": 136.999863000137
+      },
+      {
+        "name": "Pure query: querySelector tag (100 elem)",
+        "operations": 100009,
+        "totalMs": 29,
+        "msPerOp": 0.00028997390234878864,
+        "opsPerSec": 3448586,
+        "nsPerOp": 289.9739023487886
+      },
+      {
+        "name": "Pure query: querySelector tag (1000 elem)",
+        "operations": 100008,
+        "totalMs": 107,
+        "msPerOp": 0.0010699144068474521,
+        "opsPerSec": 934654,
+        "nsPerOp": 1069.9144068474523
+      },
+      {
+        "name": "Pure query: querySelector tag (10000 elem)",
+        "operations": 100000,
+        "totalMs": 1305,
+        "msPerOp": 0.01305,
+        "opsPerSec": 76628,
+        "nsPerOp": 13050
+      },
+      {
+        "name": "Pure query: getElementsByClassName (100 elem)",
+        "operations": 1000004,
+        "totalMs": 147,
+        "msPerOp": 0.000146999412002352,
+        "opsPerSec": 6802748,
+        "nsPerOp": 146.999412002352
+      },
+      {
+        "name": "Pure query: getElementsByClassName (1000 elem)",
+        "operations": 1000003,
+        "totalMs": 156,
+        "msPerOp": 0.00015599953200140398,
+        "opsPerSec": 6410275,
+        "nsPerOp": 155.999532001404
+      },
+      {
+        "name": "Pure query: getElementsByClassName (10000 elem)",
+        "operations": 1000006,
+        "totalMs": 154,
+        "msPerOp": 0.00015399907600554397,
+        "opsPerSec": 6493545,
+        "nsPerOp": 153.99907600554397
+      },
+      {
+        "name": "Pure query: querySelector .class (100 elem)",
+        "operations": 100001,
+        "totalMs": 18,
+        "msPerOp": 0.0001799982000179998,
+        "opsPerSec": 5555611,
+        "nsPerOp": 179.9982000179998
+      },
+      {
+        "name": "Pure query: querySelector .class (1000 elem)",
+        "operations": 100000,
+        "totalMs": 18,
+        "msPerOp": 0.00018,
+        "opsPerSec": 5555555,
+        "nsPerOp": 180
+      },
+      {
+        "name": "Pure query: querySelector .class (10000 elem)",
+        "operations": 100004,
+        "totalMs": 18,
+        "msPerOp": 0.0001799928002879885,
+        "opsPerSec": 5555777,
+        "nsPerOp": 179.99280028798847
+      }
+    ]
   },
   {
     "browser": "WebKit",
-    "error": "browserType.launch: Executable doesn't exist at /Users/bcardarella/Library/Caches/ms-playwright/webkit-2215/pw_run.sh\n╔═════════════════════════════════════════════════════════════════════════╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:              ║\n║                                                                         ║\n║     npx playwright install                                              ║\n║                                                                         ║\n║ <3 Playwright Team                                                      ║\n╚═════════════════════════════════════════════════════════════════════════╝",
-    "timestamp": "2025-10-17T18:59:31.585Z",
-    "results": []
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+    "timestamp": "2025-10-17T19:25:44.529Z",
+    "results": [
+      {
+        "name": "querySelector: Small DOM (100)",
+        "operations": 1003,
+        "totalMs": 23.999999999999996,
+        "msPerOp": 0.023928215353938184,
+        "opsPerSec": 41791,
+        "nsPerOp": 23928.215353938183
+      },
+      {
+        "name": "querySelector: Medium DOM (1000)",
+        "operations": 1000,
+        "totalMs": 236,
+        "msPerOp": 0.236,
+        "opsPerSec": 4237,
+        "nsPerOp": 236000
+      },
+      {
+        "name": "querySelector: Large DOM (10000)",
+        "operations": 106,
+        "totalMs": 216,
+        "msPerOp": 2.0377358490566038,
+        "opsPerSec": 490,
+        "nsPerOp": 2037735.8490566039
+      },
+      {
+        "name": "querySelector: Class selector",
+        "operations": 1006,
+        "totalMs": 207,
+        "msPerOp": 0.20576540755467196,
+        "opsPerSec": 4859,
+        "nsPerOp": 205765.40755467195
+      },
+      {
+        "name": "SPA: Repeated queries (1000x)",
+        "operations": 1006,
+        "totalMs": 175,
+        "msPerOp": 0.17395626242544732,
+        "opsPerSec": 5748,
+        "nsPerOp": 173956.26242544732
+      },
+      {
+        "name": "SPA: Cold vs Hot cache (100x)",
+        "operations": 105,
+        "totalMs": 39.000000000000114,
+        "msPerOp": 0.3714285714285725,
+        "opsPerSec": 2692,
+        "nsPerOp": 371428.57142857247
+      },
+      {
+        "name": "getElementById: Small DOM (100)",
+        "operations": 1005,
+        "totalMs": 24.999999999999886,
+        "msPerOp": 0.02487562189054715,
+        "opsPerSec": 40200,
+        "nsPerOp": 24875.62189054715
+      },
+      {
+        "name": "getElementById: Medium DOM (1000)",
+        "operations": 1003,
+        "totalMs": 254,
+        "msPerOp": 0.25324027916251246,
+        "opsPerSec": 3948,
+        "nsPerOp": 253240.27916251245
+      },
+      {
+        "name": "getElementById: Large DOM (10000)",
+        "operations": 100,
+        "totalMs": 260.9999999999998,
+        "msPerOp": 2.6099999999999977,
+        "opsPerSec": 383,
+        "nsPerOp": 2609999.9999999977
+      },
+      {
+        "name": "Pure query: getElementById (100 elem)",
+        "operations": 1000001,
+        "totalMs": 77,
+        "msPerOp": 0.000076999923000077,
+        "opsPerSec": 12987025,
+        "nsPerOp": 76.999923000077
+      },
+      {
+        "name": "Pure query: getElementById (1000 elem)",
+        "operations": 1000008,
+        "totalMs": 72,
+        "msPerOp": 0.00007199942400460797,
+        "opsPerSec": 13889000,
+        "nsPerOp": 71.99942400460797
+      },
+      {
+        "name": "Pure query: getElementById (10000 elem)",
+        "operations": 1000003,
+        "totalMs": 71,
+        "msPerOp": 0.000070999787000639,
+        "opsPerSec": 14084549,
+        "nsPerOp": 70.999787000639
+      },
+      {
+        "name": "Pure query: querySelector #id (100 elem)",
+        "operations": 100005,
+        "totalMs": 16,
+        "msPerOp": 0.00015999200039998,
+        "opsPerSec": 6250312,
+        "nsPerOp": 159.99200039998001
+      },
+      {
+        "name": "Pure query: querySelector #id (1000 elem)",
+        "operations": 100001,
+        "totalMs": 15.000000000000227,
+        "msPerOp": 0.00014999850001500212,
+        "opsPerSec": 6666733,
+        "nsPerOp": 149.99850001500212
+      },
+      {
+        "name": "Pure query: querySelector #id (10000 elem)",
+        "operations": 100009,
+        "totalMs": 17,
+        "msPerOp": 0.00016998470137687607,
+        "opsPerSec": 5882882,
+        "nsPerOp": 169.98470137687607
+      },
+      {
+        "name": "Pure query: getElementsByTagName (100 elem)",
+        "operations": 1000007,
+        "totalMs": 74,
+        "msPerOp": 0.00007399948200362597,
+        "opsPerSec": 13513608,
+        "nsPerOp": 73.99948200362597
+      },
+      {
+        "name": "Pure query: getElementsByTagName (1000 elem)",
+        "operations": 1000002,
+        "totalMs": 73,
+        "msPerOp": 0.000072999854000292,
+        "opsPerSec": 13698657,
+        "nsPerOp": 72.999854000292
+      },
+      {
+        "name": "Pure query: getElementsByTagName (10000 elem)",
+        "operations": 1000009,
+        "totalMs": 130,
+        "msPerOp": 0.0001299988300105299,
+        "opsPerSec": 7692376,
+        "nsPerOp": 129.9988300105299
+      },
+      {
+        "name": "Pure query: querySelector tag (100 elem)",
+        "operations": 100009,
+        "totalMs": 24,
+        "msPerOp": 0.00023997840194382505,
+        "opsPerSec": 4167041,
+        "nsPerOp": 239.97840194382505
+      },
+      {
+        "name": "Pure query: querySelector tag (1000 elem)",
+        "operations": 100004,
+        "totalMs": 118,
+        "msPerOp": 0.0011799528018879245,
+        "opsPerSec": 847491,
+        "nsPerOp": 1179.9528018879246
+      },
+      {
+        "name": "Pure query: querySelector tag (10000 elem)",
+        "operations": 100007,
+        "totalMs": 1983,
+        "msPerOp": 0.019828611997160198,
+        "opsPerSec": 50432,
+        "nsPerOp": 19828.6119971602
+      },
+      {
+        "name": "Pure query: getElementsByClassName (100 elem)",
+        "operations": 1000001,
+        "totalMs": 68,
+        "msPerOp": 0.00006799993200006799,
+        "opsPerSec": 14705897,
+        "nsPerOp": 67.999932000068
+      },
+      {
+        "name": "Pure query: getElementsByClassName (1000 elem)",
+        "operations": 1000009,
+        "totalMs": 66,
+        "msPerOp": 0.00006599940600534595,
+        "opsPerSec": 15151651,
+        "nsPerOp": 65.99940600534595
+      },
+      {
+        "name": "Pure query: getElementsByClassName (10000 elem)",
+        "operations": 1000001,
+        "totalMs": 67,
+        "msPerOp": 0.000066999933000067,
+        "opsPerSec": 14925388,
+        "nsPerOp": 66.999933000067
+      },
+      {
+        "name": "Pure query: querySelector .class (100 elem)",
+        "operations": 100000,
+        "totalMs": 11,
+        "msPerOp": 0.00011,
+        "opsPerSec": 9090909,
+        "nsPerOp": 110
+      },
+      {
+        "name": "Pure query: querySelector .class (1000 elem)",
+        "operations": 100001,
+        "totalMs": 11,
+        "msPerOp": 0.00010999890001099989,
+        "opsPerSec": 9091000,
+        "nsPerOp": 109.99890001099989
+      },
+      {
+        "name": "Pure query: querySelector .class (10000 elem)",
+        "operations": 100007,
+        "totalMs": 12,
+        "msPerOp": 0.00011999160058795884,
+        "opsPerSec": 8333916,
+        "nsPerOp": 119.99160058795884
+      }
+    ]
   }
 ]

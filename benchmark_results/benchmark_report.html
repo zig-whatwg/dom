@@ -156,6 +156,18 @@
                         <span>●</span> Zig
                     </div>
                 
+                    <div class="impl-badge impl-chromium">
+                        <span>●</span> Chromium
+                    </div>
+                
+                    <div class="impl-badge impl-firefox">
+                        <span>●</span> Firefox
+                    </div>
+                
+                    <div class="impl-badge impl-webkit">
+                        <span>●</span> WebKit
+                    </div>
+                
             </div>
         </header>
         
@@ -170,7 +182,7 @@
                     <thead>
                         <tr>
                             <th>Benchmark</th>
-                            <th>Zig</th>
+                            <th>Zig</th><th>Chromium</th><th>Firefox</th><th>WebKit</th>
                             <th>Winner</th>
                         </tr>
                     </thead>
@@ -178,55 +190,55 @@
                         
                             <tr>
                                 <td><strong>getElementById: Small DOM (100)</strong></td>
-                                <td>63µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>29µs<span class="speedup"> (2.1x slower)</span></td><td>14µs<span class="speedup"></span></td><td>26µs<span class="speedup"> (1.9x slower)</span></td><td>25µs<span class="speedup"> (1.8x slower)</span></td>
+                                <td class="winner">Chromium</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>getElementById: Medium DOM (1000)</strong></td>
-                                <td>340µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>216µs<span class="speedup"> (1.5x slower)</span></td><td>143µs<span class="speedup"></span></td><td>274µs<span class="speedup"> (1.9x slower)</span></td><td>253µs<span class="speedup"> (1.8x slower)</span></td>
+                                <td class="winner">Chromium</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>getElementById: Large DOM (10000)</strong></td>
-                                <td>11ms<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>11ms<span class="speedup"> (7.4x slower)</span></td><td>1ms<span class="speedup"></span></td><td>3ms<span class="speedup"> (1.9x slower)</span></td><td>3ms<span class="speedup"> (1.7x slower)</span></td>
+                                <td class="winner">Chromium</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: getElementById (100 elem)</strong></td>
-                                <td>5ns<span class="speedup"></span></td>
+                                <td>5ns<span class="speedup"></span></td><td>93ns<span class="speedup"> (18.7x slower)</span></td><td>102ns<span class="speedup"> (20.4x slower)</span></td><td>77ns<span class="speedup"> (15.4x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: getElementById (1000 elem)</strong></td>
-                                <td>5ns<span class="speedup"></span></td>
+                                <td>5ns<span class="speedup"></span></td><td>93ns<span class="speedup"> (18.6x slower)</span></td><td>100ns<span class="speedup"> (20.0x slower)</span></td><td>72ns<span class="speedup"> (14.4x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: getElementById (10000 elem)</strong></td>
-                                <td>5ns<span class="speedup"></span></td>
+                                <td>4ns<span class="speedup"></span></td><td>97ns<span class="speedup"> (24.2x slower)</span></td><td>103ns<span class="speedup"> (25.7x slower)</span></td><td>71ns<span class="speedup"> (17.7x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: querySelector #id (100 elem)</strong></td>
-                                <td>13ns<span class="speedup"></span></td>
+                                <td>13ns<span class="speedup"></span></td><td>102ns<span class="speedup"> (7.8x slower)</span></td><td>170ns<span class="speedup"> (13.1x slower)</span></td><td>160ns<span class="speedup"> (12.3x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: querySelector #id (1000 elem)</strong></td>
-                                <td>13ns<span class="speedup"></span></td>
+                                <td>14ns<span class="speedup"></span></td><td>94ns<span class="speedup"> (6.7x slower)</span></td><td>170ns<span class="speedup"> (12.1x slower)</span></td><td>150ns<span class="speedup"> (10.7x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: querySelector #id (10000 elem)</strong></td>
-                                <td>13ns<span class="speedup"></span></td>
+                                <td>15ns<span class="speedup"></span></td><td>97ns<span class="speedup"> (6.5x slower)</span></td><td>170ns<span class="speedup"> (11.3x slower)</span></td><td>170ns<span class="speedup"> (11.3x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
@@ -244,7 +256,7 @@
                     <thead>
                         <tr>
                             <th>Benchmark</th>
-                            <th>Zig</th>
+                            <th>Zig</th><th>Chromium</th><th>Firefox</th><th>WebKit</th>
                             <th>Winner</th>
                         </tr>
                     </thead>
@@ -252,37 +264,37 @@
                         
                             <tr>
                                 <td><strong>Pure query: getElementsByTagName (100 elem)</strong></td>
-                                <td>5µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>5µs<span class="speedup"> (67.6x slower)</span></td><td>89ns<span class="speedup"> (1.2x slower)</span></td><td>121ns<span class="speedup"> (1.6x slower)</span></td><td>74ns<span class="speedup"></span></td>
+                                <td class="winner">WebKit</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: getElementsByTagName (1000 elem)</strong></td>
-                                <td>5µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>5µs<span class="speedup"> (68.5x slower)</span></td><td>86ns<span class="speedup"> (1.2x slower)</span></td><td>123ns<span class="speedup"> (1.7x slower)</span></td><td>73ns<span class="speedup"></span></td>
+                                <td class="winner">WebKit</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: getElementsByTagName (10000 elem)</strong></td>
-                                <td>7µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>7µs<span class="speedup"> (83.4x slower)</span></td><td>84ns<span class="speedup"></span></td><td>137ns<span class="speedup"> (1.6x slower)</span></td><td>130ns<span class="speedup"> (1.5x slower)</span></td>
+                                <td class="winner">Chromium</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: querySelector tag (100 elem)</strong></td>
-                                <td>15ns<span class="speedup"></span></td>
+                                <td>15ns<span class="speedup"></span></td><td>206ns<span class="speedup"> (13.7x slower)</span></td><td>290ns<span class="speedup"> (19.3x slower)</span></td><td>240ns<span class="speedup"> (16.0x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: querySelector tag (1000 elem)</strong></td>
-                                <td>15ns<span class="speedup"></span></td>
+                                <td>15ns<span class="speedup"></span></td><td>2µs<span class="speedup"> (104.8x slower)</span></td><td>1µs<span class="speedup"> (71.3x slower)</span></td><td>1µs<span class="speedup"> (78.7x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: querySelector tag (10000 elem)</strong></td>
-                                <td>15ns<span class="speedup"></span></td>
+                                <td>16ns<span class="speedup"></span></td><td>16µs<span class="speedup"> (987.0x slower)</span></td><td>13µs<span class="speedup"> (815.6x slower)</span></td><td>20µs<span class="speedup"> (1239.3x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
@@ -300,7 +312,7 @@
                     <thead>
                         <tr>
                             <th>Benchmark</th>
-                            <th>Zig</th>
+                            <th>Zig</th><th>Chromium</th><th>Firefox</th><th>WebKit</th>
                             <th>Winner</th>
                         </tr>
                     </thead>
@@ -308,37 +320,37 @@
                         
                             <tr>
                                 <td><strong>Pure query: getElementsByClassName (100 elem)</strong></td>
-                                <td>5µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>5µs<span class="speedup"> (73.5x slower)</span></td><td>101ns<span class="speedup"> (1.5x slower)</span></td><td>147ns<span class="speedup"> (2.2x slower)</span></td><td>68ns<span class="speedup"></span></td>
+                                <td class="winner">WebKit</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: getElementsByClassName (1000 elem)</strong></td>
-                                <td>5µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>6µs<span class="speedup"> (90.9x slower)</span></td><td>91ns<span class="speedup"> (1.4x slower)</span></td><td>156ns<span class="speedup"> (2.4x slower)</span></td><td>66ns<span class="speedup"></span></td>
+                                <td class="winner">WebKit</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: getElementsByClassName (10000 elem)</strong></td>
-                                <td>7µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>7µs<span class="speedup"> (104.5x slower)</span></td><td>94ns<span class="speedup"> (1.4x slower)</span></td><td>154ns<span class="speedup"> (2.3x slower)</span></td><td>67ns<span class="speedup"></span></td>
+                                <td class="winner">WebKit</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: querySelector .class (100 elem)</strong></td>
-                                <td>14ns<span class="speedup"></span></td>
+                                <td>15ns<span class="speedup"></span></td><td>87ns<span class="speedup"> (5.8x slower)</span></td><td>180ns<span class="speedup"> (12.0x slower)</span></td><td>110ns<span class="speedup"> (7.3x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: querySelector .class (1000 elem)</strong></td>
-                                <td>13ns<span class="speedup"></span></td>
+                                <td>15ns<span class="speedup"></span></td><td>86ns<span class="speedup"> (5.7x slower)</span></td><td>180ns<span class="speedup"> (12.0x slower)</span></td><td>110ns<span class="speedup"> (7.3x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>Pure query: querySelector .class (10000 elem)</strong></td>
-                                <td>14ns<span class="speedup"></span></td>
+                                <td>15ns<span class="speedup"></span></td><td>79ns<span class="speedup"> (5.3x slower)</span></td><td>180ns<span class="speedup"> (12.0x slower)</span></td><td>120ns<span class="speedup"> (8.0x slower)</span></td>
                                 <td class="winner">Zig</td>
                             </tr>
                             
@@ -356,94 +368,46 @@
                     <thead>
                         <tr>
                             <th>Benchmark</th>
-                            <th>Zig</th>
+                            <th>Zig</th><th>Chromium</th><th>Firefox</th><th>WebKit</th>
                             <th>Winner</th>
                         </tr>
                     </thead>
                     <tbody>
                         
                             <tr>
-                                <td><strong>Tokenizer: Simple ID (#main)</strong></td>
-                                <td>6µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
-                            </tr>
-                            
-                            <tr>
-                                <td><strong>Tokenizer: Simple Class (.button)</strong></td>
-                                <td>5µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
-                            </tr>
-                            
-                            <tr>
-                                <td><strong>Tokenizer: Complex</strong></td>
-                                <td>12µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
-                            </tr>
-                            
-                            <tr>
-                                <td><strong>Parser: Simple ID (#main)</strong></td>
-                                <td>12µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
-                            </tr>
-                            
-                            <tr>
-                                <td><strong>Parser: Simple Class (.button)</strong></td>
-                                <td>12µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
-                            </tr>
-                            
-                            <tr>
-                                <td><strong>Parser: Complex</strong></td>
-                                <td>18µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
-                            </tr>
-                            
-                            <tr>
-                                <td><strong>Matcher: Simple ID</strong></td>
-                                <td>20µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
-                            </tr>
-                            
-                            <tr>
-                                <td><strong>Matcher: Simple Class</strong></td>
-                                <td>22µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
-                            </tr>
-                            
-                            <tr>
                                 <td><strong>querySelector: Small DOM (100)</strong></td>
-                                <td>36µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>37µs<span class="speedup"> (1.9x slower)</span></td><td>19µs<span class="speedup"></span></td><td>29µs<span class="speedup"> (1.5x slower)</span></td><td>24µs<span class="speedup"> (1.3x slower)</span></td>
+                                <td class="winner">Chromium</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>querySelector: Medium DOM (1000)</strong></td>
-                                <td>221µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>226µs<span class="speedup"> (1.4x slower)</span></td><td>161µs<span class="speedup"></span></td><td>265µs<span class="speedup"> (1.7x slower)</span></td><td>236µs<span class="speedup"> (1.5x slower)</span></td>
+                                <td class="winner">Chromium</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>querySelector: Large DOM (10000)</strong></td>
-                                <td>10ms<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>11ms<span class="speedup"> (7.4x slower)</span></td><td>1ms<span class="speedup"></span></td><td>3ms<span class="speedup"> (1.8x slower)</span></td><td>2ms<span class="speedup"> (1.4x slower)</span></td>
+                                <td class="winner">Chromium</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>querySelector: Class selector</strong></td>
-                                <td>228µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>224µs<span class="speedup"> (1.4x slower)</span></td><td>159µs<span class="speedup"></span></td><td>255µs<span class="speedup"> (1.6x slower)</span></td><td>206µs<span class="speedup"> (1.3x slower)</span></td>
+                                <td class="winner">Chromium</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>SPA: Repeated queries (1000x)</strong></td>
-                                <td>184µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>79µs<span class="speedup"> (1.5x slower)</span></td><td>54µs<span class="speedup"></span></td><td>98µs<span class="speedup"> (1.8x slower)</span></td><td>174µs<span class="speedup"> (3.2x slower)</span></td>
+                                <td class="winner">Chromium</td>
                             </tr>
                             
                             <tr>
                                 <td><strong>SPA: Cold vs Hot cache (100x)</strong></td>
-                                <td>530µs<span class="speedup"></span></td>
-                                <td class="winner">Zig</td>
+                                <td>452µs<span class="speedup"> (1.9x slower)</span></td><td>240µs<span class="speedup"></span></td><td>400µs<span class="speedup"> (1.7x slower)</span></td><td>371µs<span class="speedup"> (1.5x slower)</span></td>
+                                <td class="winner">Chromium</td>
                             </tr>
                             
                     </tbody>
@@ -452,13 +416,13 @@
             
         
         <footer>
-            <p>Generated: 10/17/2025, 2:59:31 PM</p>
+            <p>Generated: 10/17/2025, 3:28:10 PM</p>
             <p>Zig DOM Implementation - Benchmark Report</p>
         </footer>
     </div>
     
     <script>
-        const implementations = ["Zig"];
+        const implementations = ["Zig","Chromium","Firefox","WebKit"];
         const colors = {
             'Zig': '#f9a825',
             'Chromium': '#4285f4',
@@ -466,7 +430,7 @@
             'WebKit': '#00aaff'
         };
         
-        const chartData = [{"category":"ID Queries","benchmarks":[{"name":"getElementById: Small DOM (100)","data":[63000]},{"name":"getElementById: Medium DOM (1000)","data":[340000]},{"name":"getElementById: Large DOM (10000)","data":[11000000]},{"name":"Pure query: getElementById (100 elem)","data":[5]},{"name":"Pure query: getElementById (1000 elem)","data":[5]},{"name":"Pure query: getElementById (10000 elem)","data":[5]},{"name":"Pure query: querySelector #id (100 elem)","data":[13]},{"name":"Pure query: querySelector #id (1000 elem)","data":[13]},{"name":"Pure query: querySelector #id (10000 elem)","data":[13]}]},{"category":"Tag Queries","benchmarks":[{"name":"Pure query: getElementsByTagName (100 elem)","data":[5000]},{"name":"Pure query: getElementsByTagName (1000 elem)","data":[5000]},{"name":"Pure query: getElementsByTagName (10000 elem)","data":[7000]},{"name":"Pure query: querySelector tag (100 elem)","data":[15]},{"name":"Pure query: querySelector tag (1000 elem)","data":[15]},{"name":"Pure query: querySelector tag (10000 elem)","data":[15]}]},{"category":"Class Queries","benchmarks":[{"name":"Pure query: getElementsByClassName (100 elem)","data":[5000]},{"name":"Pure query: getElementsByClassName (1000 elem)","data":[5000]},{"name":"Pure query: getElementsByClassName (10000 elem)","data":[7000]},{"name":"Pure query: querySelector .class (100 elem)","data":[14]},{"name":"Pure query: querySelector .class (1000 elem)","data":[13]},{"name":"Pure query: querySelector .class (10000 elem)","data":[14]}]},{"category":"Complex Queries","benchmarks":[{"name":"Tokenizer: Simple ID (#main)","data":[6000]},{"name":"Tokenizer: Simple Class (.button)","data":[5000]},{"name":"Tokenizer: Complex","data":[12000]},{"name":"Parser: Simple ID (#main)","data":[12000]},{"name":"Parser: Simple Class (.button)","data":[12000]},{"name":"Parser: Complex","data":[18000]},{"name":"Matcher: Simple ID","data":[20000]},{"name":"Matcher: Simple Class","data":[22000]},{"name":"querySelector: Small DOM (100)","data":[36000]},{"name":"querySelector: Medium DOM (1000)","data":[221000]},{"name":"querySelector: Large DOM (10000)","data":[10000000]},{"name":"querySelector: Class selector","data":[228000]},{"name":"SPA: Repeated queries (1000x)","data":[184000]},{"name":"SPA: Cold vs Hot cache (100x)","data":[530000]}]}];
+        const chartData = [{"category":"ID Queries","benchmarks":[{"name":"getElementById: Small DOM (100)","data":[29000,13944.22310756972,25819.265143992056,24875.62189054715]},{"name":"getElementById: Medium DOM (1000)","data":[216000,143099.99990463257,273631.8407960199,253240.27916251245]},{"name":"getElementById: Large DOM (10000)","data":[11000000,1496153.847529338,2816513.7614678903,2609999.9999999977]},{"name":"Pure query: getElementById (100 elem)","data":[5,93.29999995231628,101.99938800367198,76.999923000077]},{"name":"Pure query: getElementById (1000 elem)","data":[5,92.89962849685344,99.99920000639996,71.99942400460797]},{"name":"Pure query: getElementById (10000 elem)","data":[4,96.79912876015743,102.99979400041201,70.999787000639]},{"name":"Pure query: querySelector #id (100 elem)","data":[13,101.99388084398652,169.9932002719891,159.99200039998001]},{"name":"Pure query: querySelector #id (1000 elem)","data":[14,93.9943612919968,169.99660006799863,149.99850001500212]},{"name":"Pure query: querySelector #id (10000 elem)","data":[15,96.99224109754935,169.9949001529954,169.98470137687607]}]},{"category":"Tag Queries","benchmarks":[{"name":"Pure query: getElementsByTagName (100 elem)","data":[5000,89.49928400572796,120.99987900012101,73.99948200362597]},{"name":"Pure query: getElementsByTagName (1000 elem)","data":[5000,85.69940015188266,122.999754000492,72.999854000292]},{"name":"Pure query: getElementsByTagName (10000 elem)","data":[7000,83.89958059746444,136.999863000137,129.9988300105299]},{"name":"Pure query: querySelector tag (100 elem)","data":[15,205.99999904632568,289.9739023487886,239.97840194382505]},{"name":"Pure query: querySelector tag (1000 elem)","data":[15,1571.9842806340307,1069.9144068474523,1179.9528018879246]},{"name":"Pure query: querySelector tag (10000 elem)","data":[16,15792.000000476837,13050,19828.6119971602]}]},{"category":"Class Queries","benchmarks":[{"name":"Pure query: getElementsByClassName (100 elem)","data":[5000,101.49908650822142,146.999412002352,67.999932000068]},{"name":"Pure query: getElementsByClassName (1000 elem)","data":[6000,90.99990900009101,155.999532001404,65.99940600534595]},{"name":"Pure query: getElementsByClassName (10000 elem)","data":[7000,93.89953035929705,153.99907600554397,66.999933000067]},{"name":"Pure query: querySelector .class (100 elem)","data":[15,87.00000047683716,179.9982000179998,110]},{"name":"Pure query: querySelector .class (1000 elem)","data":[15,85.99225974294882,180,109.99890001099989]},{"name":"Pure query: querySelector .class (10000 elem)","data":[15,78.99999856948853,179.99280028798847,119.99160058795884]}]},{"category":"Complex Queries","benchmarks":[{"name":"querySelector: Small DOM (100)","data":[37000,19127.84954483138,28769.84126984127,23928.215353938183]},{"name":"querySelector: Medium DOM (1000)","data":[226000,160678.64271457086,265469.0618762475,236000]},{"name":"querySelector: Large DOM (10000)","data":[11000000,1492233.007856943,2627450.9803921566,2037735.8490566039]},{"name":"querySelector: Class selector","data":[224000,158771.0605031553,254980.0796812749,205765.40755467195]},{"name":"SPA: Repeated queries (1000x)","data":[79000,53646.353693989724,97902.0979020979,173956.26242544732]},{"name":"SPA: Cold vs Hot cache (100x)","data":[452000,239814.8156978466,400000,371428.57142857247]}]}];
         
         // Create charts
         chartData.forEach((category, index) => {
