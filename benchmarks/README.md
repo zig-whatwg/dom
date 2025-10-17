@@ -323,6 +323,17 @@ For automated testing:
 - Browsers may be faster for complex selectors (more optimizations)
 - Results vary by browser engine
 
+**Anti-Optimization Techniques:**
+
+Both Zig and JavaScript benchmarks use techniques to prevent compilers from eliminating code:
+
+- **Zig**: Uses `_ = result;` to tell compiler to evaluate but not use result
+- **JavaScript**: Accumulates results in global variable (`if (result) globalAccumulator++;`)
+- **Ultra-fast operations**: Use 1M iterations instead of 100K to get measurable timings
+- **Live collections**: Access `.length` property to force evaluation
+
+This ensures fair comparison by preventing dead code elimination.
+
 ---
 
 ## Contributing
