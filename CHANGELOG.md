@@ -11,16 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - addEventListener signal option support per WHATWG DOM §2.7.3 (Critical Issue #8 resolved)
 - Automatic listener removal when AbortSignal aborts (spec step 6)
 - Early return if signal already aborted (spec step 2)
-- 5 comprehensive tests for addEventListener signal integration
+- DOMException struct for spec-compliant abort reason representation
+- Set semantics for abort_algorithms (prevents duplicate algorithm registration)
+- Set semantics for source_signals and dependent_signals (prevents duplicate signal links)
+- 7 comprehensive tests for addEventListener signal integration and duplicate prevention
 
 ### Changed
 - **BREAKING:** AbortAlgorithm now struct with callback + context instead of bare function pointer
 - Enables closure-like behavior for abort algorithms (required for addEventListener signal integration)
 - All abort algorithm tests updated to use new struct-based API
+- AbortSignal.abort() now creates proper DOMException("AbortError") instead of encoded error value
+- AbortSignal.signalAbort() creates DOMException for default reason per spec §3.2.5
 
 ### Fixed
 - addEventListener signal parameter now fully functional (was completely ignored before)
 - AbortAlgorithm memory management improved with automatic cleanup on abort
+- throwIfAborted() limitation documented (Zig can't throw arbitrary values like JavaScript)
+- abort_algorithms now enforces set semantics (no duplicate algorithms)
+- source_signals/dependent_signals now enforce set semantics (no duplicate signal links)
+- DOMException memory properly managed with ownership tracking
 
 ### Added
 - EventTarget mixin pattern for reusable event dispatching across any type

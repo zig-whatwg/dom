@@ -381,6 +381,38 @@ test "AbortSignal.removeAlgorithm - removes algorithm from list" {
     try signal.signalAbort(null);
 }
 
+test "AbortSignal.addAlgorithm - prevents duplicate algorithms" {
+    const allocator = std.testing.allocator;
+
+    const signal = try AbortSignal.init(allocator);
+    defer signal.release();
+
+    var call_count: usize = 0;
+    const Context = struct {
+        count: *usize,
+    };
+    var ctx = Context{ .count = &call_count };
+
+    const callback = struct {
+        fn run(sig: *AbortSignal, context: *anyopaque) void {
+            _ = sig;
+            const c = @as(*Context, @ptrCast(@alignCast(context)));
+            c.count.* += 1;
+        }
+    }.run;
+
+    // Add same algorithm three times
+    try signal.addAlgorithm(.{ .callback = callback, .context = @ptrCast(&ctx) });
+    try signal.addAlgorithm(.{ .callback = callback, .context = @ptrCast(&ctx) });
+    try signal.addAlgorithm(.{ .callback = callback, .context = @ptrCast(&ctx) });
+
+    // Abort signal
+    try signal.signalAbort(null);
+
+    // Algorithm should only run ONCE (set semantics, not list)
+    try std.testing.expectEqual(@as(usize, 1), call_count);
+}
+
 test "AbortSignal.signalAbort - runs algorithms before event" {
     const allocator = std.testing.allocator;
 
@@ -1318,4 +1350,33 @@ test "addEventListener - no memory leaks with signal option" {
     target_signal.release();
 
     // Test passes if no leaks detected by testing allocator
+}
+
+test "AbortSignal.any - prevents duplicate source signals" {
+    const allocator = std.testing.allocator;
+
+    const controller = try AbortController.init(allocator);
+    defer controller.deinit();
+
+    // Try to add same signal multiple times (should be deduplicated)
+    const composite = try AbortSignal.any(allocator, &[_]*AbortSignal{
+        controller.signal,
+        controller.signal, // Duplicate
+        controller.signal, // Duplicate
+    });
+    defer composite.release();
+
+    // Verify only one source signal exists (set semantics)
+    if (composite.rare_data) |rare| {
+        if (rare.source_signals) |sources| {
+            try std.testing.expectEqual(@as(usize, 1), sources.items.len);
+        }
+    }
+
+    // Verify dependent signal only registered once in source
+    if (controller.signal.rare_data) |rare| {
+        if (rare.dependent_signals) |deps| {
+            try std.testing.expectEqual(@as(usize, 1), deps.items.len);
+        }
+    }
 }

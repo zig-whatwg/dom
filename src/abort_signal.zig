@@ -4,6 +4,53 @@ const EventTargetMixin = @import("event_target.zig").EventTargetMixin;
 const SignalRareData = @import("abort_signal_rare_data.zig").SignalRareData;
 const Event = @import("event.zig").Event;
 
+/// Minimal DOMException representation for abort reasons.
+///
+/// This is a simplified representation suitable for Zig. JavaScript bindings
+/// should convert this to the appropriate DOMException object.
+///
+/// Per WHATWG DOM §4.3, a DOMException has:
+/// - name: DOMString (e.g., "AbortError", "TimeoutError")
+/// - message: DOMString (optional)
+///
+/// ## Example
+/// ```zig
+/// const reason = try DOMException.create(allocator, "AbortError", "Operation aborted");
+/// defer allocator.destroy(reason);
+/// ```
+pub const DOMException = struct {
+    /// Exception name (e.g., "AbortError", "TimeoutError")
+    name: []const u8,
+
+    /// Optional message
+    message: []const u8,
+
+    /// Creates a new DOMException.
+    ///
+    /// ## Parameters
+    /// - `allocator`: Memory allocator
+    /// - `name`: Exception name (e.g., "AbortError")
+    /// - `message`: Optional message
+    ///
+    /// ## Returns
+    /// Pointer to allocated DOMException
+    ///
+    /// ## Memory Management
+    /// Caller must destroy the returned pointer when done.
+    pub fn create(
+        allocator: Allocator,
+        name: []const u8,
+        message: []const u8,
+    ) !*DOMException {
+        const exception = try allocator.create(DOMException);
+        exception.* = .{
+            .name = name,
+            .message = message,
+        };
+        return exception;
+    }
+};
+
 /// Abort algorithm with context support.
 ///
 /// Algorithms are run when signal aborts, BEFORE the abort event fires.
@@ -106,7 +153,7 @@ pub const AbortSignal = struct {
     /// - JavaScript "any" type (opaque pointer for future JS bindings)
     /// - null = not aborted
     /// - non-null = aborted with reason
-    /// - Default reason: null (treated as "AbortError" in spec)
+    /// - Can be DOMException or custom user pointer
     abort_reason: ?*anyopaque = null,
 
     /// Is this a dependent signal? (1 byte)
@@ -114,8 +161,13 @@ pub const AbortSignal = struct {
     /// - false = independent signal (from AbortController or abort() factory)
     dependent: bool = false,
 
-    /// Padding for alignment (7 bytes to reach 8-byte boundary)
-    _padding: [7]u8 = undefined,
+    /// Does this signal own the abort_reason? (1 byte)
+    /// - true = abort_reason is owned and should be freed on deinit
+    /// - false = abort_reason is borrowed and should NOT be freed
+    owns_abort_reason: bool = false,
+
+    /// Padding for alignment (6 bytes to reach 8-byte boundary)
+    _padding: [6]u8 = undefined,
 
     // Total size: 48 bytes (small and efficient!)
 
@@ -146,6 +198,7 @@ pub const AbortSignal = struct {
             .ref_count = 1,
             .abort_reason = null,
             .dependent = false,
+            .owns_abort_reason = false,
             ._padding = undefined,
         };
         return signal;
@@ -195,14 +248,22 @@ pub const AbortSignal = struct {
     /// - Frees rare data (if allocated)
     /// - Frees the signal itself
     fn deinit(self: *AbortSignal) void {
+        // Step 1: Free owned abort reason (DOMException)
+        if (self.owns_abort_reason) {
+            if (self.abort_reason) |reason| {
+                const exception = @as(*DOMException, @ptrCast(@alignCast(reason)));
+                self.allocator.destroy(exception);
+            }
+        }
+
         if (self.rare_data) |rare| {
-            // Step 1: Free any remaining abort algorithms
+            // Step 2: Free any remaining abort algorithms
             for (rare.abort_algorithms.items) |algorithm_ptr| {
                 const algorithm = @as(*AbortAlgorithm, @ptrCast(@alignCast(algorithm_ptr)));
                 self.allocator.destroy(algorithm);
             }
 
-            // Step 2: Remove self from all source signals' dependent lists
+            // Step 3: Remove self from all source signals' dependent lists
             // This prevents dangling pointers when this signal is destroyed
             if (rare.source_signals) |sources| {
                 for (sources.items) |source_ptr| {
@@ -215,12 +276,12 @@ pub const AbortSignal = struct {
                 }
             }
 
-            // Step 3: Clean up rare data (this deinit()s the ArrayLists)
+            // Step 4: Clean up rare data (this deinit()s the ArrayLists)
             rare.deinit();
             self.allocator.destroy(rare);
         }
 
-        // Step 4: Destroy self
+        // Step 5: Destroy self
         self.allocator.destroy(self);
     }
 
@@ -251,6 +312,9 @@ pub const AbortSignal = struct {
     ///
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate list
+    ///
+    /// ## Spec Compliance
+    /// Per spec, source_signals is a "weak set" - prevents duplicate signals.
     pub fn addSourceSignal(self: *AbortSignal, source: *AbortSignal) !void {
         const rare = try self.ensureRareData();
 
@@ -259,7 +323,15 @@ pub const AbortSignal = struct {
             rare.source_signals = std.ArrayList(*anyopaque){};
         }
 
-        try rare.source_signals.?.append(self.allocator, @ptrCast(source));
+        // Check for duplicates (spec says "set", not "list")
+        const source_ptr: *anyopaque = @ptrCast(source);
+        for (rare.source_signals.?.items) |item| {
+            if (item == source_ptr) {
+                return; // Already exists, don't add duplicate
+            }
+        }
+
+        try rare.source_signals.?.append(self.allocator, source_ptr);
     }
 
     /// Adds a dependent signal to this source signal.
@@ -272,6 +344,9 @@ pub const AbortSignal = struct {
     ///
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate list
+    ///
+    /// ## Spec Compliance
+    /// Per spec, dependent_signals is a "weak set" - prevents duplicate signals.
     pub fn addDependentSignal(self: *AbortSignal, dependent: *AbortSignal) !void {
         const rare = try self.ensureRareData();
 
@@ -280,7 +355,15 @@ pub const AbortSignal = struct {
             rare.dependent_signals = std.ArrayList(*anyopaque){};
         }
 
-        try rare.dependent_signals.?.append(self.allocator, @ptrCast(dependent));
+        // Check for duplicates (spec says "set", not "list")
+        const dependent_ptr: *anyopaque = @ptrCast(dependent);
+        for (rare.dependent_signals.?.items) |item| {
+            if (item == dependent_ptr) {
+                return; // Already exists, don't add duplicate
+            }
+        }
+
+        try rare.dependent_signals.?.append(self.allocator, dependent_ptr);
     }
 
     /// Returns whether the signal has been aborted.
@@ -342,6 +425,20 @@ pub const AbortSignal = struct {
     /// Per spec: "The throwIfAborted() method steps are:
     /// 1. If this's abort reason is not undefined, then throw this's abort reason."
     ///
+    /// ## Zig Limitation
+    /// JavaScript can throw any value (objects, strings, etc.), but Zig can only
+    /// throw error values. This implementation always throws `error.AbortError`
+    /// regardless of the actual abort reason.
+    ///
+    /// To access the custom abort reason, use `getReason()` before checking:
+    /// ```zig
+    /// if (signal.isAborted()) {
+    ///     const reason = signal.getReason();
+    ///     // Handle custom reason
+    ///     return error.AbortError;
+    /// }
+    /// ```
+    ///
     /// ## Errors
     /// - `error.AbortError`: Signal has been aborted
     ///
@@ -354,6 +451,11 @@ pub const AbortSignal = struct {
     /// ## Spec Reference
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-abortsignal-throwifaborted
     /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl
+    ///
+    /// ## Spec Deviation
+    /// This implementation does not throw the actual abort reason due to Zig
+    /// language limitations. JavaScript bindings MUST convert the abort reason
+    /// to the appropriate JavaScript exception type.
     pub fn throwIfAborted(self: *const AbortSignal) !void {
         if (self.abort_reason != null) {
             return error.AbortError;
@@ -413,9 +515,20 @@ pub const AbortSignal = struct {
         if (self.isAborted()) return;
 
         // Step 2: Set abort reason
-        // Note: In Zig, we use @ptrFromInt(@intFromError(error.AbortError)) as default
-        // In JS bindings, this should be converted to DOMException("AbortError")
-        self.abort_reason = reason orelse @ptrFromInt(@intFromError(error.AbortError));
+        // Per spec: "otherwise to a new 'AbortError' DOMException"
+        if (reason) |r| {
+            self.abort_reason = r;
+            self.owns_abort_reason = false; // User-provided reason, don't own it
+        } else {
+            // Create default DOMException("AbortError")
+            const default_exception = try DOMException.create(
+                self.allocator,
+                "AbortError",
+                "The operation was aborted",
+            );
+            self.abort_reason = @ptrCast(default_exception);
+            self.owns_abort_reason = true; // We created it, we own it
+        }
 
         // Step 3-4: Collect dependents to abort
         var dependents_to_abort = std.ArrayList(*AbortSignal){};
@@ -426,8 +539,9 @@ pub const AbortSignal = struct {
                 for (deps.items) |dependent_ptr| {
                     const dependent: *AbortSignal = @ptrCast(@alignCast(dependent_ptr));
                     if (!dependent.isAborted()) {
-                        // Set dependent's abort reason to ours
+                        // Set dependent's abort reason to ours (borrowed reference)
                         dependent.abort_reason = self.abort_reason;
+                        dependent.owns_abort_reason = false; // Dependent doesn't own it
                         try dependents_to_abort.append(self.allocator, dependent);
                     }
                 }
@@ -525,8 +639,21 @@ pub const AbortSignal = struct {
         // Step 1: Already aborted - don't add
         if (self.isAborted()) return;
 
-        // Step 2: Allocate and store algorithm struct
         const rare = try self.ensureRareData();
+
+        // Step 2: Check for duplicates (spec says "set", not "list")
+        // Duplicate means same callback + context pair
+        for (rare.abort_algorithms.items) |item| {
+            const existing = @as(*AbortAlgorithm, @ptrCast(@alignCast(item)));
+            if (existing.callback == algorithm.callback and
+                existing.context == algorithm.context)
+            {
+                // Already exists, don't add duplicate
+                return;
+            }
+        }
+
+        // Step 3: Allocate and store algorithm struct
         const algo_copy = try self.allocator.create(AbortAlgorithm);
         algo_copy.* = algorithm;
         try rare.abort_algorithms.append(self.allocator, @ptrCast(algo_copy));
@@ -607,8 +734,20 @@ pub const AbortSignal = struct {
     pub fn abort(allocator: Allocator, reason: ?*anyopaque) !*AbortSignal {
         const signal = try init(allocator);
 
-        // Set abort reason (default to error.AbortError if null)
-        signal.abort_reason = reason orelse @ptrFromInt(@intFromError(error.AbortError));
+        // Set abort reason
+        // Per spec: "otherwise to a new 'AbortError' DOMException"
+        if (reason) |r| {
+            signal.abort_reason = r;
+            signal.owns_abort_reason = false; // User-provided, don't own it
+        } else {
+            const default_exception = try DOMException.create(
+                allocator,
+                "AbortError",
+                "The operation was aborted",
+            );
+            signal.abort_reason = @ptrCast(default_exception);
+            signal.owns_abort_reason = true; // We created it, we own it
+        }
 
         return signal;
     }
