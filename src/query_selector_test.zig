@@ -594,3 +594,433 @@ test "Element.matches and Element.closest - event delegation pattern" {
     const is_menu_link = try link.matches(allocator, ".menu-link");
     try testing.expect(is_menu_link);
 }
+
+// ============================================================================
+// COMBINATOR TESTS - Additional Coverage
+// ============================================================================
+
+test "querySelector - descendant combinator (space)" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const article = try doc.createElement("article");
+    _ = try doc.node.appendChild(&article.node);
+
+    const header = try doc.createElement("header");
+    _ = try article.node.appendChild(&header.node);
+
+    const h1 = try doc.createElement("h1");
+    _ = try header.node.appendChild(&h1.node);
+
+    const paragraph = try doc.createElement("p");
+    _ = try article.node.appendChild(&paragraph.node);
+
+    // "article h1" should match h1 (descendant, not direct child)
+    const result = try article.querySelector(allocator, "article h1");
+    try testing.expect(result != null);
+    try testing.expect(result.? == h1);
+
+    // "article p" should match paragraph
+    const result2 = try article.querySelector(allocator, "article p");
+    try testing.expect(result2 != null);
+    try testing.expect(result2.? == paragraph);
+}
+
+test "querySelector - next sibling combinator (+)" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("div");
+    _ = try doc.node.appendChild(&container.node);
+
+    const h1 = try doc.createElement("h1");
+    _ = try container.node.appendChild(&h1.node);
+
+    const p = try doc.createElement("p");
+    _ = try container.node.appendChild(&p.node);
+
+    const span = try doc.createElement("span");
+    _ = try container.node.appendChild(&span.node);
+
+    // "h1 + p" should match p (immediately follows h1)
+    const result = try container.querySelector(allocator, "h1 + p");
+    try testing.expect(result != null);
+    try testing.expect(result.? == p);
+
+    // "p + span" should match span
+    const result2 = try container.querySelector(allocator, "p + span");
+    try testing.expect(result2 != null);
+    try testing.expect(result2.? == span);
+
+    // "h1 + span" should not match (span doesn't immediately follow h1)
+    const result3 = try container.querySelector(allocator, "h1 + span");
+    try testing.expect(result3 == null);
+}
+
+test "querySelector - subsequent sibling combinator (~)" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("div");
+    _ = try doc.node.appendChild(&container.node);
+
+    const h1 = try doc.createElement("h1");
+    _ = try container.node.appendChild(&h1.node);
+
+    const p = try doc.createElement("p");
+    _ = try container.node.appendChild(&p.node);
+
+    const span = try doc.createElement("span");
+    _ = try container.node.appendChild(&span.node);
+
+    const div = try doc.createElement("div");
+    _ = try container.node.appendChild(&div.node);
+
+    // "h1 ~ span" should match span (follows h1, not immediately)
+    const result = try container.querySelector(allocator, "h1 ~ span");
+    try testing.expect(result != null);
+    try testing.expect(result.? == span);
+
+    // "h1 ~ div" should match div
+    const result2 = try container.querySelector(allocator, "h1 ~ div");
+    try testing.expect(result2 != null);
+    try testing.expect(result2.? == div);
+
+    // "p ~ span" should match span
+    const result3 = try container.querySelector(allocator, "p ~ span");
+    try testing.expect(result3 != null);
+    try testing.expect(result3.? == span);
+}
+
+// ============================================================================
+// PSEUDO-CLASS TESTS - Additional Coverage
+// ============================================================================
+
+test "querySelector - :last-child pseudo-class" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const list = try doc.createElement("ul");
+    _ = try doc.node.appendChild(&list.node);
+
+    const item1 = try doc.createElement("li");
+    _ = try list.node.appendChild(&item1.node);
+
+    const item2 = try doc.createElement("li");
+    _ = try list.node.appendChild(&item2.node);
+
+    const item3 = try doc.createElement("li");
+    _ = try list.node.appendChild(&item3.node);
+
+    // "li:last-child" should match item3
+    const result = try list.querySelector(allocator, "li:last-child");
+    try testing.expect(result != null);
+    try testing.expect(result.? == item3);
+}
+
+test "querySelector - :only-child pseudo-class" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const container1 = try doc.createElement("div");
+    _ = try root.node.appendChild(&container1.node);
+
+    const only = try doc.createElement("p");
+    _ = try container1.node.appendChild(&only.node);
+
+    const container2 = try doc.createElement("div");
+    _ = try root.node.appendChild(&container2.node);
+
+    const p1 = try doc.createElement("p");
+    _ = try container2.node.appendChild(&p1.node);
+
+    const p2 = try doc.createElement("p");
+    _ = try container2.node.appendChild(&p2.node);
+
+    // "p:only-child" should match only
+    const result = try doc.querySelector("p:only-child");
+    try testing.expect(result != null);
+    try testing.expect(result.? == only);
+}
+
+test "querySelector - :nth-child(2n) pseudo-class" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const list = try doc.createElement("ul");
+    _ = try doc.node.appendChild(&list.node);
+
+    const item1 = try doc.createElement("li");
+    _ = try list.node.appendChild(&item1.node);
+
+    const item2 = try doc.createElement("li");
+    _ = try list.node.appendChild(&item2.node);
+
+    const item3 = try doc.createElement("li");
+    _ = try list.node.appendChild(&item3.node);
+
+    const item4 = try doc.createElement("li");
+    _ = try list.node.appendChild(&item4.node);
+
+    // "li:nth-child(2n)" should match even children (item2, item4)
+    const result = try list.querySelector(allocator, "li:nth-child(2n)");
+    try testing.expect(result != null);
+    try testing.expect(result.? == item2); // First match
+
+    // "li:nth-child(odd)" should match odd children
+    const result2 = try list.querySelector(allocator, "li:nth-child(odd)");
+    try testing.expect(result2 != null);
+    try testing.expect(result2.? == item1);
+}
+
+test "querySelector - :nth-child(3) pseudo-class" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const list = try doc.createElement("ul");
+    _ = try doc.node.appendChild(&list.node);
+
+    const item1 = try doc.createElement("li");
+    _ = try list.node.appendChild(&item1.node);
+
+    const item2 = try doc.createElement("li");
+    _ = try list.node.appendChild(&item2.node);
+
+    const item3 = try doc.createElement("li");
+    _ = try list.node.appendChild(&item3.node);
+
+    // "li:nth-child(3)" should match third child
+    const result = try list.querySelector(allocator, "li:nth-child(3)");
+    try testing.expect(result != null);
+    try testing.expect(result.? == item3);
+}
+
+test "querySelector - :not() pseudo-class" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("div");
+    _ = try doc.node.appendChild(&container.node);
+
+    const p1 = try doc.createElement("p");
+    try p1.setAttribute("class", "intro");
+    _ = try container.node.appendChild(&p1.node);
+
+    const p2 = try doc.createElement("p");
+    _ = try container.node.appendChild(&p2.node);
+
+    const p3 = try doc.createElement("p");
+    try p3.setAttribute("class", "intro");
+    _ = try container.node.appendChild(&p3.node);
+
+    // "p:not(.intro)" should match p2
+    const result = try container.querySelector(allocator, "p:not(.intro)");
+    try testing.expect(result != null);
+    try testing.expect(result.? == p2);
+}
+
+test "querySelector - :empty pseudo-class" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("div");
+    _ = try doc.node.appendChild(&container.node);
+
+    const empty = try doc.createElement("p");
+    _ = try container.node.appendChild(&empty.node);
+
+    const not_empty = try doc.createElement("p");
+    const text = try doc.createTextNode("content");
+    _ = try not_empty.node.appendChild(&text.node);
+    _ = try container.node.appendChild(&not_empty.node);
+
+    // "p:empty" should match empty
+    const result = try container.querySelector(allocator, "p:empty");
+    try testing.expect(result != null);
+    try testing.expect(result.? == empty);
+}
+
+// ============================================================================
+// ATTRIBUTE SELECTOR TESTS - Additional Coverage
+// ============================================================================
+
+test "querySelector - attribute prefix selector [attr^=value]" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("div");
+    _ = try doc.node.appendChild(&container.node);
+
+    const link1 = try doc.createElement("a");
+    try link1.setAttribute("href", "https://example.com");
+    _ = try container.node.appendChild(&link1.node);
+
+    const link2 = try doc.createElement("a");
+    try link2.setAttribute("href", "http://example.com");
+    _ = try container.node.appendChild(&link2.node);
+
+    const link3 = try doc.createElement("a");
+    try link3.setAttribute("href", "/local/path");
+    _ = try container.node.appendChild(&link3.node);
+
+    // "a[href^='https']" should match link1
+    const result = try container.querySelector(allocator, "a[href^='https']");
+    try testing.expect(result != null);
+    try testing.expect(result.? == link1);
+
+    // "a[href^='/']" should match link3
+    const result2 = try container.querySelector(allocator, "a[href^='/']");
+    try testing.expect(result2 != null);
+    try testing.expect(result2.? == link3);
+}
+
+test "querySelector - attribute suffix selector [attr$=value]" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("div");
+    _ = try doc.node.appendChild(&container.node);
+
+    const img1 = try doc.createElement("img");
+    try img1.setAttribute("src", "photo.jpg");
+    _ = try container.node.appendChild(&img1.node);
+
+    const img2 = try doc.createElement("img");
+    try img2.setAttribute("src", "icon.png");
+    _ = try container.node.appendChild(&img2.node);
+
+    const img3 = try doc.createElement("img");
+    try img3.setAttribute("src", "logo.svg");
+    _ = try container.node.appendChild(&img3.node);
+
+    // "img[src$='.png']" should match img2
+    const result = try container.querySelector(allocator, "img[src$='.png']");
+    try testing.expect(result != null);
+    try testing.expect(result.? == img2);
+}
+
+test "querySelector - attribute contains selector [attr*=value]" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("div");
+    _ = try doc.node.appendChild(&container.node);
+
+    const div1 = try doc.createElement("div");
+    try div1.setAttribute("class", "btn btn-primary active");
+    _ = try container.node.appendChild(&div1.node);
+
+    const div2 = try doc.createElement("div");
+    try div2.setAttribute("class", "button");
+    _ = try container.node.appendChild(&div2.node);
+
+    // "[class*='primary']" should match div1
+    const result = try container.querySelector(allocator, "[class*='primary']");
+    try testing.expect(result != null);
+    try testing.expect(result.? == div1);
+}
+
+// ============================================================================
+// ADVANCED PSEUDO-CLASS TESTS
+// ============================================================================
+
+test "querySelector - :is() pseudo-class" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("div");
+    _ = try doc.node.appendChild(&container.node);
+
+    const h1 = try doc.createElement("h1");
+    _ = try container.node.appendChild(&h1.node);
+
+    const h2 = try doc.createElement("h2");
+    _ = try container.node.appendChild(&h2.node);
+
+    const p = try doc.createElement("p");
+    _ = try container.node.appendChild(&p.node);
+
+    // ":is(h1, h2)" should match h1 (first heading)
+    const result = try container.querySelector(allocator, ":is(h1, h2)");
+    try testing.expect(result != null);
+    try testing.expect(result.? == h1);
+}
+
+test "querySelector - :where() pseudo-class" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("div");
+    _ = try doc.node.appendChild(&container.node);
+
+    const p1 = try doc.createElement("p");
+    try p1.setAttribute("class", "intro");
+    _ = try container.node.appendChild(&p1.node);
+
+    const div1 = try doc.createElement("div");
+    try div1.setAttribute("class", "intro");
+    _ = try container.node.appendChild(&div1.node);
+
+    // ":where(p, div).intro" should match p1
+    const result = try container.querySelector(allocator, ":where(p, div).intro");
+    try testing.expect(result != null);
+    try testing.expect(result.? == p1);
+}
+
+test "querySelector - :has() relational pseudo-class" {
+    const allocator = testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("div");
+    _ = try doc.node.appendChild(&container.node);
+
+    const section1 = try doc.createElement("section");
+    _ = try container.node.appendChild(&section1.node);
+
+    const h2 = try doc.createElement("h2");
+    _ = try section1.node.appendChild(&h2.node);
+
+    const section2 = try doc.createElement("section");
+    _ = try container.node.appendChild(&section2.node);
+
+    const p = try doc.createElement("p");
+    _ = try section2.node.appendChild(&p.node);
+
+    // "section:has(h2)" should match section1
+    const result = try container.querySelector(allocator, "section:has(h2)");
+    try testing.expect(result != null);
+    try testing.expect(result.? == section1);
+}
