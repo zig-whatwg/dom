@@ -1159,7 +1159,10 @@ pub const Element = struct {
                 if (doc.tag_map.get(tag_name)) |list| {
                     // Find first element that is a descendant of self
                     for (list.items) |elem| {
-                        // Fast case: if self is the document element, all elements are descendants
+                        // Skip self (we only want descendants)
+                        if (elem == self) continue;
+
+                        // Fast case: if self is the document element, all other elements are descendants
                         if (self == doc.documentElement()) {
                             return elem;
                         }
@@ -1245,16 +1248,19 @@ pub const Element = struct {
 
                 // Check if any elements with this tag exist
                 if (doc.tag_map.get(tag_name)) |list| {
-                    // Fast case: if self is the document element, return all
-                    if (self == doc.documentElement()) {
-                        return try allocator.dupe(*Element, list.items);
-                    }
-
-                    // Otherwise filter to only descendants
                     var results = std.ArrayList(*Element){};
                     defer results.deinit(allocator);
 
                     for (list.items) |elem| {
+                        // Skip self (we only want descendants)
+                        if (elem == self) continue;
+
+                        // Fast case: if self is the document element, all other elements are descendants
+                        if (self == doc.documentElement()) {
+                            try results.append(allocator, elem);
+                            continue;
+                        }
+
                         // Verify element is descendant of self
                         var current = elem.node.parent_node;
                         while (current) |parent| {
