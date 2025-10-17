@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Cross-Browser Benchmark Suite** - Comprehensive performance testing infrastructure
+  - Playwright-based runner testing Chromium, Firefox, and WebKit
+  - 24 synchronized benchmarks between Zig and JavaScript implementations
+  - Interactive HTML visualization with Chart.js comparing all implementations
+  - Automated pipeline via `zig build benchmark-all`
+  - One-time setup script for browser installation
+  - Complete documentation in benchmarks/README.md
+  - Benchmark parity skill for maintaining synchronization
 - **Phase 4A Started!** CSS selector tokenizer implementing Selectors Level 4 syntax
 - CSS selector tokenizer with 24 comprehensive tests (all passing)
 - Support for all CSS selector token types: identifiers, hash (#id), strings, delimiters
