@@ -91,6 +91,7 @@ function querySmallDom() {
         container.appendChild(div);
     }
     const result = container.querySelector('#target');
+    if (result) globalAccumulator += 1;
 }
 
 function queryMediumDom() {
@@ -101,6 +102,7 @@ function queryMediumDom() {
         container.appendChild(div);
     }
     const result = container.querySelector('#target');
+    if (result) globalAccumulator += 1;
 }
 
 function queryLargeDom() {
@@ -111,6 +113,7 @@ function queryLargeDom() {
         container.appendChild(div);
     }
     const result = container.querySelector('#target');
+    if (result) globalAccumulator += 1;
 }
 
 function queryClass() {
@@ -121,6 +124,7 @@ function queryClass() {
         container.appendChild(div);
     }
     const result = container.querySelector('.target');
+    if (result) globalAccumulator += 1;
 }
 
 function spaRepeated() {
@@ -138,13 +142,15 @@ function spaRepeated() {
     }
     
     // Simulate SPA: repeated queries
+    let found = 0;
     for (let i = 0; i < 10; i++) {
-        container.querySelector('.component');
-        container.querySelector('.btn');
-        container.querySelector('.primary');
-        container.querySelector('button');
-        container.querySelector('div');
+        if (container.querySelector('.component')) found++;
+        if (container.querySelector('.btn')) found++;
+        if (container.querySelector('.primary')) found++;
+        if (container.querySelector('button')) found++;
+        if (container.querySelector('div')) found++;
     }
+    globalAccumulator += found;
 }
 
 function spaColdVsHot() {
@@ -159,9 +165,11 @@ function spaColdVsHot() {
     }
     
     // Run same query 100 times
+    let found = 0;
     for (let i = 0; i < 100; i++) {
-        container.querySelector('.item');
+        if (container.querySelector('.item')) found++;
     }
+    globalAccumulator += found;
 }
 
 function getElementByIdSmall() {
@@ -172,6 +180,7 @@ function getElementByIdSmall() {
         container.appendChild(div);
     }
     const result = document.getElementById('target');
+    if (result) globalAccumulator += 1;
 }
 
 function getElementByIdMedium() {
@@ -182,6 +191,7 @@ function getElementByIdMedium() {
         container.appendChild(div);
     }
     const result = document.getElementById('target');
+    if (result) globalAccumulator += 1;
 }
 
 function getElementByIdLarge() {
@@ -192,6 +202,7 @@ function getElementByIdLarge() {
         container.appendChild(div);
     }
     const result = document.getElementById('target');
+    if (result) globalAccumulator += 1;
 }
 
 // Setup functions for pure query benchmarks
@@ -374,29 +385,41 @@ function setupClassLarge() {
     };
 }
 
+// Global accumulator to prevent dead code elimination
+let globalAccumulator = 0;
+
 // Query benchmark functions
 function benchGetElementById(context) {
     const result = document.getElementById('target');
+    // Prevent optimizer from removing the call by using the result
+    if (result) globalAccumulator += 1;
 }
 
 function benchQuerySelectorId(context) {
     const result = context.container.querySelector('#target');
+    if (result) globalAccumulator += 1;
 }
 
 function benchGetElementsByTagName(context) {
     const result = context.container.getElementsByTagName('button');
+    // Access length to force evaluation of live collection
+    if (result && result.length > 0) globalAccumulator += 1;
 }
 
 function benchQuerySelectorTag(context) {
     const result = context.container.querySelector('button');
+    if (result) globalAccumulator += 1;
 }
 
 function benchGetElementsByClassName(context) {
     const result = context.container.getElementsByClassName('btn');
+    // Access length to force evaluation of live collection
+    if (result && result.length > 0) globalAccumulator += 1;
 }
 
 function benchQuerySelectorClass(context) {
     const result = context.container.querySelector('.btn');
+    if (result) globalAccumulator += 1;
 }
 
 // Main benchmark runner
@@ -422,25 +445,28 @@ function runAllBenchmarks() {
     results.push(benchmarkFn('getElementById: Large DOM (10000)', 100, getElementByIdLarge));
     
     console.log('Running query-only benchmarks (DOM pre-built)...');
-    results.push(benchmarkWithSetup('Pure query: getElementById (100 elem)', 100000, setupSmallDom, benchGetElementById));
-    results.push(benchmarkWithSetup('Pure query: getElementById (1000 elem)', 100000, setupMediumDom, benchGetElementById));
-    results.push(benchmarkWithSetup('Pure query: getElementById (10000 elem)', 100000, setupLargeDom, benchGetElementById));
+    // Use 1M iterations for ultra-fast operations to get measurable timings
+    results.push(benchmarkWithSetup('Pure query: getElementById (100 elem)', 1000000, setupSmallDom, benchGetElementById));
+    results.push(benchmarkWithSetup('Pure query: getElementById (1000 elem)', 1000000, setupMediumDom, benchGetElementById));
+    results.push(benchmarkWithSetup('Pure query: getElementById (10000 elem)', 1000000, setupLargeDom, benchGetElementById));
     results.push(benchmarkWithSetup('Pure query: querySelector #id (100 elem)', 100000, setupSmallDom, benchQuerySelectorId));
     results.push(benchmarkWithSetup('Pure query: querySelector #id (1000 elem)', 100000, setupMediumDom, benchQuerySelectorId));
     results.push(benchmarkWithSetup('Pure query: querySelector #id (10000 elem)', 100000, setupLargeDom, benchQuerySelectorId));
     
     console.log('Running tag query benchmarks...');
-    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (100 elem)', 100000, setupTagSmall, benchGetElementsByTagName));
-    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (1000 elem)', 100000, setupTagMedium, benchGetElementsByTagName));
-    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (10000 elem)', 100000, setupTagLarge, benchGetElementsByTagName));
+    // Use 1M iterations for getElementsByTagName (very fast)
+    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (100 elem)', 1000000, setupTagSmall, benchGetElementsByTagName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (1000 elem)', 1000000, setupTagMedium, benchGetElementsByTagName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByTagName (10000 elem)', 1000000, setupTagLarge, benchGetElementsByTagName));
     results.push(benchmarkWithSetup('Pure query: querySelector tag (100 elem)', 100000, setupTagSmall, benchQuerySelectorTag));
     results.push(benchmarkWithSetup('Pure query: querySelector tag (1000 elem)', 100000, setupTagMedium, benchQuerySelectorTag));
     results.push(benchmarkWithSetup('Pure query: querySelector tag (10000 elem)', 100000, setupTagLarge, benchQuerySelectorTag));
     
     console.log('Running class query benchmarks...');
-    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (100 elem)', 100000, setupClassSmall, benchGetElementsByClassName));
-    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (1000 elem)', 100000, setupClassMedium, benchGetElementsByClassName));
-    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (10000 elem)', 100000, setupClassLarge, benchGetElementsByClassName));
+    // Use 1M iterations for getElementsByClassName (very fast)
+    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (100 elem)', 1000000, setupClassSmall, benchGetElementsByClassName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (1000 elem)', 1000000, setupClassMedium, benchGetElementsByClassName));
+    results.push(benchmarkWithSetup('Pure query: getElementsByClassName (10000 elem)', 1000000, setupClassLarge, benchGetElementsByClassName));
     results.push(benchmarkWithSetup('Pure query: querySelector .class (100 elem)', 100000, setupClassSmall, benchQuerySelectorClass));
     results.push(benchmarkWithSetup('Pure query: querySelector .class (1000 elem)', 100000, setupClassMedium, benchQuerySelectorClass));
     results.push(benchmarkWithSetup('Pure query: querySelector .class (10000 elem)', 100000, setupClassLarge, benchQuerySelectorClass));
@@ -466,6 +492,11 @@ function runAllBenchmarks() {
     
     console.log('\nBenchmark complete!');
     console.log('\nBrowser:', navigator.userAgent);
+    
+    // Use the global accumulator to prevent optimizer from eliminating operations
+    if (globalAccumulator < 0) {
+        console.log('This should never print:', globalAccumulator);
+    }
     
     return results;
 }

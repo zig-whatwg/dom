@@ -344,7 +344,9 @@ function generateHTML(groupedResults, browserResults) {
                                     
                                     const nsPerOp = result.nsPerOp;
                                     let display;
-                                    if (nsPerOp < 1000) {
+                                    if (nsPerOp === 0 || nsPerOp < 0.001) {
+                                        display = `< 1ns`;
+                                    } else if (nsPerOp < 1000) {
                                         display = `${Math.round(nsPerOp)}ns`;
                                     } else if (nsPerOp < 1000000) {
                                         display = `${Math.round(nsPerOp / 1000)}µs`;
