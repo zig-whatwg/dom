@@ -245,4 +245,5 @@ test {
     _ = @import("selector/tokenizer.zig");
     _ = @import("selector/parser.zig");
     _ = @import("selector/matcher.zig");
+    _ = @import("query_selector_test.zig");
 }

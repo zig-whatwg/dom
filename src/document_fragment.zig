@@ -368,6 +368,156 @@ pub const DocumentFragment = struct {
         return fragment;
     }
 
+    // ========================================================================
+    // ParentNode Mixin - Query Selector
+    // ========================================================================
+
+    /// Returns the first element that matches the specified CSS selector.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.2.6 Mixin ParentNode**: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// Element? querySelector(DOMString selectors);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - DocumentFragment.querySelector(): https://developer.mozilla.org/en-US/docs/Web/API/DocumentFragment/querySelector
+    ///
+    /// ## Usage
+    /// ```zig
+    /// const fragment = try DocumentFragment.create(allocator);
+    /// defer fragment.node.release();
+    ///
+    /// const button = try Element.create(allocator, "button");
+    /// try button.setAttribute("class", "btn");
+    /// _ = try fragment.node.appendChild(&button.node);
+    ///
+    /// // Find button in fragment
+    /// const result = try fragment.querySelector(allocator, ".btn");
+    /// // result == button
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// // Instance method on DocumentFragment.prototype
+    /// const fragment = document.createDocumentFragment();
+    /// const button = fragment.querySelector('button.primary');
+    /// // Returns: Element or null
+    /// ```
+    pub fn querySelector(self: *DocumentFragment, allocator: Allocator, selectors: []const u8) !?*@import("element.zig").Element {
+        const Tokenizer = @import("selector/tokenizer.zig").Tokenizer;
+        const Parser = @import("selector/parser.zig").Parser;
+        const Matcher = @import("selector/matcher.zig").Matcher;
+        const Element = @import("element.zig").Element;
+
+        // Parse selector
+        var tokenizer = Tokenizer.init(allocator, selectors);
+        var parser = try Parser.init(allocator, &tokenizer);
+        defer parser.deinit();
+
+        var selector_list = try parser.parse();
+        defer selector_list.deinit();
+
+        // Create matcher
+        const matcher = Matcher.init(allocator);
+
+        // Traverse children in tree order
+        var current = self.node.first_child;
+        while (current) |node| {
+            if (node.node_type == .element) {
+                const elem: *Element = @fieldParentPtr("node", node);
+
+                // Check if element matches
+                if (try matcher.matches(elem, &selector_list)) {
+                    return elem;
+                }
+
+                // Recursively search descendants
+                if (try elem.querySelector(allocator, selectors)) |found| {
+                    return found;
+                }
+            }
+            current = node.next_sibling;
+        }
+
+        return null;
+    }
+
+    /// Returns all elements that match the specified CSS selector.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.2.6 Mixin ParentNode**: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] NodeList querySelectorAll(DOMString selectors);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - DocumentFragment.querySelectorAll(): https://developer.mozilla.org/en-US/docs/Web/API/DocumentFragment/querySelectorAll
+    ///
+    /// ## Usage
+    /// ```zig
+    /// const fragment = try DocumentFragment.create(allocator);
+    /// defer fragment.node.release();
+    ///
+    /// // Add elements...
+    ///
+    /// // Find all buttons
+    /// const results = try fragment.querySelectorAll(allocator, "button");
+    /// defer allocator.free(results);
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// // Instance method on DocumentFragment.prototype
+    /// const fragment = document.createDocumentFragment();
+    /// const buttons = fragment.querySelectorAll('button.primary');
+    /// // Returns: NodeList (array-like, always defined)
+    /// ```
+    pub fn querySelectorAll(self: *DocumentFragment, allocator: Allocator, selectors: []const u8) ![]const *@import("element.zig").Element {
+        const Tokenizer = @import("selector/tokenizer.zig").Tokenizer;
+        const Parser = @import("selector/parser.zig").Parser;
+        const Matcher = @import("selector/matcher.zig").Matcher;
+        const Element = @import("element.zig").Element;
+
+        // Parse selector
+        var tokenizer = Tokenizer.init(allocator, selectors);
+        var parser = try Parser.init(allocator, &tokenizer);
+        defer parser.deinit();
+
+        var selector_list = try parser.parse();
+        defer selector_list.deinit();
+
+        // Create matcher
+        const matcher = Matcher.init(allocator);
+
+        // Collect matching elements
+        var results = std.ArrayList(*Element){};
+        defer results.deinit(allocator);
+
+        // Traverse children in tree order
+        var current = self.node.first_child;
+        while (current) |node| {
+            if (node.node_type == .element) {
+                const elem: *Element = @fieldParentPtr("node", node);
+
+                // Check if element matches
+                if (try matcher.matches(elem, &selector_list)) {
+                    try results.append(allocator, elem);
+                }
+
+                // Recursively search descendants (reuse Element's helper)
+                try elem.querySelectorAllHelper(allocator, &matcher, &selector_list, &results);
+            }
+            current = node.next_sibling;
+        }
+
+        return try results.toOwnedSlice(allocator);
+    }
+
     // === Private vtable implementations ===
 
     /// Vtable implementation: cleanup

@@ -689,6 +689,188 @@ pub const Element = struct {
         return names;
     }
 
+    // ========================================================================
+    // ParentNode Mixin - Query Selector
+    // ========================================================================
+
+    /// Returns the first element that matches the specified CSS selector.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.2.6 Mixin ParentNode**: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// Element? querySelector(DOMString selectors);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - querySelector(): https://developer.mozilla.org/en-US/docs/Web/API/Element/querySelector
+    ///
+    /// ## Algorithm
+    /// 1. Parse selectors string into selector list
+    /// 2. Traverse descendants in tree order
+    /// 3. Return first element that matches any selector
+    /// 4. Return null if no match found
+    ///
+    /// ## Usage
+    /// ```zig
+    /// const container = try doc.createElement("div");
+    /// const button = try doc.createElement("button");
+    /// try button.setAttribute("class", "btn primary");
+    /// _ = try container.node.appendChild(&button.node);
+    ///
+    /// // Find button by class
+    /// const result = try container.querySelector(".btn");
+    /// // result == button
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// // Instance method on Element.prototype
+    /// const element = document.querySelector('.container');
+    /// const button = element.querySelector('button.primary');
+    /// // Returns: Element or null
+    /// ```
+    pub fn querySelector(self: *Element, allocator: Allocator, selectors: []const u8) !?*Element {
+        const Tokenizer = @import("selector/tokenizer.zig").Tokenizer;
+        const Parser = @import("selector/parser.zig").Parser;
+        const Matcher = @import("selector/matcher.zig").Matcher;
+
+        // Parse selector
+        var tokenizer = Tokenizer.init(allocator, selectors);
+        var parser = try Parser.init(allocator, &tokenizer);
+        defer parser.deinit();
+
+        var selector_list = try parser.parse();
+        defer selector_list.deinit();
+
+        // Create matcher
+        const matcher = Matcher.init(allocator);
+
+        // Traverse descendants in tree order
+        var current = self.node.first_child;
+        while (current) |node| {
+            // Check if this node is an element
+            if (node.node_type == .element) {
+                const elem: *Element = @fieldParentPtr("node", node);
+
+                // Check if element matches
+                if (try matcher.matches(elem, &selector_list)) {
+                    return elem;
+                }
+
+                // Recursively search descendants
+                if (try elem.querySelector(allocator, selectors)) |found| {
+                    return found;
+                }
+            }
+            current = node.next_sibling;
+        }
+
+        return null;
+    }
+
+    /// Returns all elements that match the specified CSS selector.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.2.6 Mixin ParentNode**: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] NodeList querySelectorAll(DOMString selectors);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - querySelectorAll(): https://developer.mozilla.org/en-US/docs/Web/API/Element/querySelectorAll
+    ///
+    /// ## Algorithm
+    /// 1. Parse selectors string into selector list
+    /// 2. Traverse descendants in tree order
+    /// 3. Collect all elements that match any selector
+    /// 4. Return NodeList with results (may be empty)
+    ///
+    /// ## Usage
+    /// ```zig
+    /// const container = try doc.createElement("div");
+    ///
+    /// const btn1 = try doc.createElement("button");
+    /// try btn1.setAttribute("class", "btn");
+    /// _ = try container.node.appendChild(&btn1.node);
+    ///
+    /// const btn2 = try doc.createElement("button");
+    /// try btn2.setAttribute("class", "btn");
+    /// _ = try container.node.appendChild(&btn2.node);
+    ///
+    /// // Find all buttons
+    /// const results = try container.querySelectorAll(".btn");
+    /// defer allocator.free(results);
+    /// // results.len == 2
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// // Instance method on Element.prototype
+    /// const element = document.querySelector('.container');
+    /// const buttons = element.querySelectorAll('button.primary');
+    /// // Returns: NodeList (array-like, always defined)
+    /// ```
+    ///
+    /// ## Note
+    /// Returns a static list (snapshot), not a live NodeList.
+    /// Caller owns returned slice and must free it.
+    pub fn querySelectorAll(self: *Element, allocator: Allocator, selectors: []const u8) ![]const *Element {
+        const Tokenizer = @import("selector/tokenizer.zig").Tokenizer;
+        const Parser = @import("selector/parser.zig").Parser;
+        const Matcher = @import("selector/matcher.zig").Matcher;
+
+        // Parse selector
+        var tokenizer = Tokenizer.init(allocator, selectors);
+        var parser = try Parser.init(allocator, &tokenizer);
+        defer parser.deinit();
+
+        var selector_list = try parser.parse();
+        defer selector_list.deinit();
+
+        // Create matcher
+        const matcher = Matcher.init(allocator);
+
+        // Collect matching elements
+        var results = std.ArrayList(*Element){};
+        defer results.deinit(allocator);
+
+        // Traverse descendants in tree order
+        try self.querySelectorAllHelper(allocator, &matcher, &selector_list, &results);
+
+        return try results.toOwnedSlice(allocator);
+    }
+
+    /// Helper for querySelectorAll - recursively collects matching elements
+    pub fn querySelectorAllHelper(
+        self: *Element,
+        allocator: Allocator,
+        matcher: *const @import("selector/matcher.zig").Matcher,
+        selector_list: *const @import("selector/parser.zig").SelectorList,
+        results: *std.ArrayList(*Element),
+    ) !void {
+
+        // Traverse children in tree order
+        var current = self.node.first_child;
+        while (current) |node| {
+            if (node.node_type == .element) {
+                const elem: *Element = @fieldParentPtr("node", node);
+
+                // Check if element matches
+                if (try matcher.matches(elem, selector_list)) {
+                    try results.append(allocator, elem);
+                }
+
+                // Recursively search descendants
+                try elem.querySelectorAllHelper(allocator, matcher, selector_list, results);
+            }
+            current = node.next_sibling;
+        }
+    }
+
     // === Private implementation ===
 
     /// Updates the bloom filter from a class attribute value.

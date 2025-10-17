@@ -659,6 +659,94 @@ pub const Document = struct {
         return null;
     }
 
+    // ========================================================================
+    // ParentNode Mixin - Query Selector
+    // ========================================================================
+
+    /// Returns the first element that matches the specified CSS selector.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.2.6 Mixin ParentNode**: https://dom.spec.whatwg.org/#dom-parentnode-queryselector
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// Element? querySelector(DOMString selectors);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Document.querySelector(): https://developer.mozilla.org/en-US/docs/Web/API/Document/querySelector
+    ///
+    /// ## Usage
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const html = try doc.createElement("html");
+    /// _ = try doc.node.appendChild(&html.node);
+    ///
+    /// const button = try doc.createElement("button");
+    /// try button.setAttribute("class", "btn");
+    /// _ = try html.node.appendChild(&button.node);
+    ///
+    /// // Find button from document root
+    /// const result = try doc.querySelector(".btn");
+    /// // result == button
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// // Instance method on Document.prototype
+    /// const button = document.querySelector('button.primary');
+    /// // Returns: Element or null
+    /// ```
+    pub fn querySelector(self: *Document, selectors: []const u8) !?*Element {
+        // Delegate to documentElement if it exists
+        if (self.documentElement()) |root| {
+            return try root.querySelector(self.node.allocator, selectors);
+        }
+        return null;
+    }
+
+    /// Returns all elements that match the specified CSS selector.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.2.6 Mixin ParentNode**: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] NodeList querySelectorAll(DOMString selectors);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Document.querySelectorAll(): https://developer.mozilla.org/en-US/docs/Web/API/Document/querySelectorAll
+    ///
+    /// ## Usage
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// // Build DOM tree...
+    ///
+    /// // Find all buttons
+    /// const results = try doc.querySelectorAll("button");
+    /// defer allocator.free(results);
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// // Instance method on Document.prototype
+    /// const buttons = document.querySelectorAll('button.primary');
+    /// // Returns: NodeList (array-like, always defined)
+    /// ```
+    pub fn querySelectorAll(self: *Document, selectors: []const u8) ![]const *Element {
+        // Delegate to documentElement if it exists
+        if (self.documentElement()) |root| {
+            return try root.querySelectorAll(self.node.allocator, selectors);
+        }
+        // Return empty slice if no document element
+        return &[_]*Element{};
+    }
+
     // === Private implementation ===
 
     /// Allocates the next available node ID.
