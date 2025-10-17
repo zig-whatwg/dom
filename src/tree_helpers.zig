@@ -1,11 +1,213 @@
-//! DOM tree helper functions for tree manipulation and queries
+//! Tree Helper Utilities (§4.2)
 //!
-//! This module provides utility functions for:
-//! - Tree traversal (ancestor/descendant checks)
-//! - Text content collection
-//! - Connected state propagation
+//! This module provides utility functions for DOM tree traversal, text content extraction,
+//! and tree relationship checking. These helpers implement fundamental tree algorithms used
+//! throughout the DOM implementation for operations like ancestor checking, text collection,
+//! and connected state management.
 //!
-//! Spec: https://dom.spec.whatwg.org/
+//! ## WHATWG Specification
+//!
+//! Relevant specification sections:
+//! - **§4.2 Trees**: https://dom.spec.whatwg.org/#trees
+//! - **§4.2.1 Tree Terminology**: https://dom.spec.whatwg.org/#concept-tree
+//! - **§5.3 Text Content**: https://dom.spec.whatwg.org/#concept-child-text-content
+//! - **§4.4 Interface Node**: https://dom.spec.whatwg.org/#interface-node
+//!
+//! ## MDN Documentation
+//!
+//! - Node.textContent: https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent
+//! - Node.contains(): https://developer.mozilla.org/en-US/docs/Web/API/Node/contains
+//! - Document tree structure: https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model/Introduction
+//! - Tree traversal: https://developer.mozilla.org/en-US/docs/Web/API/TreeWalker
+//!
+//! ## Core Features
+//!
+//! ### Ancestor/Descendant Checking
+//! Efficiently check tree relationships between nodes:
+//! ```zig
+//! const grandparent = try Element.create(allocator, "div");
+//! defer grandparent.node.release();
+//!
+//! const parent = try Element.create(allocator, "div");
+//! _ = try grandparent.node.appendChild(&parent.node);
+//!
+//! const child = try Element.create(allocator, "span");
+//! _ = try parent.node.appendChild(&child.node);
+//!
+//! // Check descendant relationship
+//! try std.testing.expect(isInclusiveDescendant(&child.node, &grandparent.node)); // true
+//! try std.testing.expect(isInclusiveDescendant(&parent.node, &grandparent.node)); // true
+//! try std.testing.expect(!isInclusiveDescendant(&grandparent.node, &child.node)); // false
+//! ```
+//!
+//! ### Text Content Extraction
+//! Collect all text from a subtree in document order:
+//! ```zig
+//! const div = try Element.create(allocator, "div");
+//! defer div.node.release();
+//!
+//! const text1 = try Text.create(allocator, "Hello ");
+//! _ = try div.node.appendChild(&text1.node);
+//!
+//! const span = try Element.create(allocator, "span");
+//! _ = try div.node.appendChild(&span.node);
+//!
+//! const text2 = try Text.create(allocator, "World");
+//! _ = try span.node.appendChild(&text2.node);
+//!
+//! const content = try getDescendantTextContent(&div.node, allocator);
+//! defer allocator.free(content);
+//! // content = "Hello World"
+//! ```
+//!
+//! ### Connected State Management
+//! Track whether nodes are connected to a document:
+//! ```zig
+//! const element = try Element.create(allocator, "div");
+//! defer element.node.release();
+//! // element.node.is_connected = false (not in document)
+//!
+//! const doc = try Document.init(allocator);
+//! defer doc.release();
+//! _ = try doc.node.appendChild(&element.node);
+//! // element.node.is_connected = true (now connected)
+//! ```
+//!
+//! ## Helper Functions
+//!
+//! This module provides the following utilities:
+//!
+//! **Tree Relationships:**
+//! - `isInclusiveDescendant(other, node)` - Check if other is descendant of node (or same node)
+//! - `isInclusiveAncestor(other, node)` - Check if other is ancestor of node (or same node)
+//!
+//! **Text Content:**
+//! - `getDescendantTextContent(node, allocator)` - Collect all text from subtree
+//! - `collectTextContent(node, list, allocator)` - Internal recursive text collector
+//!
+//! **Connected State:**
+//! - `propagateConnectedState(node, is_connected)` - Update connected state recursively
+//!
+//! ## Memory Management
+//!
+//! Most helpers are pure (no allocation), except text content functions:
+//! ```zig
+//! // Pure helpers (no memory management)
+//! const is_desc = isInclusiveDescendant(node1, node2);
+//! // No cleanup needed
+//!
+//! // Text content (allocates string)
+//! const text = try getDescendantTextContent(node, allocator);
+//! defer allocator.free(text); // Caller must free
+//! ```
+//!
+//! ## Usage Examples
+//!
+//! ### Safe Ancestor Check Before Insertion
+//! ```zig
+//! fn safeInsert(parent: *Node, child: *Node) !void {
+//!     // Prevent circular references
+//!     if (isInclusiveDescendant(parent, child)) {
+//!         return error.HierarchyRequestError;
+//!     }
+//!
+//!     _ = try parent.appendChild(child);
+//! }
+//! ```
+//!
+//! ### Extracting All Text Content
+//! ```zig
+//! fn extractAllText(root: *Node, allocator: Allocator) ![]u8 {
+//!     return try getDescendantTextContent(root, allocator);
+//! }
+//!
+//! // Usage
+//! const doc = try Document.init(allocator);
+//! defer doc.release();
+//! // ... build DOM tree ...
+//! const all_text = try extractAllText(&doc.node, allocator);
+//! defer allocator.free(all_text);
+//! ```
+//!
+//! ### Building Search Index
+//! ```zig
+//! fn indexContent(element: *Element, allocator: Allocator) !std.StringHashMap(void) {
+//!     var index = std.StringHashMap(void).init(allocator);
+//!     errdefer index.deinit();
+//!
+//!     const text = try getDescendantTextContent(&element.node, allocator);
+//!     defer allocator.free(text);
+//!
+//!     // Tokenize and index
+//!     var iter = std.mem.tokenizeAny(u8, text, " \t\n");
+//!     while (iter.next()) |word| {
+//!         try index.put(word, {});
+//!     }
+//!
+//!     return index;
+//! }
+//! ```
+//!
+//! ## Common Patterns
+//!
+//! ### Find Common Ancestor
+//! ```zig
+//! fn findCommonAncestor(node1: *Node, node2: *Node) ?*Node {
+//!     var current = node1;
+//!     while (current.parent_node) |parent| {
+//!         if (isInclusiveDescendant(node2, parent)) {
+//!             return parent;
+//!         }
+//!         current = parent;
+//!     }
+//!     return null;
+//! }
+//! ```
+//!
+//! ### Count Descendants
+//! ```zig
+//! fn countDescendants(node: *const Node) usize {
+//!     var count: usize = 0;
+//!     var current = node.first_child;
+//!     while (current) |child| : (current = child.next_sibling) {
+//!         count += 1;
+//!         count += countDescendants(child); // Recurse
+//!     }
+//!     return count;
+//! }
+//! ```
+//!
+//! ### Filter Text Nodes
+//! ```zig
+//! fn collectTextNodes(node: *Node, list: *std.ArrayList(*Node)) !void {
+//!     var current = node.first_child;
+//!     while (current) |child| : (current = child.next_sibling) {
+//!         if (child.node_type == .text) {
+//!             try list.append(child);
+//!         }
+//!         try collectTextNodes(child, list); // Recurse
+//!     }
+//! }
+//! ```
+//!
+//! ## Performance Tips
+//!
+//! 1. **Ancestor Check** - O(depth), cache results if checking multiple times
+//! 2. **Text Collection** - O(n) where n = node count, minimize calls
+//! 3. **Iterator Pattern** - For single pass, use direct traversal instead of helpers
+//! 4. **Early Exit** - Ancestor checks exit early on match
+//! 5. **Reuse Buffers** - For repeated text collection, reuse ArrayList
+//! 6. **Connected State** - Batch updates instead of per-node propagation
+//!
+//! ## Implementation Notes
+//!
+//! - isInclusiveDescendant walks up parent chain (O(depth))
+//! - getDescendantTextContent uses pre-order traversal
+//! - Text content collection is recursive (stack depth = tree depth)
+//! - Connected state propagation is depth-first
+//! - All helpers are tree-structure agnostic (work with any Node subtype)
+//! - Text collection allocates string (caller must free)
+//! - Pure functions (no side effects except memory allocation)
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

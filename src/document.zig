@@ -1,13 +1,244 @@
-//! Document node implementation - root of the DOM tree.
+//! Document Interface (§4.5)
 //!
-//! This module implements the WHATWG DOM Document interface with:
-//! - Dual reference counting (external refs + node refs)
-//! - String interning pool (per-document)
-//! - Node factory methods (createElement, createTextNode, createComment)
-//! - Document-level indexes (ID map, tag lists - future)
-//! - Owner document tracking for all child nodes
+//! This module implements the Document interface as specified by the WHATWG DOM Standard.
+//! The Document represents any web page loaded and serves as an entry point into the
+//! DOM tree, providing factory methods for creating nodes and global query methods.
 //!
-//! Spec: WHATWG DOM §4.10 (https://dom.spec.whatwg.org/#interface-document)
+//! ## WHATWG Specification
+//!
+//! Relevant specification sections:
+//! - **§4.5 Interface Document**: https://dom.spec.whatwg.org/#interface-document
+//! - **§4.2.1 Document tree**: https://dom.spec.whatwg.org/#concept-document-tree
+//! - **§4.10 Creating nodes**: https://dom.spec.whatwg.org/#creating-nodes
+//!
+//! ## MDN Documentation
+//!
+//! - Document: https://developer.mozilla.org/en-US/docs/Web/API/Document
+//! - Document.createElement: https://developer.mozilla.org/en-US/docs/Web/API/Document/createElement
+//! - Document.createTextNode: https://developer.mozilla.org/en-US/docs/Web/API/Document/createTextNode
+//! - Document.createComment: https://developer.mozilla.org/en-US/docs/Web/API/Document/createComment
+//! - Document.createDocumentFragment: https://developer.mozilla.org/en-US/docs/Web/API/Document/createDocumentFragment
+//!
+//! ## Core Features
+//!
+//! ### Node Factory Methods
+//! Document provides methods to create all node types:
+//! ```zig
+//! const doc = try Document.create(allocator);
+//! defer doc.release();
+//!
+//! const elem = try doc.createElement("div");
+//! const text = try doc.createTextNode("Hello");
+//! const comment = try doc.createComment("TODO");
+//! ```
+//!
+//! ### String Interning
+//! Document maintains a string pool for memory efficiency:
+//! ```zig
+//! // Tag names, attribute names automatically interned
+//! const div1 = try doc.createElement("div");
+//! const div2 = try doc.createElement("div");
+//! // Both share the same "div" string in memory
+//! ```
+//!
+//! ### Owner Document Tracking
+//! All nodes know their owner document:
+//! ```zig
+//! const elem = try doc.createElement("span");
+//! // elem.node.owner_document == &doc.node
+//! ```
+//!
+//! ## Document Architecture
+//!
+//! - **node**: Base Node (#document type)
+//! - **string_pool**: Per-document string interning
+//! - **document_element**: Root element (typically \<html\>)
+//! - **allocator**: Memory allocator
+//! - **ref_count**: Dual reference counting (external + node)
+//!
+//! ## Memory Management
+//!
+//! Documents use dual reference counting:
+//! ```zig
+//! const doc = try Document.create(allocator);
+//! // External ref_count = 1
+//! // Node ref_count = 1
+//!
+//! defer doc.release(); // Decrements both counts
+//! // Document freed when both reach 0
+//! ```
+//!
+//! All nodes created by document:
+//! 1. Are owned by their parent (tree reference)
+//! 2. Track document as owner_document
+//! 3. Freed when removed from tree or document destroyed
+//!
+//! ## Usage Examples
+//!
+//! ### Creating a DOM Tree
+//!
+//! ```zig
+//! const allocator = std.heap.page_allocator;
+//! const doc = try Document.create(allocator);
+//! defer doc.release();
+//!
+//! // Create root element
+//! const html = try doc.createElement("html");
+//! doc.document_element = html;
+//! _ = try doc.node.appendChild(&html.node);
+//!
+//! // Build tree
+//! const body = try doc.createElement("body");
+//! _ = try html.node.appendChild(&body.node);
+//!
+//! const div = try doc.createElement("div");
+//! try div.setAttribute("id", "content");
+//! _ = try body.node.appendChild(&div.node);
+//!
+//! const text = try doc.createTextNode("Hello, World!");
+//! _ = try div.node.appendChild(&text.node);
+//! ```
+//!
+//! ### Building HTML Document
+//!
+//! ```zig
+//! const doc = try Document.create(allocator);
+//! defer doc.release();
+//!
+//! // Create document structure
+//! const html = try doc.createElement("html");
+//! const head = try doc.createElement("head");
+//! const body = try doc.createElement("body");
+//!
+//! _ = try html.node.appendChild(&head.node);
+//! _ = try html.node.appendChild(&body.node);
+//! doc.document_element = html;
+//! _ = try doc.node.appendChild(&html.node);
+//!
+//! // Add title
+//! const title = try doc.createElement("title");
+//! const title_text = try doc.createTextNode("My Page");
+//! _ = try title.node.appendChild(&title_text.node);
+//! _ = try head.node.appendChild(&title.node);
+//! ```
+//!
+//! ### Creating Document Fragment
+//!
+//! ```zig
+//! const frag = try doc.createDocumentFragment();
+//! defer frag.node.release();
+//!
+//! // Build fragment
+//! const li1 = try doc.createElement("li");
+//! const li2 = try doc.createElement("li");
+//! _ = try frag.node.appendChild(&li1.node);
+//! _ = try frag.node.appendChild(&li2.node);
+//!
+//! // Insert fragment into document
+//! const ul = try doc.createElement("ul");
+//! _ = try ul.node.appendChild(&frag.node);
+//! // Fragment's children moved to ul
+//! ```
+//!
+//! ## Common Patterns
+//!
+//! ### Document Setup
+//!
+//! ```zig
+//! pub fn createHTMLDocument(allocator: Allocator) !*Document {
+//!     const doc = try Document.create(allocator);
+//!     errdefer doc.release();
+//!
+//!     const html = try doc.createElement("html");
+//!     doc.document_element = html;
+//!     _ = try doc.node.appendChild(&html.node);
+//!
+//!     return doc;
+//! }
+//! ```
+//!
+//! ### Batch Element Creation
+//!
+//! ```zig
+//! const elements = [_][]const u8{ "div", "span", "p", "h1" };
+//! var nodes = std.ArrayList(*Element).init(allocator);
+//! defer nodes.deinit();
+//!
+//! for (elements) |tag| {
+//!     const elem = try doc.createElement(tag);
+//!     try nodes.append(elem);
+//! }
+//! ```
+//!
+//! ## Performance Tips
+//!
+//! 1. **String interning** - Tag/attribute names deduplicated automatically
+//! 2. **Node factory** - createElement is O(1) operation
+//! 3. **Batch operations** - Create multiple nodes before inserting into tree
+//! 4. **Document fragments** - Build subtrees offline, insert once
+//! 5. **Owner document** - Weak reference, no circular dependency overhead
+//!
+//! ## JavaScript Bindings
+//!
+//! ### Instance Properties
+//! ```javascript
+//! // documentElement (readonly)
+//! Object.defineProperty(Document.prototype, 'documentElement', {
+//!   get: function() { return zig.document_get_document_element(this._ptr); }
+//! });
+//!
+//! // doctype (readonly)
+//! Object.defineProperty(Document.prototype, 'doctype', {
+//!   get: function() { return zig.document_get_doctype(this._ptr); }
+//! });
+//!
+//! // Document inherits all Node properties (nodeType, nodeName, etc.)
+//! ```
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // Factory methods
+//! Document.prototype.createElement = function(tagName) {
+//!   return zig.document_createElement(this._ptr, tagName);
+//! };
+//!
+//! Document.prototype.createTextNode = function(data) {
+//!   return zig.document_createTextNode(this._ptr, data);
+//! };
+//!
+//! Document.prototype.createComment = function(data) {
+//!   return zig.document_createComment(this._ptr, data);
+//! };
+//!
+//! Document.prototype.createDocumentFragment = function() {
+//!   return zig.document_createDocumentFragment(this._ptr);
+//! };
+//!
+//! // Document inherits all Node methods (appendChild, insertBefore, etc.)
+//! // Document inherits all EventTarget methods (addEventListener, etc.)
+//! ```
+//!
+//! ### Document Constructor
+//! ```javascript
+//! // Global document object created by user agent
+//! const doc = new Document(); // Typically not called directly
+//!
+//! // In bindings implementation:
+//! function createDocument(allocator) {
+//!   const doc_ptr = zig.document_init(allocator);
+//!   return wrapNode(doc_ptr); // Creates JS wrapper with _ptr
+//! }
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
+//!
+//! ## Implementation Notes
+//!
+//! - Document extends Node (node_type = .document)
+//! - String pool freed when document destroyed
+//! - Dual reference counting for document lifetime
+//! - document_element is convenience pointer (also in tree)
+//! - All factory methods set owner_document automatically
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

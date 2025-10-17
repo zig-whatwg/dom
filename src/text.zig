@@ -1,11 +1,286 @@
-//! Text node implementation - represents text content in the DOM tree.
+//! Text Interface (§4.7)
 //!
-//! This module implements the WHATWG DOM Text interface with:
-//! - Mutable text content storage
-//! - Character data manipulation methods
-//! - Vtable implementation for polymorphic Node behavior
+//! This module implements the Text interface as specified by the WHATWG DOM Standard.
+//! Text nodes represent the actual text content of elements and are the most common
+//! type of node in a DOM tree after elements. They store mutable character data and
+//! provide methods for text manipulation.
 //!
-//! Spec: WHATWG DOM §4.7 (https://dom.spec.whatwg.org/#interface-text)
+//! ## WHATWG Specification
+//!
+//! Relevant specification sections:
+//! - **§4.7 Interface Text**: https://dom.spec.whatwg.org/#interface-text
+//! - **§4.8 Interface CharacterData**: https://dom.spec.whatwg.org/#interface-characterdata
+//! - **§4.4 Interface Node**: https://dom.spec.whatwg.org/#interface-node (base)
+//!
+//! ## MDN Documentation
+//!
+//! - Text: https://developer.mozilla.org/en-US/docs/Web/API/Text
+//! - Text.data: https://developer.mozilla.org/en-US/docs/Web/API/CharacterData/data
+//! - Text.length: https://developer.mozilla.org/en-US/docs/Web/API/CharacterData/length
+//! - Text.substringData(): https://developer.mozilla.org/en-US/docs/Web/API/CharacterData/substringData
+//! - Text.splitText(): https://developer.mozilla.org/en-US/docs/Web/API/Text/splitText
+//!
+//! ## Core Features
+//!
+//! ### Text Content Storage
+//! Text nodes store mutable string content that can be modified:
+//! ```zig
+//! const text = try Text.create(allocator, "Hello, World!");
+//! defer text.node.release();
+//!
+//! // Access via node.nodeValue
+//! const content = text.node.nodeValue(); // "Hello, World!"
+//!
+//! // Or via data field
+//! const data = text.data; // "Hello, World!"
+//! ```
+//!
+//! ### Character Data Manipulation
+//! Text provides methods for substring operations, insertion, deletion:
+//! ```zig
+//! const text = try Text.create(allocator, "Hello World");
+//! defer text.node.release();
+//!
+//! // Get substring
+//! const sub = try text.substringData(0, 5); // "Hello"
+//! defer allocator.free(sub);
+//!
+//! // Append text
+//! try text.appendData(" Zig!");
+//! // text.data = "Hello World Zig!"
+//! ```
+//!
+//! ### Text Splitting
+//! Split text nodes at a specific offset for editing operations:
+//! ```zig
+//! const parent = try Element.create(allocator, "p");
+//! defer parent.node.release();
+//!
+//! const text = try Text.create(allocator, "Hello World");
+//! _ = try parent.node.appendChild(&text.node);
+//!
+//! // Split at offset 6 (after "Hello ")
+//! const second_half = try text.splitText(6);
+//! // text.data = "Hello "
+//! // second_half.data = "World"
+//! // Both are children of parent
+//! ```
+//!
+//! ## Text Node Structure
+//!
+//! Text nodes extend Node with character data storage:
+//! - **node**: Base Node struct (MUST be first field for @fieldParentPtr)
+//! - **data**: Owned string ([]u8) containing text content
+//! - **vtable**: Node vtable for polymorphic behavior
+//!
+//! Size beyond Node: 16 bytes (for data slice)
+//!
+//! ## Memory Management
+//!
+//! Text nodes use reference counting through Node interface:
+//! ```zig
+//! const text = try Text.create(allocator, "Example");
+//! defer text.node.release(); // Decrements ref_count, frees if 0
+//!
+//! // When sharing ownership:
+//! text.node.acquire(); // Increment ref_count
+//! other_structure.text_node = &text.node;
+//! // Both owners must call release()
+//! ```
+//!
+//! When a text node is released (ref_count reaches 0):
+//! 1. Text data string is freed (allocator.free(data))
+//! 2. Node base is freed
+//! 3. Children are released recursively (though text nodes rarely have children)
+//!
+//! ## Usage Examples
+//!
+//! ### Creating Text Nodes
+//! ```zig
+//! const allocator = std.heap.page_allocator;
+//!
+//! // Direct creation (simple, for tests)
+//! const text1 = try Text.create(allocator, "Hello");
+//! defer text1.node.release();
+//!
+//! // Via Document factory (RECOMMENDED - with string interning)
+//! const doc = try Document.init(allocator);
+//! defer doc.release();
+//! const text2 = try doc.createTextNode("World");
+//! defer text2.node.release();
+//! ```
+//!
+//! ### Building Text Content
+//! ```zig
+//! const paragraph = try Element.create(allocator, "p");
+//! defer paragraph.node.release();
+//!
+//! // Add text content
+//! const text = try Text.create(allocator, "This is a ");
+//! _ = try paragraph.node.appendChild(&text.node);
+//!
+//! const emphasis = try Element.create(allocator, "em");
+//! _ = try paragraph.node.appendChild(&emphasis.node);
+//!
+//! const emphText = try Text.create(allocator, "very");
+//! _ = try emphasis.node.appendChild(&emphText.node);
+//!
+//! const moreText = try Text.create(allocator, " important message.");
+//! _ = try paragraph.node.appendChild(&moreText.node);
+//!
+//! // Result: <p>This is a <em>very</em> important message.</p>
+//! ```
+//!
+//! ### Manipulating Text Data
+//! ```zig
+//! const text = try Text.create(allocator, "Initial");
+//! defer text.node.release();
+//!
+//! // Append text
+//! try text.appendData(" content");
+//! // text.data = "Initial content"
+//!
+//! // Insert text
+//! try text.insertData(8, "new ");
+//! // text.data = "Initial new content"
+//!
+//! // Delete text
+//! try text.deleteData(8, 4);
+//! // text.data = "Initial content"
+//!
+//! // Replace text
+//! try text.replaceData(0, 7, "Final");
+//! // text.data = "Final content"
+//! ```
+//!
+//! ## Common Patterns
+//!
+//! ### Whitespace Normalization
+//! ```zig
+//! fn normalizeWhitespace(text: *Text) !void {
+//!     const allocator = text.node.allocator;
+//!     var normalized = std.ArrayList(u8).init(allocator);
+//!     defer normalized.deinit();
+//!
+//!     var in_whitespace = false;
+//!     for (text.data) |char| {
+//!         if (std.ascii.isWhitespace(char)) {
+//!             if (!in_whitespace) {
+//!                 try normalized.append(' ');
+//!                 in_whitespace = true;
+//!             }
+//!         } else {
+//!             try normalized.append(char);
+//!             in_whitespace = false;
+//!         }
+//!     }
+//!
+//!     // Replace with normalized text
+//!     allocator.free(text.data);
+//!     text.data = try normalized.toOwnedSlice();
+//! }
+//! ```
+//!
+//! ### Text Extraction
+//! ```zig
+//! fn getTextContent(node: *Node, allocator: Allocator) ![]u8 {
+//!     var buffer = std.ArrayList(u8).init(allocator);
+//!     defer buffer.deinit();
+//!
+//!     // Traverse tree and collect all text nodes
+//!     var current = node.first_child;
+//!     while (current) |child| : (current = child.next_sibling) {
+//!         if (child.node_type == .text) {
+//!             const text = @fieldParentPtr(Text, "node", child);
+//!             try buffer.appendSlice(text.data);
+//!         } else {
+//!             const child_text = try getTextContent(child, allocator);
+//!             defer allocator.free(child_text);
+//!             try buffer.appendSlice(child_text);
+//!         }
+//!     }
+//!
+//!     return buffer.toOwnedSlice();
+//! }
+//! ```
+//!
+//! ## Performance Tips
+//!
+//! 1. **Batch Modifications** - Use appendData/replaceData instead of multiple small changes
+//! 2. **Avoid Frequent Splits** - splitText() allocates new nodes, use sparingly
+//! 3. **String Interning** - Use Document.createTextNode() for repeated strings
+//! 4. **Buffer Building** - For complex text assembly, use ArrayList then create once
+//! 5. **Whitespace** - Remove unnecessary whitespace text nodes during parsing
+//! 6. **Normalize Adjacent** - Merge adjacent text nodes for better tree structure
+//! 7. **Read-Only Access** - Use text.data directly instead of substringData(0, length)
+//!
+//! ## JavaScript Bindings
+//!
+//! ### Instance Properties
+//! ```javascript
+//! // data (read-write) - CharacterData interface
+//! Object.defineProperty(Text.prototype, 'data', {
+//!   get: function() { return zig.text_get_data(this._ptr); },
+//!   set: function(value) { zig.text_set_data(this._ptr, value); }
+//! });
+//!
+//! // length (readonly) - CharacterData interface
+//! Object.defineProperty(Text.prototype, 'length', {
+//!   get: function() { return zig.text_get_length(this._ptr); }
+//! });
+//!
+//! // wholeText (readonly)
+//! Object.defineProperty(Text.prototype, 'wholeText', {
+//!   get: function() { return zig.text_get_whole_text(this._ptr); }
+//! });
+//!
+//! // Text inherits all Node properties (nodeType, nodeName, nodeValue, etc.)
+//! ```
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // CharacterData methods
+//! Text.prototype.substringData = function(offset, count) {
+//!   return zig.text_substringData(this._ptr, offset, count);
+//! };
+//!
+//! Text.prototype.appendData = function(data) {
+//!   zig.text_appendData(this._ptr, data);
+//! };
+//!
+//! Text.prototype.insertData = function(offset, data) {
+//!   zig.text_insertData(this._ptr, offset, data);
+//! };
+//!
+//! Text.prototype.deleteData = function(offset, count) {
+//!   zig.text_deleteData(this._ptr, offset, count);
+//! };
+//!
+//! Text.prototype.replaceData = function(offset, count, data) {
+//!   zig.text_replaceData(this._ptr, offset, count, data);
+//! };
+//!
+//! // Text-specific methods
+//! Text.prototype.splitText = function(offset) {
+//!   return zig.text_splitText(this._ptr, offset);
+//! };
+//!
+//! // Text inherits all Node methods (appendChild, etc.)
+//! // Text inherits all EventTarget methods (addEventListener, etc.)
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
+//!
+//! ## Implementation Notes
+//!
+//! - Text extends Node via struct embedding (node is first field)
+//! - Text.data is owned by the Text node (allocated, must be freed)
+//! - Node.nodeValue() returns text.data for text nodes
+//! - Text nodes rarely have children (but spec allows it)
+//! - nodeName is always "#text" for text nodes
+//! - Text nodes cannot have attributes
+//! - splitText() creates sibling, not child node
+//! - CharacterData methods (appendData, etc.) are on Text struct directly
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

@@ -1,0 +1,29 @@
+{
+  "version": "0.1.0",
+  "baseline_date": "2025-10-17",
+  "machine": "Unknown - to be populated on first benchmark run",
+  "benchmarks": {
+    "note": "Populate with actual benchmark results. Use ns/op for consistency.",
+    "createElement": {
+      "ns_per_op": null,
+      "description": "Time to create a single element"
+    },
+    "appendChild": {
+      "ns_per_op": null,
+      "description": "Time to append one child to parent"
+    },
+    "querySelector_simple": {
+      "ns_per_op": null,
+      "description": "Simple selector like '.class' on 1000-node tree"
+    },
+    "querySelector_complex": {
+      "ns_per_op": null,
+      "description": "Complex selector like 'div.class > span[attr]' on 1000-node tree"
+    },
+    "tree_traversal": {
+      "ns_per_op": null,
+      "description": "Walk entire tree with firstChild/nextSibling"
+    }
+  },
+  "notes": "Update baselines after implementing benchmarks. Track regressions > 10%."
+}

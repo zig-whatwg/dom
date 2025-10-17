@@ -1,12 +1,199 @@
-//! DOM tree validation functions per WHATWG DOM §4.2.4
+//! Tree Validation Algorithms (§4.2.4)
 //!
-//! This module implements the validation algorithms required for tree manipulation:
-//! - Pre-insert validity checking
-//! - Replace validity checking
-//! - Pre-remove validity checking
+//! This module implements the tree mutation validation algorithms as specified by the WHATWG
+//! DOM Standard. These algorithms ensure that DOM tree modifications maintain structural
+//! integrity and prevent invalid hierarchies (circular references, invalid parent-child
+//! relationships, etc.).
 //!
-//! All functions follow WHATWG DOM specification exactly.
-//! Spec: https://dom.spec.whatwg.org/#mutation-algorithms
+//! ## WHATWG Specification
+//!
+//! Relevant specification sections:
+//! - **§4.2.4 Mutation Algorithms**: https://dom.spec.whatwg.org/#mutation-algorithms
+//! - **§4.2.4.1 Pre-insert Validity**: https://dom.spec.whatwg.org/#concept-node-ensure-pre-insertion-validity
+//! - **§4.2.4.2 Replace Validity**: https://dom.spec.whatwg.org/#concept-node-replace
+//! - **§4.2.4.3 Pre-remove Validity**: https://dom.spec.whatwg.org/#concept-node-pre-remove
+//!
+//! ## MDN Documentation
+//!
+//! - Node.appendChild(): https://developer.mozilla.org/en-US/docs/Web/API/Node/appendChild
+//! - Node.insertBefore(): https://developer.mozilla.org/en-US/docs/Web/API/Node/insertBefore
+//! - Node.replaceChild(): https://developer.mozilla.org/en-US/docs/Web/API/Node/replaceChild
+//! - Node.removeChild(): https://developer.mozilla.org/en-US/docs/Web/API/Node/removeChild
+//! - DOMException: https://developer.mozilla.org/en-US/docs/Web/API/DOMException
+//!
+//! ## Core Features
+//!
+//! ### Pre-Insert Validation
+//! Validates node can be inserted into parent before child:
+//! ```zig
+//! const parent = try Element.create(allocator, "div");
+//! defer parent.node.release();
+//!
+//! const child = try Element.create(allocator, "span");
+//!
+//! // Validate before inserting
+//! try ensurePreInsertValidity(&child.node, &parent.node, null);
+//! // If validation passes, insertion is safe
+//! _ = try parent.node.appendChild(&child.node);
+//! ```
+//!
+//! ### Replace Validation
+//! Validates node can replace child in parent:
+//! ```zig
+//! const parent = try Element.create(allocator, "div");
+//! defer parent.node.release();
+//!
+//! const old_child = try Element.create(allocator, "span");
+//! _ = try parent.node.appendChild(&old_child.node);
+//!
+//! const new_child = try Element.create(allocator, "p");
+//!
+//! // Validate replacement
+//! try ensureReplaceValidity(new_child, &parent.node, &old_child.node);
+//! _ = try parent.node.replaceChild(new_child, &old_child.node);
+//! ```
+//!
+//! ### Pre-Remove Validation
+//! Validates child can be removed from parent:
+//! ```zig
+//! const parent = try Element.create(allocator, "div");
+//! defer parent.node.release();
+//!
+//! const child = try Element.create(allocator, "span");
+//! _ = try parent.node.appendChild(&child.node);
+//!
+//! // Validate removal
+//! try ensurePreRemoveValidity(&child.node, &parent.node);
+//! _ = try parent.node.removeChild(&child.node);
+//! ```
+//!
+//! ## Validation Rules
+//!
+//! ### Pre-Insert Validity (§4.2.4.1)
+//! Checks performed:
+//! 1. **Parent Type** - Must be Document, DocumentFragment, or Element
+//! 2. **Circular Reference** - Node must not be ancestor of parent
+//! 3. **Child Parent** - If child provided, must be child of parent
+//! 4. **Node Type** - Must be DocumentFragment, DocumentType, Element, Text, Comment, or ProcessingInstruction
+//! 5. **Text in Document** - Text nodes cannot be children of Document
+//! 6. **DocumentType Placement** - DocumentType must be child of Document only
+//! 7. **Document Children** - Document can only have one Element and one DocumentType
+//!
+//! ### Replace Validity (§4.2.4.2)
+//! Checks performed:
+//! 1. All Pre-Insert checks (except for child being non-null)
+//! 2. Child must exist and be child of parent
+//!
+//! ### Pre-Remove Validity (§4.2.4.3)
+//! Checks performed:
+//! 1. Child must exist and be child of parent
+//!
+//! ## Error Types
+//!
+//! **HierarchyRequestError:**
+//! - Invalid parent type
+//! - Circular reference (node is ancestor of parent)
+//! - Invalid node type for insertion
+//! - Text node as Document child
+//! - DocumentType as non-Document child
+//! - Multiple element children in Document
+//! - DocumentType after element in Document
+//!
+//! **NotFoundError:**
+//! - Child is not a child of parent
+//! - Child is null when required
+//!
+//! ## Memory Management
+//!
+//! Validation functions are pure - they don't allocate or modify memory:
+//! ```zig
+//! // No memory management needed for validation
+//! try ensurePreInsertValidity(node, parent, child);
+//! // No cleanup required
+//! ```
+//!
+//! ## Usage Examples
+//!
+//! ### Safe Insertion with Validation
+//! ```zig
+//! fn safeAppendChild(parent: *Node, child: *Node) !*Node {
+//!     // Validate first
+//!     try ensurePreInsertValidity(child, parent, null);
+//!
+//!     // Safe to insert
+//!     return try parent.appendChild(child);
+//! }
+//! ```
+//!
+//! ### Preventing Circular References
+//! ```zig
+//! const grandparent = try Element.create(allocator, "div");
+//! defer grandparent.node.release();
+//!
+//! const parent = try Element.create(allocator, "div");
+//! _ = try grandparent.node.appendChild(&parent.node);
+//!
+//! const child = try Element.create(allocator, "span");
+//! _ = try parent.node.appendChild(&child.node);
+//!
+//! // Try to create circular reference (child → parent → grandparent → child)
+//! const result = ensurePreInsertValidity(&grandparent.node, &child.node, null);
+//! // Returns error.HierarchyRequestError ✅
+//! ```
+//!
+//! ### Document Structure Validation
+//! ```zig
+//! const doc = try Document.init(allocator);
+//! defer doc.release();
+//!
+//! const html = try doc.createElement("html");
+//! _ = try doc.node.appendChild(&html.node); // First element - OK
+//!
+//! const html2 = try doc.createElement("html");
+//! const result = ensurePreInsertValidity(&html2.node, &doc.node, null);
+//! // Returns error.HierarchyRequestError (Document already has element child)
+//! ```
+//!
+//! ## Common Patterns
+//!
+//! ### Validation Wrapper
+//! ```zig
+//! fn validateAndInsert(parent: *Node, child: *Node, ref_child: ?*Node) !*Node {
+//!     try ensurePreInsertValidity(child, parent, ref_child);
+//!     return if (ref_child) |ref|
+//!         try parent.insertBefore(child, ref)
+//!     else
+//!         try parent.appendChild(child);
+//! }
+//! ```
+//!
+//! ### Batch Validation
+//! ```zig
+//! fn validateBatch(parent: *Node, children: []*Node) !void {
+//!     for (children) |child| {
+//!         try ensurePreInsertValidity(child, parent, null);
+//!     }
+//!     // All validations passed - safe to insert all
+//! }
+//! ```
+//!
+//! ## Performance Tips
+//!
+//! 1. **Fast Path** - Validation is O(depth) for ancestor check, optimize hot paths
+//! 2. **Batch Validate** - Validate all nodes before inserting to avoid partial insertion
+//! 3. **Skip When Safe** - Internal operations can skip validation if structure guaranteed
+//! 4. **Cache Parent Type** - Parent type check is first, cache if doing many insertions
+//! 5. **Early Exit** - Validation returns on first error, order checks by likelihood
+//!
+//! ## Implementation Notes
+//!
+//! - All functions follow WHATWG DOM specification exactly (step-by-step)
+//! - Validation is pure (no side effects, no memory allocation)
+//! - Error types match DOMException names from spec
+//! - isHostIncludingInclusiveAncestor implements spec's ancestor check algorithm
+//! - Document children validation enforces: at most one Element, at most one DocumentType
+//! - DocumentType must come before Element in Document (if both present)
+//! - Text nodes explicitly forbidden as Document children (use Text in Element instead)
 
 const std = @import("std");
 const Node = @import("node.zig").Node;

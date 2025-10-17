@@ -1,3 +1,313 @@
+//! AbortSignal Interface (§3.1)
+//!
+//! This module implements the AbortSignal interface as specified by the WHATWG DOM Standard.
+//! AbortSignal provides a way to communicate cancellation to asynchronous operations. It's
+//! used extensively by Fetch API, Streams, and other modern web APIs to support operation
+//! cancellation and timeout handling.
+//!
+//! ## WHATWG Specification
+//!
+//! Relevant specification sections:
+//! - **§3.1 Interface AbortSignal**: https://dom.spec.whatwg.org/#interface-abortsignal
+//! - **§3.2 Interface AbortController**: https://dom.spec.whatwg.org/#interface-abortcontroller
+//! - **§2.7 Interface EventTarget**: https://dom.spec.whatwg.org/#interface-eventtarget (base)
+//!
+//! ## MDN Documentation
+//!
+//! - AbortSignal: https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal
+//! - AbortSignal.aborted: https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/aborted
+//! - AbortSignal.abort(): https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/abort_static
+//! - AbortSignal.timeout(): https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/timeout_static
+//! - Using AbortSignal: https://developer.mozilla.org/en-US/docs/Web/API/AbortController#examples
+//!
+//! ## Core Features
+//!
+//! ### Abort Signaling
+//! Signal provides a way to communicate cancellation to operations:
+//! ```zig
+//! const controller = try AbortController.init(allocator);
+//! defer controller.deinit();
+//!
+//! const signal = controller.signal;
+//!
+//! // Check if aborted
+//! if (signal.aborted) {
+//!     // Operation was cancelled
+//!     return;
+//! }
+//!
+//! // Listen for abort
+//! try signal.addEventListener("abort", onAbort, ctx, .{});
+//!
+//! // Trigger abort
+//! controller.abort();
+//! // signal.aborted = true, abort event fired
+//! ```
+//!
+//! ### Static Abort Signal
+//! Create a signal that's already aborted:
+//! ```zig
+//! const signal = try AbortSignal.abort(allocator);
+//! defer signal.deinit();
+//!
+//! try std.testing.expect(signal.aborted); // Already aborted
+//! // Useful for immediately cancelled operations
+//! ```
+//!
+//! ### Timeout Signal
+//! Create a signal that aborts after a timeout:
+//! ```zig
+//! const signal = try AbortSignal.timeout(allocator, 1000); // 1 second
+//! defer signal.deinit();
+//!
+//! // After 1 second, signal.aborted becomes true
+//! // and "abort" event fires
+//! ```
+//!
+//! ## AbortSignal Structure
+//!
+//! AbortSignal extends EventTarget with abort state and algorithms:
+//! - **rare_data**: Optional SignalRareData (event listeners, abort algorithms)
+//! - **aborted**: Boolean flag indicating if signal is aborted
+//! - **reason**: Optional DOMException explaining why aborted
+//!
+//! **Key Properties:**
+//! - Extends EventTarget (can add/remove event listeners)
+//! - Immutable once aborted (aborted flag never resets)
+//! - Abort algorithms run before abort event fires
+//! - Can be created pre-aborted (AbortSignal.abort())
+//! - Supports timeout-based abort (AbortSignal.timeout())
+//!
+//! ## Memory Management
+//!
+//! AbortSignal uses explicit deinit (not reference counting like Node):
+//! ```zig
+//! const signal = try AbortSignal.abort(allocator);
+//! defer signal.deinit(); // Explicit cleanup
+//!
+//! // Or via AbortController
+//! const controller = try AbortController.init(allocator);
+//! defer controller.deinit(); // Cleans up signal too
+//! ```
+//!
+//! **Important:**
+//! - AbortSignal does NOT use reference counting
+//! - Use defer signal.deinit() for cleanup
+//! - AbortController owns its signal (controller.deinit() frees signal)
+//! - Abort algorithms and listeners cleaned up in deinit()
+//!
+//! ## Usage Examples
+//!
+//! ### Cancellable Operation
+//! ```zig
+//! fn fetchWithAbort(url: []const u8, signal: *AbortSignal) ![]u8 {
+//!     // Check before starting
+//!     if (signal.aborted) {
+//!         return error.Aborted;
+//!     }
+//!
+//!     // Perform operation
+//!     const data = try performFetch(url);
+//!
+//!     // Check periodically
+//!     if (signal.aborted) {
+//!         return error.Aborted;
+//!     }
+//!
+//!     return data;
+//! }
+//!
+//! // Usage
+//! const controller = try AbortController.init(allocator);
+//! defer controller.deinit();
+//!
+//! const result = fetchWithAbort("https://api.example.com", controller.signal);
+//!
+//! // User cancels
+//! controller.abort();
+//! ```
+//!
+//! ### Timeout Pattern
+//! ```zig
+//! fn fetchWithTimeout(url: []const u8, timeout_ms: u32, allocator: Allocator) ![]u8 {
+//!     const signal = try AbortSignal.timeout(allocator, timeout_ms);
+//!     defer signal.deinit();
+//!
+//!     return fetchWithAbort(url, signal);
+//! }
+//! ```
+//!
+//! ### Abort Listener
+//! ```zig
+//! fn onAbort(event: *Event, context: *anyopaque) void {
+//!     _ = event;
+//!     const state = @as(*MyState, @ptrCast(@alignCast(context)));
+//!     state.cancelled = true;
+//!     std.debug.print("Operation cancelled!\n", .{});
+//! }
+//!
+//! const controller = try AbortController.init(allocator);
+//! defer controller.deinit();
+//!
+//! try controller.signal.addEventListener("abort", onAbort, &state, .{});
+//!
+//! // Later...
+//! controller.abort(); // onAbort() fires
+//! ```
+//!
+//! ## Common Patterns
+//!
+//! ### Chained Operations
+//! ```zig
+//! fn chainedOperations(signal: *AbortSignal) !void {
+//!     try step1(signal);
+//!     if (signal.aborted) return error.Aborted;
+//!
+//!     try step2(signal);
+//!     if (signal.aborted) return error.Aborted;
+//!
+//!     try step3(signal);
+//!     if (signal.aborted) return error.Aborted;
+//! }
+//! ```
+//!
+//! ### Cleanup on Abort
+//! ```zig
+//! fn operationWithCleanup(signal: *AbortSignal, allocator: Allocator) ![]u8 {
+//!     const resource = try allocator.alloc(u8, 1024);
+//!     errdefer allocator.free(resource);
+//!
+//!     // Register cleanup
+//!     const cleanup = struct {
+//!         fn run(sig: *AbortSignal, ctx: *anyopaque) void {
+//!             _ = sig;
+//!             const res = @as(*[]u8, @ptrCast(@alignCast(ctx)));
+//!             allocator.free(res.*);
+//!         }
+//!     }.run;
+//!
+//!     try signal.addAbortAlgorithm(cleanup, &resource);
+//!
+//!     // Perform work...
+//!     if (signal.aborted) {
+//!         return error.Aborted; // Cleanup runs automatically
+//!     }
+//!
+//!     return resource;
+//! }
+//! ```
+//!
+//! ## Performance Tips
+//!
+//! 1. **Check Before Work** - Always check signal.aborted before starting expensive operations
+//! 2. **Periodic Checks** - Check signal in loops for long-running operations
+//! 3. **Pre-Aborted Signals** - Use AbortSignal.abort() for immediately cancelled ops
+//! 4. **Avoid Polling** - Use event listeners instead of polling signal.aborted
+//! 5. **Reuse Signals** - Share one signal across multiple operations if appropriate
+//! 6. **Cleanup Algorithms** - Use abort algorithms for automatic resource cleanup
+//!
+//! ## JavaScript Bindings
+//!
+//! ### Static Methods
+//! ```javascript
+//! // Create pre-aborted signal with reason
+//! AbortSignal.abort = function(reason) {
+//!   return zig.abortsignal_abort(reason);
+//! };
+//!
+//! // Create signal that aborts after timeout
+//! AbortSignal.timeout = function(milliseconds) {
+//!   return zig.abortsignal_timeout(milliseconds);
+//! };
+//!
+//! // Create composite signal from multiple signals (future)
+//! AbortSignal.any = function(signals) {
+//!   return zig.abortsignal_any(signals);
+//! };
+//! ```
+//!
+//! ### Instance Properties
+//! ```javascript
+//! // aborted (readonly)
+//! Object.defineProperty(AbortSignal.prototype, 'aborted', {
+//!   get: function() { return zig.abortsignal_get_aborted(this._ptr); }
+//! });
+//!
+//! // reason (readonly)
+//! Object.defineProperty(AbortSignal.prototype, 'reason', {
+//!   get: function() { return zig.abortsignal_get_reason(this._ptr); }
+//! });
+//!
+//! // onabort (read-write event handler)
+//! Object.defineProperty(AbortSignal.prototype, 'onabort', {
+//!   get: function() { return zig.abortsignal_get_onabort(this._ptr); },
+//!   set: function(handler) { zig.abortsignal_set_onabort(this._ptr, handler); }
+//! });
+//! ```
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // throwIfAborted() - Throws if signal is aborted
+//! AbortSignal.prototype.throwIfAborted = function() {
+//!   zig.abortsignal_throwIfAborted(this._ptr);
+//! };
+//!
+//! // AbortSignal inherits EventTarget methods (addEventListener, etc.)
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Create controller and signal
+//! const controller = new AbortController();
+//! const signal = controller.signal;
+//!
+//! // Check if aborted
+//! if (signal.aborted) {
+//!   console.log('Already aborted:', signal.reason);
+//! }
+//!
+//! // Listen for abort event
+//! signal.addEventListener('abort', () => {
+//!   console.log('Operation cancelled:', signal.reason);
+//! });
+//!
+//! // Or use onabort handler
+//! signal.onabort = (event) => {
+//!   console.log('Aborted');
+//! };
+//!
+//! // Abort with reason
+//! controller.abort(new Error('User cancelled'));
+//!
+//! // Throw if aborted (for error handling)
+//! try {
+//!   signal.throwIfAborted();
+//!   // Continue operation
+//! } catch (e) {
+//!   console.error('Operation was aborted:', e);
+//! }
+//!
+//! // Pre-aborted signal
+//! const abortedSignal = AbortSignal.abort('Already done');
+//! console.log(abortedSignal.aborted); // true
+//!
+//! // Timeout signal
+//! const timeoutSignal = AbortSignal.timeout(5000); // Aborts after 5 seconds
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
+//!
+//! ## Implementation Notes
+//!
+//! - AbortSignal extends EventTarget via usingnamespace mixin
+//! - aborted flag is immutable once set (never goes from true → false)
+//! - Abort algorithms run BEFORE abort event fires
+//! - reason defaults to DOMException("AbortError") if not specified
+//! - AbortSignal.timeout() uses internal timer (implementation-specific)
+//! - SignalRareData stores event listeners and abort algorithms
+//! - Not reference counted (use explicit deinit())
+//! - Thread-safety not guaranteed (single-threaded by default)
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const EventTargetMixin = @import("event_target.zig").EventTargetMixin;

@@ -1,45 +1,308 @@
-//! EventTarget mixin - Generic event dispatching for any type.
+//! EventTarget Interface (§2.7-2.9)
 //!
-//! Provides addEventListener(), removeEventListener(), and dispatchEvent()
-//! for any type that:
-//! - Has a `rare_data: ?*RareDataType` field
-//! - Implements `ensureRareData() !*RareDataType` method
-//! - RareDataType implements event listener storage interface
+//! This module implements the EventTarget interface as specified by the WHATWG DOM Standard.
+//! EventTarget is the base interface for all objects that can receive events and have listeners
+//! registered on them. It provides the fundamental event system for the DOM.
 //!
-//! This mixin enables EventTarget functionality for both Node (DOM tree) and
-//! non-Node types like AbortSignal, XMLHttpRequest, WebSocket, etc.
+//! ## WHATWG Specification
 //!
-//! ## Architecture
-//! Uses Zig's comptime generics and `usingnamespace` to inject EventTarget
-//! methods into any compatible type with zero runtime overhead.
+//! Relevant specification sections:
+//! - **§2.7 Interface EventTarget**: https://dom.spec.whatwg.org/#interface-eventtarget
+//! - **§2.8 Observing Event Listeners**: https://dom.spec.whatwg.org/#observing-event-listeners
+//! - **§2.9 Dispatching Events**: https://dom.spec.whatwg.org/#dispatching-events
+//! - **§2.10 Firing Events**: https://dom.spec.whatwg.org/#firing-events
 //!
-//! ## Example Usage
+//! ## MDN Documentation
+//!
+//! - EventTarget: https://developer.mozilla.org/en-US/docs/Web/API/EventTarget
+//! - EventTarget.addEventListener(): https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener
+//! - EventTarget.removeEventListener(): https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/removeEventListener
+//! - EventTarget.dispatchEvent(): https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/dispatchEvent
+//! - Event flow: https://developer.mozilla.org/en-US/docs/Web/API/Event/eventPhase
+//!
+//! ## Core Features
+//!
+//! ### Adding Event Listeners
+//! Register listeners for specific event types with optional capture/once/passive flags:
+//! ```zig
+//! const target = try Node.init(allocator, .element_node, "div");
+//! defer target.release();
+//!
+//! try target.addEventListener("click", myCallback, context, .{
+//!     .capture = false,  // Listen during bubble phase
+//!     .once = false,     // Don't auto-remove after first fire
+//!     .passive = false,  // Allow preventDefault()
+//! });
+//! ```
+//!
+//! ### Removing Event Listeners
+//! Remove previously registered listeners (must match type, callback, capture):
+//! ```zig
+//! target.removeEventListener("click", myCallback, .{ .capture = false });
+//! // Listener is removed, won't be called for future click events
+//! ```
+//!
+//! ### Dispatching Events
+//! Dispatch events through the event flow (capture → target → bubble):
+//! ```zig
+//! var event = Event.init("click", .{ .bubbles = true, .cancelable = true, .composed = false });
+//! const was_cancelled = try target.dispatchEvent(&event);
+//! // Returns true if any listener called preventDefault()
+//! ```
+//!
+//! ## EventTarget Mixin Architecture
+//!
+//! This module provides a **generic mixin** that can be applied to any type, not just Node.
+//! The mixin uses Zig's comptime generics and `usingnamespace` to inject EventTarget methods
+//! with zero runtime overhead.
+//!
+//! **Requirements for types using EventTargetMixin:**
+//! - Must have `rare_data: ?*RareDataType` field
+//! - Must implement `ensureRareData() !*RareDataType` method
+//! - RareDataType must have event listener storage
+//!
+//! **Example mixin usage:**
 //! ```zig
 //! pub const Node = struct {
 //!     rare_data: ?*NodeRareData,
 //!     pub usingnamespace EventTargetMixin(@This());
 //!
 //!     pub fn ensureRareData(self: *Node) !*NodeRareData {
-//!         // Implementation
-//!     }
-//! };
-//!
-//! pub const AbortSignal = struct {
-//!     rare_data: ?*SignalRareData,
-//!     pub usingnamespace EventTargetMixin(@This());
-//!
-//!     pub fn ensureRareData(self: *AbortSignal) !*SignalRareData {
-//!         // Implementation
+//!         if (self.rare_data == null) {
+//!             self.rare_data = try NodeRareData.init(self.allocator);
+//!         }
+//!         return self.rare_data.?;
 //!     }
 //! };
 //! ```
 //!
-//! ## WHATWG DOM Compliance
-//! Implements EventTarget interface per WHATWG DOM §2.7-§2.9.
+//! This enables EventTarget for both DOM nodes (Element, Document) and non-DOM objects
+//! (AbortSignal, XMLHttpRequest, WebSocket).
 //!
-//! ## Spec References
-//! - Interface: https://dom.spec.whatwg.org/#interface-eventtarget
-//! - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl
+//! ## Event Flow Algorithm
+//!
+//! When dispatchEvent() is called, events propagate through three phases per WHATWG §2.9:
+//!
+//! **Phase 1: Capture (CAPTURING_PHASE)**
+//! - Start at window/document root
+//! - Traverse down to target
+//! - Call listeners registered with capture=true
+//!
+//! **Phase 2: Target (AT_TARGET)**
+//! - At the event target itself
+//! - Call both capture and bubble listeners
+//!
+//! **Phase 3: Bubble (BUBBLING_PHASE)**
+//! - Only if event.bubbles = true
+//! - Traverse up from target to root
+//! - Call listeners registered with capture=false
+//!
+//! ## Memory Management
+//!
+//! Event listeners are stored in RareData (allocated on demand):
+//! ```zig
+//! const node = try Node.init(allocator, .element_node, "button");
+//! defer node.release();
+//!
+//! // First addEventListener() allocates RareData
+//! try node.addEventListener("click", callback, ctx, .{});
+//!
+//! // Listeners stored in rare_data.event_listeners ArrayList
+//! // Cleaned up when node is released
+//! ```
+//!
+//! RareData pattern keeps Node struct small (96 bytes) when events aren't used.
+//!
+//! ## Usage Examples
+//!
+//! ### Basic Event Handling
+//! ```zig
+//! fn handleClick(event: *Event, context: *anyopaque) void {
+//!     const state = @ptrCast(*MyState, @alignCast(@alignOf(MyState), context));
+//!     std.debug.print("Clicked! State: {}\n", .{state});
+//!
+//!     // Prevent default browser action
+//!     event.preventDefault();
+//! }
+//!
+//! const allocator = std.heap.page_allocator;
+//! const button = try Element.create(allocator, "button");
+//! defer button.node.release();
+//!
+//! var state = MyState{ .counter = 0 };
+//! try button.node.addEventListener("click", handleClick, &state, .{});
+//!
+//! // Dispatch event
+//! var event = Event.init("click", .{ .bubbles = true, .cancelable = true, .composed = false });
+//! _ = try button.node.dispatchEvent(&event);
+//! ```
+//!
+//! ### Capture Phase Listeners
+//! ```zig
+//! // Parent listens during capture (before child)
+//! try parent.addEventListener("click", parentCallback, parent_ctx, .{ .capture = true });
+//!
+//! // Child listens during bubble (after parent)
+//! try child.addEventListener("click", childCallback, child_ctx, .{ .capture = false });
+//!
+//! // Click on child triggers:
+//! // 1. parentCallback (capture phase, going down)
+//! // 2. childCallback (at target phase)
+//! // 3. parentCallback (bubble phase, going up) - if registered without capture too
+//! ```
+//!
+//! ### Once-Only Listeners
+//! ```zig
+//! // Automatically removed after first invocation
+//! try element.addEventListener("load", onLoad, ctx, .{ .once = true });
+//!
+//! // First dispatch: onLoad called, listener removed
+//! var event1 = Event.init("load", .{ .bubbles = false, .cancelable = false, .composed = false });
+//! _ = try element.dispatchEvent(&event1);
+//!
+//! // Second dispatch: onLoad NOT called (already removed)
+//! var event2 = Event.init("load", .{ .bubbles = false, .cancelable = false, .composed = false });
+//! _ = try element.dispatchEvent(&event2);
+//! ```
+//!
+//! ## Common Patterns
+//!
+//! ### Event Delegation
+//! ```zig
+//! fn handleDelegation(event: *Event, context: *anyopaque) void {
+//!     const target = @ptrCast(*Element, @alignCast(@alignOf(Element), event.target.?));
+//!     if (std.mem.eql(u8, target.tag_name, "button")) {
+//!         // Handle clicks on any button descendant
+//!     }
+//! }
+//!
+//! // Listen on parent instead of every child
+//! try container.addEventListener("click", handleDelegation, ctx, .{});
+//! ```
+//!
+//! ### Cleanup with AbortSignal
+//! ```zig
+//! const controller = try AbortController.init(allocator);
+//! defer controller.deinit();
+//!
+//! // Listeners tied to signal lifecycle
+//! try element.addEventListener("click", callback, ctx, .{ .signal = controller.signal });
+//! try element.addEventListener("input", callback2, ctx, .{ .signal = controller.signal });
+//!
+//! // Abort removes ALL listeners tied to this signal
+//! controller.abort();
+//! ```
+//!
+//! ## Performance Tips
+//!
+//! 1. **Use Event Delegation** - Attach one listener to parent instead of many to children
+//! 2. **Passive Listeners** - Set passive=true for scroll/touch to allow browser optimizations
+//! 3. **Once Flag** - Use once=true for one-time events (load, DOMContentLoaded)
+//! 4. **Remove Unused Listeners** - Call removeEventListener() to free memory
+//! 5. **Capture vs Bubble** - Use capture=true only when needed (rare)
+//! 6. **Avoid Heavy Callbacks** - Keep event handlers fast, defer heavy work
+//! 7. **RareData Efficiency** - Event listeners only allocate RareData on first addEventListener()
+//! 8. **stopImmediatePropagation** - Prevents remaining listeners from firing (performance win)
+//!
+//! ## JavaScript Bindings
+//!
+//! **Note:** EventTarget is a mixin in this implementation. In JavaScript, it's exposed as
+//! instance methods on objects that implement EventTarget (Node, Element, Document, etc.).
+//!
+//! ### Instance Methods (Mixed into Node, Element, Document, etc.)
+//! ```javascript
+//! // addEventListener - Register event listener
+//! EventTarget.prototype.addEventListener = function(type, listener, options) {
+//!   // Parse options (can be boolean for capture or object)
+//!   const opts = typeof options === 'boolean'
+//!     ? { capture: options }
+//!     : (options || {});
+//!
+//!   return zig.eventtarget_addEventListener(
+//!     this._ptr,
+//!     type,
+//!     listener,
+//!     opts.capture || false,
+//!     opts.once || false,
+//!     opts.passive || false,
+//!     opts.signal || null
+//!   );
+//! };
+//!
+//! // removeEventListener - Remove event listener
+//! EventTarget.prototype.removeEventListener = function(type, listener, options) {
+//!   // Parse options (can be boolean for capture or object)
+//!   const opts = typeof options === 'boolean'
+//!     ? { capture: options }
+//!     : (options || {});
+//!
+//!   return zig.eventtarget_removeEventListener(
+//!     this._ptr,
+//!     type,
+//!     listener,
+//!     opts.capture || false
+//!   );
+//! };
+//!
+//! // dispatchEvent - Dispatch event through the event flow
+//! EventTarget.prototype.dispatchEvent = function(event) {
+//!   return zig.eventtarget_dispatchEvent(this._ptr, event._ptr);
+//! };
+//! ```
+//!
+//! ### EventListener Callback
+//! ```javascript
+//! // Event listener can be a function or object with handleEvent method
+//!
+//! // Function listener
+//! element.addEventListener('click', function(event) {
+//!   console.log('Clicked!', event.type);
+//! });
+//!
+//! // Object listener with handleEvent method
+//! const listener = {
+//!   handleEvent: function(event) {
+//!     console.log('Handled:', event.type);
+//!   }
+//! };
+//! element.addEventListener('click', listener);
+//! ```
+//!
+//! ### AddEventListenerOptions
+//! ```javascript
+//! element.addEventListener('scroll', handler, {
+//!   capture: false,  // Listen in bubble phase (default)
+//!   once: true,      // Remove after first invocation
+//!   passive: true,   // Won't call preventDefault() (enables optimizations)
+//!   signal: abortSignal  // AbortSignal to auto-remove on abort
+//! });
+//! ```
+//!
+//! ### Usage with AbortSignal
+//! ```javascript
+//! const controller = new AbortController();
+//!
+//! // Add multiple listeners tied to signal
+//! element.addEventListener('click', handleClick, { signal: controller.signal });
+//! element.addEventListener('input', handleInput, { signal: controller.signal });
+//!
+//! // Abort removes all listeners tied to this signal
+//! controller.abort();
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
+//!
+//! ## Implementation Notes
+//!
+//! - EventTarget is a **mixin**, not a base class (no inheritance in Zig)
+//! - Event listeners stored in `rare_data.event_listeners: ArrayList(EventListener)`
+//! - RareData allocated lazily (only when first listener added)
+//! - Dispatch algorithm follows WHATWG spec exactly (capture → target → bubble)
+//! - `once` listeners removed automatically after first invocation
+//! - `passive` listeners cannot call preventDefault() (in_passive_listener_flag set)
+//! - AbortSignal integration allows bulk listener removal
+//! - Comptime mixin enables code reuse with zero runtime cost
+//! - Works with any type meeting rare_data + ensureRareData() requirements
 
 const std = @import("std");
 const Event = @import("event.zig").Event;

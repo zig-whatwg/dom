@@ -1,15 +1,195 @@
-//! RareData pattern implementation for Node.
+//! RareData Pattern (Performance Optimization)
 //!
-//! This module implements WebKit's RareData pattern to save memory on nodes.
-//! Most nodes don't need event listeners, mutation observers, or user data.
-//! By allocating these features on-demand, we save 40-80 bytes per common node.
+//! This module implements the RareData pattern for memory optimization, inspired by WebKit's
+//! NodeRareData and ElementRareData. Most DOM nodes don't need event listeners, mutation
+//! observers, or user data. By allocating these features on-demand only when used, we save
+//! significant memory on typical DOM trees where 90%+ of nodes are simple.
 //!
-//! ## Architecture Pattern (from WebKit)
-//! - Common case: rare_data = null (most nodes, 0 bytes overhead)
-//! - Rare case: rare_data allocated (only when features used)
-//! - Saves memory on 90%+ of nodes in typical DOM tree
+//! ## WHATWG Specification
 //!
-//! Reference: WebKit's NodeRareData, ElementRareData
+//! Relevant specification sections:
+//! - **§2.7 Interface EventTarget**: https://dom.spec.whatwg.org/#interface-eventtarget (event listeners)
+//! - **§4.4 Interface Node**: https://dom.spec.whatwg.org/#interface-node (base node features)
+//! - **§3 Mutation Observers**: https://dom.spec.whatwg.org/#mutation-observers (optional feature)
+//!
+//! ## MDN Documentation
+//!
+//! - EventTarget: https://developer.mozilla.org/en-US/docs/Web/API/EventTarget
+//! - MutationObserver: https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver
+//! - Node: https://developer.mozilla.org/en-US/docs/Web/API/Node
+//! - Memory optimization: https://developer.mozilla.org/en-US/docs/Web/Performance/Optimizing_startup_performance
+//!
+//! ## Core Features
+//!
+//! ### Lazy Allocation
+//! RareData is only allocated when a node uses rare features:
+//! ```zig
+//! const node = try Node.init(allocator, .element_node, "div");
+//! defer node.release();
+//! // node.rare_data = null (common case, 0 bytes overhead)
+//!
+//! // First addEventListener() allocates RareData
+//! try node.addEventListener("click", callback, ctx, .{});
+//! // node.rare_data != null (now allocated, ~80 bytes)
+//! ```
+//!
+//! ### Memory Savings
+//! Compare memory usage with and without RareData pattern:
+//! ```zig
+//! // WITHOUT RareData (all features always allocated):
+//! // Every node: 96 + 80 = 176 bytes
+//! // 100,000 nodes: 17.6 MB
+//!
+//! // WITH RareData (lazy allocation):
+//! // Common nodes (90%): 96 bytes
+//! // Rare nodes (10%): 96 + 8 (pointer) + 80 (RareData) = 184 bytes
+//! // 100,000 nodes: 90K×96 + 10K×184 = 10.5 MB
+//! // Savings: 40% memory reduction!
+//! ```
+//!
+//! ### Stored Features
+//! RareData holds optional node features:
+//! ```zig
+//! pub const NodeRareData = struct {
+//!     event_listeners: ArrayList(EventListener),  // EventTarget feature
+//!     mutation_observers: ArrayList(MutationObserver),  // MutationObserver feature
+//!     user_data: ?*anyopaque,  // Custom user data
+//! };
+//! ```
+//!
+//! ## RareData Pattern
+//!
+//! The pattern works as follows:
+//!
+//! **1. Node has optional pointer:**
+//! ```zig
+//! pub const Node = struct {
+//!     rare_data: ?*NodeRareData = null,  // null by default (8 bytes pointer)
+//!     // ... other fields ...
+//! };
+//! ```
+//!
+//! **2. Allocate on first use:**
+//! ```zig
+//! pub fn ensureRareData(self: *Node) !*NodeRareData {
+//!     if (self.rare_data == null) {
+//!         self.rare_data = try self.allocator.create(NodeRareData);
+//!         self.rare_data.?.* = NodeRareData.init(self.allocator);
+//!     }
+//!     return self.rare_data.?;
+//! }
+//! ```
+//!
+//! **3. Access when needed:**
+//! ```zig
+//! pub fn addEventListener(self: *Node, ...) !void {
+//!     const rare_data = try self.ensureRareData();  // Allocate if needed
+//!     try rare_data.event_listeners.append(...);
+//! }
+//! ```
+//!
+//! ## Memory Management
+//!
+//! RareData is owned by the Node and freed when Node is released:
+//! ```zig
+//! const node = try Node.init(allocator, .element_node, "div");
+//! defer node.release(); // Automatically frees rare_data if allocated
+//!
+//! try node.addEventListener("click", callback, ctx, .{});
+//! // rare_data allocated
+//!
+//! // node.release() will:
+//! // 1. Call rare_data.deinit() (frees ArrayList)
+//! // 2. Free rare_data struct
+//! // 3. Free node
+//! ```
+//!
+//! ## Usage Examples
+//!
+//! ### Checking if RareData Exists
+//! ```zig
+//! fn hasEventListeners(node: *Node) bool {
+//!     if (node.rare_data) |rare_data| {
+//!         return rare_data.event_listeners.items.len > 0;
+//!     }
+//!     return false;
+//! }
+//! ```
+//!
+//! ### Lazy Feature Access
+//! ```zig
+//! fn addMutationObserver(node: *Node, observer: MutationObserver) !void {
+//!     const rare_data = try node.ensureRareData();
+//!     try rare_data.mutation_observers.append(observer);
+//! }
+//! ```
+//!
+//! ### User Data Storage
+//! ```zig
+//! fn setUserData(node: *Node, data: *anyopaque) !void {
+//!     const rare_data = try node.ensureRareData();
+//!     rare_data.user_data = data;
+//! }
+//!
+//! fn getUserData(node: *Node) ?*anyopaque {
+//!     if (node.rare_data) |rare_data| {
+//!         return rare_data.user_data;
+//!     }
+//!     return null;
+//! }
+//! ```
+//!
+//! ## Common Patterns
+//!
+//! ### Conditional Cleanup
+//! ```zig
+//! fn cleanupNode(node: *Node) void {
+//!     if (node.rare_data) |rare_data| {
+//!         // Only cleanup if allocated
+//!         for (rare_data.event_listeners.items) |listener| {
+//!             // Cleanup listeners
+//!         }
+//!         rare_data.event_listeners.clearRetainingCapacity();
+//!     }
+//! }
+//! ```
+//!
+//! ### Statistics Collection
+//! ```zig
+//! fn countNodesWithRareData(root: *Node) struct { total: usize, with_rare: usize } {
+//!     var total: usize = 0;
+//!     var with_rare: usize = 0;
+//!
+//!     var current = root;
+//!     // Traverse tree
+//!     total += 1;
+//!     if (current.rare_data != null) {
+//!         with_rare += 1;
+//!     }
+//!
+//!     return .{ .total = total, .with_rare = with_rare };
+//! }
+//! ```
+//!
+//! ## Performance Tips
+//!
+//! 1. **Avoid Early Allocation** - Don't call ensureRareData() unless necessary
+//! 2. **Batch Operations** - Minimize rare_data allocations by batching feature additions
+//! 3. **Check Before Access** - Use `if (rare_data) |rd|` pattern for conditional access
+//! 4. **Memory Profiling** - Track rare_data allocation rate in production
+//! 5. **Optimize Common Path** - Fast path assumes rare_data = null (no allocation)
+//! 6. **Consider Alternatives** - For features used by 50%+ of nodes, consider moving to Node struct
+//!
+//! ## Implementation Notes
+//!
+//! - RareData pattern inspired by WebKit's NodeRareData/ElementRareData
+//! - Typical DOM trees: 90%+ nodes don't need rare features
+//! - Memory savings: 40-50% on large DOM trees
+//! - Trade-off: Extra pointer indirection when rare_data IS used
+//! - ensureRareData() is idempotent (safe to call multiple times)
+//! - RareData freed automatically when Node is released
+//! - Event listeners, mutation observers, user data stored together
+//! - Could be split into multiple rare data types for finer granularity
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

@@ -1,7 +1,7 @@
 # DOM - WHATWG DOM Implementation in Zig
 
 [![Zig](https://img.shields.io/badge/zig-0.15.1-orange.svg)](https://ziglang.org/)
-[![Tests](https://img.shields.io/badge/tests-183%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-267%20passing-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A production-ready implementation of the [WHATWG DOM Standard](https://dom.spec.whatwg.org/) in Zig, designed for headless browsers and JavaScript engines.
@@ -372,7 +372,57 @@ All implemented APIs are verified against both sources to ensure 100% compliance
 
 **Phase 2 Complete**: All tree manipulation APIs implemented per WHATWG DOM §4.4!
 
-### Phase 3 - Advanced Features (Future)
+### Phase 3 - AbortController & AbortSignal ✅ Complete!
+
+**AbortController Interface** - Operation cancellation controller:
+- ✅ `AbortController()` constructor - Create new controller
+- ✅ `signal` property - Associated AbortSignal (SameObject)
+- ✅ `abort(reason)` - Abort with optional reason
+
+**AbortSignal Interface** - Abort signaling and composition:
+- ✅ `abort(reason)` - Static factory for pre-aborted signal
+- ✅ `any(signals)` - Composite signal from multiple sources
+- ✅ `aborted` property - Check if signal is aborted
+- ✅ `reason` property - Get abort reason (any type)
+- ✅ `throwIfAborted()` - Throw if aborted
+- ✅ EventTarget integration - Auto-remove listeners on abort
+
+**Phase 3 Complete**: All core AbortSignal APIs implemented per WHATWG DOM §3.1-§3.2!
+
+**Test Coverage**: 62 tests covering all features, edge cases, and memory safety.
+
+**Compliance**: 98% (A+) - See [summaries/analysis/ABORTSIGNAL_FINAL_COMPLIANCE_AUDIT.md](summaries/analysis/ABORTSIGNAL_FINAL_COMPLIANCE_AUDIT.md) for full audit.
+
+#### Deferred Features (HTML Integration Required)
+
+The following WHATWG DOM features require HTML Standard infrastructure:
+
+**AbortSignal.timeout(milliseconds)** - Timer-based auto-abort
+- **Status**: Deferred to Phase N (HTML Integration)
+- **Reason**: Requires HTML timer task source, event loop, and global task queue
+- **Priority**: P2 - Medium
+- **Workaround**: Users can implement custom timeout via async/threads:
+  ```zig
+  const controller = try AbortController.init(allocator);
+  defer controller.deinit();
+  
+  // In timer thread/async context:
+  const timeout_error = try DOMException.create(
+      allocator, "TimeoutError", "Operation timed out"
+  );
+  try controller.abort(@ptrCast(timeout_error));
+  ```
+
+**AbortSignal.onabort** - EventHandler attribute
+- **Status**: Deferred to Phase N (HTML Integration)
+- **Reason**: EventHandler is HTML Standard type requiring special processing
+- **Priority**: P3 - Low (syntactic sugar)
+- **Workaround**: Use `addEventListener("abort", ...)` directly (functionally identical):
+  ```zig
+  try signal.addEventListener("abort", handler, ctx, false, false, false, null);
+  ```
+
+### Phase 4 - Advanced Features (Future)
 
 **Planned APIs**:
 - `querySelector(selectors)` - Find first matching element
@@ -471,7 +521,7 @@ Inspired by:
 
 ---
 
-**Status**: Phase 2 Complete ✅ | Production Ready | WebIDL Compliant
+**Status**: Phase 3 Complete ✅ | Production Ready | WebIDL Compliant
 
 See [summaries/plans/IMPLEMENTATION_STATUS.md](summaries/plans/IMPLEMENTATION_STATUS.md) for detailed roadmap.
 

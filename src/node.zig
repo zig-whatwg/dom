@@ -1,12 +1,349 @@
-//! Core Node implementation with WebKit-style reference counting.
+//! Node Interface (§4.4)
 //!
-//! This module implements the fundamental DOM Node with:
-//! - Packed ref_count + has_parent in single u32 (saves 12 bytes)
-//! - Weak parent/sibling pointers (prevents circular references)
-//! - Vtable-based polymorphism (allows extension by Browser/HTML projects)
-//! - Target size: ≤96 bytes per node
+//! This module implements the Node interface as specified by the WHATWG DOM Standard.
+//! Node is the primary datatype for the entire Document Object Model. All objects in a
+//! document tree implement the Node interface, making it the fundamental building block of the DOM.
 //!
-//! Spec: WHATWG DOM §4 (https://dom.spec.whatwg.org/#nodes)
+//! ## WHATWG Specification
+//!
+//! Relevant specification sections:
+//! - **§4.4 Interface Node**: https://dom.spec.whatwg.org/#interface-node
+//! - **§4.2.1 Node tree**: https://dom.spec.whatwg.org/#concept-node-tree
+//! - **§4.2.3 Mutation algorithms**: https://dom.spec.whatwg.org/#mutation-algorithms
+//!
+//! ## MDN Documentation
+//!
+//! - Node: https://developer.mozilla.org/en-US/docs/Web/API/Node
+//! - Node.appendChild: https://developer.mozilla.org/en-US/docs/Web/API/Node/appendChild
+//! - Node.removeChild: https://developer.mozilla.org/en-US/docs/Web/API/Node/removeChild
+//! - Node.insertBefore: https://developer.mozilla.org/en-US/docs/Web/API/Node/insertBefore
+//! - Node.childNodes: https://developer.mozilla.org/en-US/docs/Web/API/Node/childNodes
+//! - Node.parentNode: https://developer.mozilla.org/en-US/docs/Web/API/Node/parentNode
+//!
+//! ## Core Features
+//!
+//! ### Tree Structure
+//! Nodes form a tree structure with parent-child relationships:
+//! ```zig
+//! const parent = try createElementNode(allocator);
+//! defer parent.release();
+//!
+//! const child = try createTextNode(allocator);
+//! _ = try parent.appendChild(child);
+//! child.release(); // Parent owns it
+//! ```
+//!
+//! ### Reference Counting
+//! Nodes use WebKit-style reference counting for memory management:
+//! ```zig
+//! const node = try createNode(allocator);
+//! // ref_count = 1, caller owns
+//!
+//! node.acquire(); // ref_count = 2
+//! other_owner.node = node;
+//!
+//! node.release(); // ref_count = 1
+//! node.release(); // ref_count = 0 → freed
+//! ```
+//!
+//! ### Tree Traversal
+//! Navigate the tree using parent/child/sibling pointers:
+//! ```zig
+//! var current = node.first_child;
+//! while (current) |child| {
+//!     // Process child
+//!     current = child.next_sibling;
+//! }
+//! ```
+//!
+//! ## Memory Layout (88 bytes)
+//!
+//! - **vtable**: Polymorphic function pointers (8 bytes)
+//! - **ref_count_and_parent**: Packed 31-bit refcount + has_parent flag (4 bytes)
+//! - **node_type**: NodeType enum (1 byte)
+//! - **flags**: Boolean properties (1 byte)
+//! - **node_id**: Unique ID (2 bytes)
+//! - **generation**: Mutation counter (4 bytes)
+//! - **allocator**: Memory allocator (8 bytes)
+//! - **parent_node**: WEAK parent pointer (8 bytes)
+//! - **previous_sibling**: WEAK sibling pointer (8 bytes)
+//! - **first_child**: STRONG child pointer (8 bytes)
+//! - **last_child**: STRONG child pointer (8 bytes)
+//! - **next_sibling**: STRONG sibling pointer (8 bytes)
+//! - **owner_document**: WEAK document pointer (8 bytes)
+//! - **rare_data**: Optional rare data (8 bytes)
+//!
+//! Total: 88 bytes (8 bytes under 96-byte budget!)
+//!
+//! ## Memory Management
+//!
+//! ### Basic Lifecycle
+//!
+//! ```zig
+//! // Creation: ref_count = 1
+//! const node = try createNode(allocator);
+//! defer node.release(); // Caller must release
+//!
+//! // Sharing: increment ref_count
+//! node.acquire(); // ref_count = 2
+//! other_owner.node = node;
+//! defer node.release(); // Both owners must release
+//! ```
+//!
+//! ### Tree Ownership
+//!
+//! ```zig
+//! const parent = try createElementNode(allocator);
+//! defer parent.release();
+//!
+//! const child = try createTextNode(allocator);
+//! _ = try parent.appendChild(child);
+//! child.release(); // Parent owns it via has_parent flag
+//! // Child destroyed when parent destroyed or explicitly removed
+//! ```
+//!
+//! ## Usage Examples
+//!
+//! ### Building a DOM Tree
+//!
+//! ```zig
+//! const parent = try createElementNode(allocator);
+//! defer parent.release();
+//!
+//! const child1 = try createElementNode(allocator);
+//! _ = try parent.appendChild(child1);
+//! child1.release();
+//!
+//! const child2 = try createTextNode(allocator);
+//! _ = try parent.appendChild(child2);
+//! child2.release();
+//!
+//! // Tree freed when parent.release() called
+//! ```
+//!
+//! ### Node Manipulation
+//!
+//! ```zig
+//! // Insert before reference
+//! const new_node = try createElementNode(allocator);
+//! _ = try parent.insertBefore(new_node, ref_child);
+//! new_node.release();
+//!
+//! // Remove child
+//! const removed = try parent.removeChild(child);
+//! defer removed.release(); // Caller owns it
+//!
+//! // Replace child
+//! const replacement = try createElementNode(allocator);
+//! const old = try parent.replaceChild(replacement, child);
+//! defer old.release();
+//! replacement.release();
+//! ```
+//!
+//! ## Common Patterns
+//!
+//! ### Tree Traversal
+//!
+//! ```zig
+//! // Traverse children
+//! var child = parent.first_child;
+//! while (child) |node| {
+//!     // Process node
+//!     child = node.next_sibling;
+//! }
+//!
+//! // Traverse ancestors
+//! var ancestor = node.parent_node;
+//! while (ancestor) |parent| {
+//!     // Process ancestor
+//!     ancestor = parent.parent_node;
+//! }
+//! ```
+//!
+//! ### Safe Node Creation
+//!
+//! ```zig
+//! pub fn createTypedNode(allocator: Allocator) !*Node {
+//!     const node = try createNode(allocator);
+//!     errdefer node.release(); // Release on error
+//!
+//!     // Initialize...
+//!
+//!     return node; // Caller must release
+//! }
+//! ```
+//!
+//! ## Performance Tips
+//!
+//! 1. **Node size**: 88 bytes (optimized, 8 under budget)
+//! 2. **Packed ref_count**: Saves 12 bytes vs separate fields
+//! 3. **Rare data**: Allocated on demand for uncommon features
+//! 4. **Weak pointers**: No cycle detection overhead
+//! 5. **Vtable dispatch**: ~2-3 instruction overhead
+//! 6. **appendChild**: O(1) operation
+//! 7. **insertBefore**: O(1) operation
+//! 8. **Tree traversal**: Optimal cache locality
+//!
+//! ## JavaScript Bindings
+//!
+//! ### Instance Properties
+//! ```javascript
+//! // nodeType (readonly)
+//! Object.defineProperty(Node.prototype, 'nodeType', {
+//!   get: function() { return zig.node_get_node_type(this._ptr); }
+//! });
+//!
+//! // nodeName (readonly)
+//! Object.defineProperty(Node.prototype, 'nodeName', {
+//!   get: function() { return zig.node_get_node_name(this._ptr); }
+//! });
+//!
+//! // nodeValue (read-write)
+//! Object.defineProperty(Node.prototype, 'nodeValue', {
+//!   get: function() { return zig.node_get_node_value(this._ptr); },
+//!   set: function(value) { zig.node_set_node_value(this._ptr, value); }
+//! });
+//!
+//! // textContent (read-write)
+//! Object.defineProperty(Node.prototype, 'textContent', {
+//!   get: function() { return zig.node_get_text_content(this._ptr); },
+//!   set: function(value) { zig.node_set_text_content(this._ptr, value); }
+//! });
+//!
+//! // parentNode (readonly)
+//! Object.defineProperty(Node.prototype, 'parentNode', {
+//!   get: function() { return zig.node_get_parent_node(this._ptr); }
+//! });
+//!
+//! // parentElement (readonly)
+//! Object.defineProperty(Node.prototype, 'parentElement', {
+//!   get: function() { return zig.node_get_parent_element(this._ptr); }
+//! });
+//!
+//! // childNodes (readonly)
+//! Object.defineProperty(Node.prototype, 'childNodes', {
+//!   get: function() { return zig.node_get_child_nodes(this._ptr); }
+//! });
+//!
+//! // firstChild (readonly)
+//! Object.defineProperty(Node.prototype, 'firstChild', {
+//!   get: function() { return zig.node_get_first_child(this._ptr); }
+//! });
+//!
+//! // lastChild (readonly)
+//! Object.defineProperty(Node.prototype, 'lastChild', {
+//!   get: function() { return zig.node_get_last_child(this._ptr); }
+//! });
+//!
+//! // previousSibling (readonly)
+//! Object.defineProperty(Node.prototype, 'previousSibling', {
+//!   get: function() { return zig.node_get_previous_sibling(this._ptr); }
+//! });
+//!
+//! // nextSibling (readonly)
+//! Object.defineProperty(Node.prototype, 'nextSibling', {
+//!   get: function() { return zig.node_get_next_sibling(this._ptr); }
+//! });
+//!
+//! // ownerDocument (readonly)
+//! Object.defineProperty(Node.prototype, 'ownerDocument', {
+//!   get: function() { return zig.node_get_owner_document(this._ptr); }
+//! });
+//!
+//! // baseURI (readonly)
+//! Object.defineProperty(Node.prototype, 'baseURI', {
+//!   get: function() { return zig.node_get_base_uri(this._ptr); }
+//! });
+//!
+//! // isConnected (readonly)
+//! Object.defineProperty(Node.prototype, 'isConnected', {
+//!   get: function() { return zig.node_get_is_connected(this._ptr); }
+//! });
+//! ```
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // Tree manipulation
+//! Node.prototype.appendChild = function(node) {
+//!   return zig.node_appendChild(this._ptr, node._ptr);
+//! };
+//!
+//! Node.prototype.insertBefore = function(node, child) {
+//!   return zig.node_insertBefore(this._ptr, node._ptr, child ? child._ptr : null);
+//! };
+//!
+//! Node.prototype.removeChild = function(child) {
+//!   return zig.node_removeChild(this._ptr, child._ptr);
+//! };
+//!
+//! Node.prototype.replaceChild = function(node, child) {
+//!   return zig.node_replaceChild(this._ptr, node._ptr, child._ptr);
+//! };
+//!
+//! // Node queries
+//! Node.prototype.hasChildNodes = function() {
+//!   return zig.node_hasChildNodes(this._ptr);
+//! };
+//!
+//! Node.prototype.contains = function(other) {
+//!   return zig.node_contains(this._ptr, other ? other._ptr : null);
+//! };
+//!
+//! Node.prototype.getRootNode = function(options) {
+//!   return zig.node_getRootNode(this._ptr, options?.composed || false);
+//! };
+//!
+//! // Node comparison
+//! Node.prototype.isSameNode = function(other) {
+//!   return zig.node_isSameNode(this._ptr, other ? other._ptr : null);
+//! };
+//!
+//! Node.prototype.isEqualNode = function(other) {
+//!   return zig.node_isEqualNode(this._ptr, other ? other._ptr : null);
+//! };
+//!
+//! Node.prototype.compareDocumentPosition = function(other) {
+//!   return zig.node_compareDocumentPosition(this._ptr, other._ptr);
+//! };
+//!
+//! // Node cloning
+//! Node.prototype.cloneNode = function(deep) {
+//!   return zig.node_cloneNode(this._ptr, deep || false);
+//! };
+//!
+//! // Event handling (from EventTarget mixin)
+//! Node.prototype.addEventListener = function(type, listener, options) {
+//!   const opts = typeof options === 'boolean' ? { capture: options } : (options || {});
+//!   return zig.node_addEventListener(
+//!     this._ptr,
+//!     type,
+//!     listener,
+//!     opts.capture || false,
+//!     opts.once || false,
+//!     opts.passive || false,
+//!     opts.signal || null
+//!   );
+//! };
+//!
+//! Node.prototype.removeEventListener = function(type, listener, options) {
+//!   const opts = typeof options === 'boolean' ? { capture: options } : (options || {});
+//!   return zig.node_removeEventListener(this._ptr, type, listener, opts.capture || false);
+//! };
+//!
+//! Node.prototype.dispatchEvent = function(event) {
+//!   return zig.node_dispatchEvent(this._ptr, event._ptr);
+//! };
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
+//!
+//! ## Implementation Notes
+//!
+//! - Compile-time size verification enforces ≤96 byte limit
+//! - Atomic ref_count for thread-safe reference counting
+//! - WebKit-style hybrid strong/weak reference system
+//! - Vtable polymorphism for extensibility (Element, Text, etc.)
+//! - has_parent flag prevents premature destruction in tree
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

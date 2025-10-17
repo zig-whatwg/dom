@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Phase 4A Started!** CSS selector tokenizer implementing Selectors Level 4 syntax
+- CSS selector tokenizer with 24 comprehensive tests (all passing)
+- Support for all CSS selector token types: identifiers, hash (#id), strings, delimiters
+- All CSS combinators: descendant (space), child (>), adjacent (+), general sibling (~)
+- All attribute matchers: exact (=), prefix (^=), suffix ($=), substring (*=), includes (~=), dash (|=)
+- Pseudo-class tokenization with parentheses support (:nth-child(2n+1))
+- String literals with both single and double quote support
+- Unicode identifier support (non-ASCII characters)
+- Zero-copy tokenization (slices reference input string directly)
+- Fast-path ASCII optimization for common selectors
+- **Phase 3 Complete!** AbortController & AbortSignal fully implemented per WHATWG DOM §3.1-§3.2 (98% compliant, A+ rating)
+- AbortController with constructor, signal property, and abort() method
+- AbortSignal static factories: abort(reason) and any(signals) for signal composition
+- AbortSignal properties: aborted, reason, throwIfAborted() per WebIDL spec
+- Composite signal creation with dependency flattening (any() supports nested dependent signals)
+- 62 comprehensive AbortSignal/AbortController tests covering all features and edge cases
+- Full compliance audit report in summaries/analysis/ABORTSIGNAL_FINAL_COMPLIANCE_AUDIT.md
 - addEventListener signal option support per WHATWG DOM §2.7.3 (Critical Issue #8 resolved)
 - Automatic listener removal when AbortSignal aborts (spec step 6)
 - Early return if signal already aborted (spec step 2)
