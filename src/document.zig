@@ -486,6 +486,11 @@ pub const Document = struct {
     /// Maps id attribute values to elements
     id_map: std.StringHashMap(*Element),
 
+    /// Tag map for O(k) getElementsByTagName lookups
+    /// Maps tag names to lists of elements with that tag
+    /// k = number of matching elements
+    tag_map: std.StringHashMap(std.ArrayList(*Element)),
+
     /// Next node ID to assign
     next_node_id: u16,
 
@@ -540,6 +545,10 @@ pub const Document = struct {
         var id_map = std.StringHashMap(*Element).init(allocator);
         errdefer id_map.deinit();
 
+        // Initialize tag map
+        var tag_map = std.StringHashMap(std.ArrayList(*Element)).init(allocator);
+        errdefer tag_map.deinit();
+
         // Initialize base Node
         doc.node = .{
             .vtable = &vtable,
@@ -564,6 +573,7 @@ pub const Document = struct {
         doc.string_pool = string_pool;
         doc.selector_cache = selector_cache;
         doc.id_map = id_map;
+        doc.tag_map = tag_map;
         doc.next_node_id = 1; // 0 reserved for document itself
         doc.is_destroying = false;
 
@@ -653,6 +663,14 @@ pub const Document = struct {
 
         // Increment document's node ref count
         self.acquireNodeRef();
+
+        // Add to tag map for O(k) getElementsByTagName lookups
+        const result = try self.tag_map.getOrPut(interned_tag);
+        if (!result.found_existing) {
+            // First element with this tag, create new list
+            result.value_ptr.* = std.ArrayList(*Element){};
+        }
+        try result.value_ptr.append(self.node.allocator, elem);
 
         return elem;
     }
@@ -890,6 +908,68 @@ pub const Document = struct {
         return self.id_map.get(element_id);
     }
 
+    /// Returns all elements with the specified tag name (O(k) lookup).
+    ///
+    /// Implements WHATWG DOM Document.getElementsByTagName() per §4.5.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.5 Interface Document**: https://dom.spec.whatwg.org/#dom-document-getelementsbytagname
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// HTMLCollection getElementsByTagName(DOMString qualifiedName);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Document.getElementsByTagName(): https://developer.mozilla.org/en-US/docs/Web/API/Document/getElementsByTagName
+    ///
+    /// ## Algorithm (WHATWG DOM §4.5)
+    /// Return a live HTMLCollection of all elements with the given tag name.
+    ///
+    /// ## Performance
+    /// **O(k)** where k = number of matching elements.
+    /// Uses tag map for direct lookup, avoiding O(n) tree traversal.
+    ///
+    /// ## Returns
+    /// Slice of elements with matching tag name (caller owns, must free)
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const button1 = try doc.createElement("button");
+    /// _ = try doc.node.appendChild(&button1.node);
+    ///
+    /// const button2 = try doc.createElement("button");
+    /// _ = try doc.node.appendChild(&button2.node);
+    ///
+    /// const buttons = try doc.getElementsByTagName(allocator, "button");
+    /// defer allocator.free(buttons);
+    /// // buttons.len == 2
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// const buttons = document.getElementsByTagName('button');
+    /// // Returns: HTMLCollection (live)
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-getelementsbytagname
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:518
+    ///
+    /// ## Note
+    /// This returns a snapshot (not live). Live collections require additional tracking.
+    pub fn getElementsByTagName(self: *const Document, allocator: Allocator, tag_name: []const u8) ![]const *Element {
+        if (self.tag_map.get(tag_name)) |list| {
+            // Return a copy of the list
+            return try allocator.dupe(*Element, list.items);
+        }
+        // No elements with this tag
+        return &[_]*Element{};
+    }
+
     // ========================================================================
     // ParentNode Mixin - Query Selector
     // ========================================================================
@@ -1069,6 +1149,13 @@ pub const Document = struct {
 
         // Clean up ID map
         self.id_map.deinit();
+
+        // Clean up tag map
+        var tag_it = self.tag_map.valueIterator();
+        while (tag_it.next()) |list_ptr| {
+            list_ptr.deinit(self.node.allocator);
+        }
+        self.tag_map.deinit();
 
         // Free document structure
         self.node.allocator.destroy(self);
@@ -1758,4 +1845,105 @@ test "Document - querySelector uses getElementById for #id" {
     const found = try doc.querySelector("#target");
     try std.testing.expect(found != null);
     try std.testing.expect(found.? == button);
+}
+
+// ============================================================================
+// TAG MAP TESTS (Phase 3)
+// ============================================================================
+
+test "Document - getElementsByTagName basic" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button1 = try doc.createElement("button");
+    _ = try root.node.appendChild(&button1.node);
+
+    const button2 = try doc.createElement("button");
+    _ = try root.node.appendChild(&button2.node);
+
+    const div = try doc.createElement("div");
+    _ = try root.node.appendChild(&div.node);
+
+    // Get all buttons
+    const buttons = try doc.getElementsByTagName(allocator, "button");
+    defer allocator.free(buttons);
+    try std.testing.expectEqual(@as(usize, 2), buttons.len);
+    try std.testing.expect(buttons[0] == button1);
+    try std.testing.expect(buttons[1] == button2);
+
+    // Get all divs
+    const divs = try doc.getElementsByTagName(allocator, "div");
+    defer allocator.free(divs);
+    try std.testing.expectEqual(@as(usize, 1), divs.len);
+    try std.testing.expect(divs[0] == div);
+
+    // Not found
+    const spans = try doc.getElementsByTagName(allocator, "span");
+    defer allocator.free(spans);
+    try std.testing.expectEqual(@as(usize, 0), spans.len);
+}
+
+test "Document - tag map maintained on createElement" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    // Create multiple elements with same tag
+    const div1 = try doc.createElement("div");
+    _ = try root.node.appendChild(&div1.node);
+
+    const div2 = try doc.createElement("div");
+    _ = try root.node.appendChild(&div2.node);
+
+    const div3 = try doc.createElement("div");
+    _ = try root.node.appendChild(&div3.node);
+
+    // Tag map should have all three
+    const divs = try doc.getElementsByTagName(allocator, "div");
+    defer allocator.free(divs);
+    try std.testing.expectEqual(@as(usize, 3), divs.len);
+}
+
+test "Document - tag map cleaned up on element removal" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const div1 = try doc.createElement("div");
+    _ = try root.node.appendChild(&div1.node);
+
+    const div2 = try doc.createElement("div");
+    _ = try root.node.appendChild(&div2.node);
+
+    // Should have 2 divs
+    {
+        const divs = try doc.getElementsByTagName(allocator, "div");
+        defer allocator.free(divs);
+        try std.testing.expectEqual(@as(usize, 2), divs.len);
+    }
+
+    // Remove one div
+    _ = try root.node.removeChild(&div1.node);
+    div1.node.release();
+
+    // Should have 1 div
+    {
+        const divs = try doc.getElementsByTagName(allocator, "div");
+        defer allocator.free(divs);
+        try std.testing.expectEqual(@as(usize, 1), divs.len);
+        try std.testing.expect(divs[0] == div2);
+    }
 }

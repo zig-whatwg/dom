@@ -1,0 +1,45 @@
+DOM Selector Benchmark Suite
+=============================
+
+Running tokenizer benchmarks...
+Running parser benchmarks...
+Running matcher benchmarks...
+Running querySelector benchmarks...
+Running SPA benchmarks...
+Running getElementById benchmarks...
+Running query-only benchmarks (DOM pre-built)...
+Running tag query benchmarks (Phase 3)...
+
+Results:
+--------
+Tokenizer: Simple ID (#main): 8µs/op (117702 ops/sec)
+Tokenizer: Simple Class (.button): 6µs/op (148942 ops/sec)
+Tokenizer: Complex: 14µs/op (67879 ops/sec)
+Parser: Simple ID (#main): 14µs/op (70047 ops/sec)
+Parser: Simple Class (.button): 14µs/op (68970 ops/sec)
+Parser: Complex: 21µs/op (45533 ops/sec)
+Matcher: Simple ID: 23µs/op (42988 ops/sec)
+Matcher: Simple Class: 26µs/op (37860 ops/sec)
+querySelector: Small DOM (100): 44µs/op (22631 ops/sec)
+querySelector: Medium DOM (1000): 250µs/op (3998 ops/sec)
+querySelector: Large DOM (10000): 12ms/op (79 ops/sec)
+querySelector: Class selector: 250µs/op (3992 ops/sec)
+SPA: Repeated queries (1000x): 71µs/op (13969 ops/sec)
+SPA: Cold vs Hot cache (100x): 338µs/op (2952 ops/sec)
+getElementById: Small DOM (100): 36µs/op (27483 ops/sec)
+getElementById: Medium DOM (1000): 249µs/op (4002 ops/sec)
+getElementById: Large DOM (10000): 12ms/op (79 ops/sec)
+Pure query: getElementById (100 elem): 5ns/op (200000000 ops/sec)
+Pure query: getElementById (1000 elem): 5ns/op (200000000 ops/sec)
+Pure query: getElementById (10000 elem): 5ns/op (200000000 ops/sec)
+Pure query: querySelector #id (100 elem): 17ns/op (58823529 ops/sec)
+Pure query: querySelector #id (1000 elem): 17ns/op (58823529 ops/sec)
+Pure query: querySelector #id (10000 elem): 17ns/op (58823529 ops/sec)
+Pure query: getElementsByTagName (100 elem): 6µs/op (144801 ops/sec)
+Pure query: getElementsByTagName (1000 elem): 7µs/op (142045 ops/sec)
+Pure query: getElementsByTagName (10000 elem): 8µs/op (118427 ops/sec)
+Pure query: querySelector tag (100 elem): 17ns/op (58823529 ops/sec)
+Pure query: querySelector tag (1000 elem): 16ns/op (62500000 ops/sec)
+Pure query: querySelector tag (10000 elem): 15ns/op (66666666 ops/sec)
+
+Benchmark complete!

@@ -140,6 +140,14 @@ pub fn runAllBenchmarks(allocator: std.mem.Allocator) ![]BenchmarkResult {
     try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector #id (1000 elem)", 100000, setupMediumDom, benchQuerySelectorId));
     try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector #id (10000 elem)", 100000, setupLargeDom, benchQuerySelectorId));
 
+    std.debug.print("Running tag query benchmarks (Phase 3)...\n", .{});
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: getElementsByTagName (100 elem)", 100000, setupTagSmall, benchGetElementsByTagName));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: getElementsByTagName (1000 elem)", 100000, setupTagMedium, benchGetElementsByTagName));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: getElementsByTagName (10000 elem)", 100000, setupTagLarge, benchGetElementsByTagName));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector tag (100 elem)", 100000, setupTagSmall, benchQuerySelectorTag));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector tag (1000 elem)", 100000, setupTagMedium, benchQuerySelectorTag));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector tag (10000 elem)", 100000, setupTagLarge, benchQuerySelectorTag));
+
     return results.toOwnedSlice(allocator);
 }
 
@@ -472,5 +480,88 @@ fn benchGetElementById(doc: *Document) !void {
 
 fn benchQuerySelectorId(doc: *Document) !void {
     const result = try doc.querySelector("#target");
+    _ = result;
+}
+
+// Setup functions for tag query benchmarks (Phase 3)
+
+fn setupTagSmall(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    // Create mix of elements - 50 divs, 50 buttons
+    var i: usize = 0;
+    while (i < 50) : (i += 1) {
+        const div = try doc.createElement("div");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    i = 0;
+    while (i < 50) : (i += 1) {
+        const button = try doc.createElement("button");
+        _ = try root.node.appendChild(&button.node);
+    }
+
+    return doc;
+}
+
+fn setupTagMedium(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    // Create mix of elements - 500 divs, 500 buttons
+    var i: usize = 0;
+    while (i < 500) : (i += 1) {
+        const div = try doc.createElement("div");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    i = 0;
+    while (i < 500) : (i += 1) {
+        const button = try doc.createElement("button");
+        _ = try root.node.appendChild(&button.node);
+    }
+
+    return doc;
+}
+
+fn setupTagLarge(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    // Create mix of elements - 5000 divs, 5000 buttons
+    var i: usize = 0;
+    while (i < 5000) : (i += 1) {
+        const div = try doc.createElement("div");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    i = 0;
+    while (i < 5000) : (i += 1) {
+        const button = try doc.createElement("button");
+        _ = try root.node.appendChild(&button.node);
+    }
+
+    return doc;
+}
+
+// Tag query benchmark functions (Phase 3)
+
+fn benchGetElementsByTagName(doc: *Document) !void {
+    const result = try doc.getElementsByTagName(doc.node.allocator, "button");
+    doc.node.allocator.free(result);
+}
+
+fn benchQuerySelectorTag(doc: *Document) !void {
+    const result = try doc.querySelector("button");
     _ = result;
 }

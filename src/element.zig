@@ -1149,6 +1149,35 @@ pub const Element = struct {
     /// // found == button
     /// ```
     pub fn queryByTagName(self: *Element, tag_name: []const u8) ?*Element {
+        // Fast path: Use document tag map if available
+        if (self.node.owner_document) |owner| {
+            if (owner.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("node", owner);
+
+                // Check if any elements with this tag exist
+                if (doc.tag_map.get(tag_name)) |list| {
+                    // Find first element that is a descendant of self
+                    for (list.items) |elem| {
+                        // Fast case: if self is the document element, all elements are descendants
+                        if (self == doc.documentElement()) {
+                            return elem;
+                        }
+
+                        // Verify element is descendant of self
+                        var current = elem.node.parent_node;
+                        while (current) |parent| {
+                            if (parent == &self.node) {
+                                return elem;
+                            }
+                            current = parent.parent_node;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: O(n) scan if no document or no elements in our subtree
         const ElementIterator = @import("element_iterator.zig").ElementIterator;
         var iter = ElementIterator.init(&self.node);
 
@@ -1208,6 +1237,44 @@ pub const Element = struct {
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate result array
     pub fn queryAllByTagName(self: *Element, allocator: Allocator, tag_name: []const u8) ![]const *Element {
+        // Fast path: Use document tag map if available
+        if (self.node.owner_document) |owner| {
+            if (owner.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("node", owner);
+
+                // Check if any elements with this tag exist
+                if (doc.tag_map.get(tag_name)) |list| {
+                    // Fast case: if self is the document element, return all
+                    if (self == doc.documentElement()) {
+                        return try allocator.dupe(*Element, list.items);
+                    }
+
+                    // Otherwise filter to only descendants
+                    var results = std.ArrayList(*Element){};
+                    defer results.deinit(allocator);
+
+                    for (list.items) |elem| {
+                        // Verify element is descendant of self
+                        var current = elem.node.parent_node;
+                        while (current) |parent| {
+                            if (parent == &self.node) {
+                                try results.append(allocator, elem);
+                                break;
+                            }
+                            current = parent.parent_node;
+                        }
+                    }
+
+                    return try results.toOwnedSlice(allocator);
+                }
+
+                // No elements with this tag
+                return &[_]*Element{};
+            }
+        }
+
+        // Fallback: O(n) scan
         const ElementIterator = @import("element_iterator.zig").ElementIterator;
         var results = std.ArrayList(*Element){};
         defer results.deinit(allocator);
@@ -1406,6 +1473,18 @@ pub const Element = struct {
                 // Get Document from its node field (node is first field)
                 const Document = @import("document.zig").Document;
                 const doc: *Document = @fieldParentPtr("node", owner_doc);
+
+                // Remove from tag map
+                if (doc.tag_map.getPtr(elem.tag_name)) |list_ptr| {
+                    // Find and remove this element from the list
+                    for (list_ptr.items, 0..) |item, i| {
+                        if (item == elem) {
+                            _ = list_ptr.swapRemove(i);
+                            break;
+                        }
+                    }
+                }
+
                 doc.releaseNodeRef();
             }
         }
@@ -2230,4 +2309,74 @@ test "Element - removeAttribute cleans id_map" {
     // Remove ID
     button.removeAttribute("id");
     try std.testing.expect(doc.getElementById("temp") == null);
+}
+
+// ============================================================================
+// TAG MAP INTEGRATION TESTS (Phase 3)
+// ============================================================================
+
+test "Element - queryByTagName uses tag_map" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const div1 = try doc.createElement("div");
+    _ = try root.node.appendChild(&div1.node);
+
+    const button = try doc.createElement("button");
+    _ = try div1.node.appendChild(&button.node);
+
+    const div2 = try doc.createElement("div");
+    _ = try root.node.appendChild(&div2.node);
+
+    // queryByTagName should use O(k) tag_map lookup
+    const found = root.queryByTagName("button");
+    try std.testing.expect(found != null);
+    try std.testing.expect(found.? == button);
+}
+
+test "Element - queryAllByTagName uses tag_map" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const div1 = try doc.createElement("div");
+    _ = try root.node.appendChild(&div1.node);
+
+    const div2 = try doc.createElement("div");
+    _ = try root.node.appendChild(&div2.node);
+
+    const button = try doc.createElement("button");
+    _ = try root.node.appendChild(&button.node);
+
+    // queryAllByTagName should use tag_map
+    const divs = try root.queryAllByTagName(allocator, "div");
+    defer allocator.free(divs);
+    try std.testing.expectEqual(@as(usize, 2), divs.len);
+}
+
+test "Element - querySelector tag uses tag_map" {
+    const allocator = std.testing.allocator;
+
+    const doc = try @import("document.zig").Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    const button = try doc.createElement("button");
+    _ = try root.node.appendChild(&button.node);
+
+    // querySelector("tag") should use O(k) tag_map lookup
+    const found = try root.querySelector(allocator, "button");
+    try std.testing.expect(found != null);
+    try std.testing.expect(found.? == button);
 }
