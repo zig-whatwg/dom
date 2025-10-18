@@ -124,25 +124,38 @@ function generateHTML(groupedResults, browserResults) {
         !r.name.includes('Matcher')
     );
     
-    // Group benchmarks by category
+    // Group benchmarks by category with proper organization
     const categories = {
-        'ID Queries': comparableResults.filter(r => 
-            r.name.includes('getElementById') || r.name.includes('#id')
+        'Pure Query: ID Lookups': comparableResults.filter(r => 
+            r.name.startsWith('Pure query: getElementById') || 
+            r.name.startsWith('Pure query: querySelector #id')
         ),
-        'Tag Queries': comparableResults.filter(r => 
-            (r.name.includes('TagName') || r.name.includes('tag (')) && 
-            !r.name.includes('#')
+        'Pure Query: Tag Lookups': comparableResults.filter(r => 
+            r.name.startsWith('Pure query: getElementsByTagName') || 
+            r.name.startsWith('Pure query: querySelector tag')
         ),
-        'Class Queries': comparableResults.filter(r => 
-            r.name.includes('ClassName') || r.name.includes('.class')
+        'Pure Query: Class Lookups': comparableResults.filter(r => 
+            r.name.startsWith('Pure query: getElementsByClassName') || 
+            r.name.startsWith('Pure query: querySelector .class')
         ),
-        'Complex Queries': comparableResults.filter(r => 
-            !r.name.includes('getElementById') &&
-            !r.name.includes('#id') &&
-            !r.name.includes('TagName') &&
-            !r.name.includes('tag (') &&
-            !r.name.includes('ClassName') &&
-            !r.name.includes('.class')
+        'Complex Selectors': comparableResults.filter(r => 
+            r.name.startsWith('Complex:')
+        ),
+        'DOM Construction': comparableResults.filter(r => 
+            r.name.startsWith('DOM construction:')
+        ),
+        'Full Benchmarks (Construction + Query)': comparableResults.filter(r => 
+            (r.name.startsWith('querySelector:') || 
+             r.name.startsWith('getElementById:')) &&
+            !r.name.startsWith('Pure query:')
+        ),
+        'SPA Patterns': comparableResults.filter(r => 
+            r.name.startsWith('SPA:')
+        ),
+        'Internal Components': comparableResults.filter(r => 
+            r.name.startsWith('Tokenizer:') || 
+            r.name.startsWith('Parser:') || 
+            r.name.startsWith('Matcher:')
         )
     };
     

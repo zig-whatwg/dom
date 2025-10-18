@@ -437,6 +437,7 @@ pub const Element = struct {
                         const Document = @import("document.zig").Document;
                         const doc: *Document = @fieldParentPtr("node", owner);
                         _ = doc.id_map.remove(old_id);
+                        doc.invalidateIdCache();
                     }
                 }
             }
@@ -480,6 +481,7 @@ pub const Element = struct {
                     const Document = @import("document.zig").Document;
                     const doc: *Document = @fieldParentPtr("node", owner);
                     try doc.id_map.put(value, self);
+                    doc.invalidateIdCache();
                 }
             }
         }
@@ -532,6 +534,7 @@ pub const Element = struct {
                         const Document = @import("document.zig").Document;
                         const doc: *Document = @fieldParentPtr("node", owner);
                         _ = doc.id_map.remove(old_id);
+                        doc.invalidateIdCache();
                     }
                 }
             }
@@ -1587,6 +1590,8 @@ pub const Element = struct {
             const result = try doc.class_map.getOrPut(class);
             if (!result.found_existing) {
                 result.value_ptr.* = std.ArrayList(*Element){};
+                // Pre-allocate capacity to avoid repeated reallocations
+                try result.value_ptr.ensureTotalCapacity(doc.node.allocator, 128);
             }
             try result.value_ptr.append(doc.node.allocator, self);
         }

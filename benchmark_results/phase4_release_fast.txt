@@ -9,43 +9,81 @@ Running SPA benchmarks...
 Running getElementById benchmarks...
 Running query-only benchmarks (DOM pre-built)...
 Running tag query benchmarks (Phase 3)...
+Running DOM construction benchmarks (Phase 1.2)...
+Running complex selector benchmarks...
 
 Results:
---------
-Tokenizer: Simple ID (#main): 8µs/op (112384 ops/sec)
-Tokenizer: Simple Class (.button): 7µs/op (142308 ops/sec)
-Tokenizer: Complex: 17µs/op (56462 ops/sec)
-Parser: Simple ID (#main): 17µs/op (57563 ops/sec)
-Parser: Simple Class (.button): 16µs/op (62212 ops/sec)
-Parser: Complex: 27µs/op (36148 ops/sec)
-Matcher: Simple ID: 25µs/op (39929 ops/sec)
-Matcher: Simple Class: 31µs/op (31730 ops/sec)
-querySelector: Small DOM (100): 43µs/op (22852 ops/sec)
-querySelector: Medium DOM (1000): 282µs/op (3533 ops/sec)
-querySelector: Large DOM (10000): 13ms/op (74 ops/sec)
-querySelector: Class selector: 276µs/op (3619 ops/sec)
-SPA: Repeated queries (1000x): 105µs/op (9450 ops/sec)
-SPA: Cold vs Hot cache (100x): 655µs/op (1524 ops/sec)
-getElementById: Small DOM (100): 38µs/op (25850 ops/sec)
-getElementById: Medium DOM (1000): 273µs/op (3650 ops/sec)
-getElementById: Large DOM (10000): 13ms/op (75 ops/sec)
-Pure query: getElementById (100 elem): 5ns/op (200000000 ops/sec)
-Pure query: getElementById (1000 elem): 5ns/op (200000000 ops/sec)
-Pure query: getElementById (10000 elem): 5ns/op (200000000 ops/sec)
-Pure query: querySelector #id (100 elem): 17ns/op (58823529 ops/sec)
-Pure query: querySelector #id (1000 elem): 17ns/op (58823529 ops/sec)
-Pure query: querySelector #id (10000 elem): 20ns/op (50000000 ops/sec)
-Pure query: getElementsByTagName (100 elem): 8µs/op (119061 ops/sec)
-Pure query: getElementsByTagName (1000 elem): 8µs/op (116400 ops/sec)
-Pure query: getElementsByTagName (10000 elem): 9µs/op (104004 ops/sec)
-Pure query: querySelector tag (100 elem): 30ns/op (33333333 ops/sec)
-Pure query: querySelector tag (1000 elem): 24ns/op (41666666 ops/sec)
-Pure query: querySelector tag (10000 elem): 16ns/op (62500000 ops/sec)
-Pure query: getElementsByClassName (100 elem): 8µs/op (124038 ops/sec)
-Pure query: getElementsByClassName (1000 elem): 8µs/op (116945 ops/sec)
-Pure query: getElementsByClassName (10000 elem): 10µs/op (97962 ops/sec)
-Pure query: querySelector .class (100 elem): 17ns/op (58823529 ops/sec)
-Pure query: querySelector .class (1000 elem): 17ns/op (58823529 ops/sec)
-Pure query: querySelector .class (10000 elem): 18ns/op (55555555 ops/sec)
+========
+
+Internal Components
+--------------------------------------------------
+Tokenizer: Simple ID (#main): 6µs/op (146113 ops/sec)
+Tokenizer: Simple Class (.button): 5µs/op (186601 ops/sec)
+Tokenizer: Complex: 13µs/op (71705 ops/sec)
+Parser: Simple ID (#main): 12µs/op (77942 ops/sec)
+Parser: Simple Class (.button): 14µs/op (69705 ops/sec)
+Parser: Complex: 20µs/op (48553 ops/sec)
+Matcher: Simple ID: 30µs/op (33074 ops/sec)
+Matcher: Simple Class: 32µs/op (30699 ops/sec)
+
+Full Benchmarks (Construction + Query)
+--------------------------------------------------
+querySelector: Small DOM (100): 55µs/op (18113 ops/sec)
+querySelector: Medium DOM (1000): 235µs/op (4241 ops/sec)
+querySelector: Large DOM (10000): 10ms/op (91 ops/sec)
+querySelector: Class selector: 221µs/op (4518 ops/sec)
+
+SPA Patterns
+--------------------------------------------------
+SPA: Repeated queries (1000x): 92µs/op (10851 ops/sec)
+SPA: Cold vs Hot cache (100x): 498µs/op (2005 ops/sec)
+
+Full Benchmarks (Construction + Query)
+--------------------------------------------------
+getElementById: Small DOM (100): 43µs/op (22751 ops/sec)
+getElementById: Medium DOM (1000): 209µs/op (4770 ops/sec)
+getElementById: Large DOM (10000): 10ms/op (93 ops/sec)
+
+Pure Query: ID Lookups
+--------------------------------------------------
+Pure query: getElementById (100 elem): 2ns/op (500000000 ops/sec)
+Pure query: getElementById (1000 elem): 2ns/op (500000000 ops/sec)
+Pure query: getElementById (10000 elem): 2ns/op (500000000 ops/sec)
+Pure query: querySelector #id (100 elem): 14ns/op (71428571 ops/sec)
+Pure query: querySelector #id (1000 elem): 15ns/op (66666666 ops/sec)
+Pure query: querySelector #id (10000 elem): 15ns/op (66666666 ops/sec)
+
+Pure Query: Tag Lookups
+--------------------------------------------------
+Pure query: getElementsByTagName (100 elem): 5ns/op (200000000 ops/sec)
+Pure query: getElementsByTagName (1000 elem): 5ns/op (200000000 ops/sec)
+Pure query: getElementsByTagName (10000 elem): 5ns/op (200000000 ops/sec)
+Pure query: querySelector tag (100 elem): 13ns/op (76923076 ops/sec)
+Pure query: querySelector tag (1000 elem): 14ns/op (71428571 ops/sec)
+Pure query: querySelector tag (10000 elem): 18ns/op (55555555 ops/sec)
+
+Pure Query: Class Lookups
+--------------------------------------------------
+Pure query: getElementsByClassName (100 elem): 5ns/op (200000000 ops/sec)
+Pure query: getElementsByClassName (1000 elem): 5ns/op (200000000 ops/sec)
+Pure query: getElementsByClassName (10000 elem): 5ns/op (200000000 ops/sec)
+Pure query: querySelector .class (100 elem): 15ns/op (66666666 ops/sec)
+Pure query: querySelector .class (1000 elem): 15ns/op (66666666 ops/sec)
+Pure query: querySelector .class (10000 elem): 15ns/op (66666666 ops/sec)
+
+DOM Construction
+--------------------------------------------------
+DOM construction: Small (100 elem): 34µs/op (29217 ops/sec)
+DOM construction: Medium (1000 elem): 224µs/op (4448 ops/sec)
+DOM construction: Large (10000 elem): 10ms/op (91 ops/sec)
+
+Complex Selectors
+--------------------------------------------------
+Complex: Child combinator (div > p): 54ns/op (18518518 ops/sec)
+Complex: Descendant combinator (article p): 73ns/op (13698630 ops/sec)
+Complex: Adjacent sibling (h1 + p): 34ns/op (29411764 ops/sec)
+Complex: Type + class (div.active): 25ns/op (40000000 ops/sec)
+Complex: Attribute selector (div[data-id]): 27µs/op (36581 ops/sec)
+Complex: Multi-component (article#main > header h1.title): 97ns/op (10309278 ops/sec)
 
 Benchmark complete!

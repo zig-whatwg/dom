@@ -1416,8 +1416,54 @@ pub const Node = struct {
         self: *Node,
         node: *Node,
     ) !*Node {
-        // Delegate to insertBefore with child=null (append to end)
+        // Fast path: new element being appended to element
+        // This avoids validation overhead for the common DOM construction case
+        // Note: Explicitly excludes text/comment under document (spec violation)
+        if (node.parent_node == null and
+            self.node_type == .element and
+            node.node_type == .element)
+        {
+            return self.appendChildFast(node);
+        }
+
+        // Slow path: full validation for all other cases
         return try self.insertBefore(node, null);
+    }
+
+    /// Fast path for appendChild when no validation is needed.
+    ///
+    /// This inline function handles the common case of appending a new element
+    /// to an element without the overhead of validation checks.
+    ///
+    /// ## Safety
+    /// Only call when:
+    /// - node.parent_node == null (not already in tree)
+    /// - self.node_type == .element
+    /// - node.node_type == .element
+    inline fn appendChildFast(self: *Node, node: *Node) *Node {
+        // Direct pointer manipulation (no validation)
+        const last = self.last_child;
+
+        node.previous_sibling = last;
+        node.next_sibling = null;
+        node.parent_node = self;
+        node.setHasParent(true);
+
+        if (last) |l| {
+            l.next_sibling = node;
+        } else {
+            self.first_child = node;
+        }
+        self.last_child = node;
+
+        // Set connected state if parent is connected
+        if (self.isConnected()) {
+            node.setConnected(true);
+            // Propagate to descendants
+            tree_helpers.setDescendantsConnected(node, true);
+        }
+
+        return node;
     }
 
     /// Removes child from this node's children.

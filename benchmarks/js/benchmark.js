@@ -514,6 +514,159 @@ function benchQuerySelectorClass(context) {
 }
 
 // ===================================================================
+// DOM Construction Benchmarks (Phase 1.2)
+// ===================================================================
+
+function constructSmallDom() {
+    const container = document.createElement('div');
+    for (let i = 0; i < 100; i++) {
+        const div = document.createElement('div');
+        container.appendChild(div);
+    }
+    resultAccumulator.push(container);
+    blackHole(container);
+}
+
+function constructMediumDom() {
+    const container = document.createElement('div');
+    for (let i = 0; i < 1000; i++) {
+        const div = document.createElement('div');
+        container.appendChild(div);
+    }
+    resultAccumulator.push(container);
+    blackHole(container);
+}
+
+function constructLargeDom() {
+    const container = document.createElement('div');
+    for (let i = 0; i < 10000; i++) {
+        const div = document.createElement('div');
+        container.appendChild(div);
+    }
+    resultAccumulator.push(container);
+    blackHole(container);
+}
+
+// ===================================================================
+// Complex Selector Benchmarks
+// ===================================================================
+
+function setupChildCombinator() {
+    // Build: div > (div > p) * 1000
+    const container = document.createElement('div');
+    for (let i = 0; i < 1000; i++) {
+        const div = document.createElement('div');
+        const p = document.createElement('p');
+        div.appendChild(p);
+        container.appendChild(div);
+    }
+    return { container };
+}
+
+function setupDescendantCombinator() {
+    // Build: article > div > div > p * 1000
+    const container = document.createElement('article');
+    for (let i = 0; i < 1000; i++) {
+        const outer = document.createElement('div');
+        const inner = document.createElement('div');
+        const p = document.createElement('p');
+        inner.appendChild(p);
+        outer.appendChild(inner);
+        container.appendChild(outer);
+    }
+    return { container };
+}
+
+function setupAdjacentSibling() {
+    // Build: (h1, p) * 500 pairs
+    const container = document.createElement('div');
+    for (let i = 0; i < 500; i++) {
+        const h1 = document.createElement('h1');
+        const p = document.createElement('p');
+        container.appendChild(h1);
+        container.appendChild(p);
+    }
+    return { container };
+}
+
+function setupTypeClass() {
+    // Build: 1000 divs, 10% with class "active"
+    const container = document.createElement('div');
+    for (let i = 0; i < 1000; i++) {
+        const div = document.createElement('div');
+        if (i % 10 === 0) div.className = 'active';
+        container.appendChild(div);
+    }
+    return { container };
+}
+
+function setupAttributeSelector() {
+    // Build: 1000 divs with data-id
+    const container = document.createElement('div');
+    for (let i = 0; i < 1000; i++) {
+        const div = document.createElement('div');
+        div.setAttribute('data-id', i.toString());
+        container.appendChild(div);
+    }
+    return { container };
+}
+
+function setupComplexMultiComponent() {
+    // Build: article#main > header > (div > h1.title) * 100
+    const article = document.createElement('article');
+    article.id = 'main';
+    
+    const header = document.createElement('header');
+    article.appendChild(header);
+    
+    for (let i = 0; i < 100; i++) {
+        const div = document.createElement('div');
+        const h1 = document.createElement('h1');
+        h1.className = 'title';
+        div.appendChild(h1);
+        header.appendChild(div);
+    }
+    
+    return { container: article };
+}
+
+function benchChildCombinator(context) {
+    const result = context.container.querySelector('div > p');
+    resultAccumulator.push(result);
+    blackHole(result);
+}
+
+function benchDescendantCombinator(context) {
+    const result = context.container.querySelector('article p');
+    resultAccumulator.push(result);
+    blackHole(result);
+}
+
+function benchAdjacentSibling(context) {
+    const result = context.container.querySelector('h1 + p');
+    resultAccumulator.push(result);
+    blackHole(result);
+}
+
+function benchTypeClass(context) {
+    const result = context.container.querySelector('div.active');
+    resultAccumulator.push(result);
+    blackHole(result);
+}
+
+function benchAttributeSelector(context) {
+    const result = context.container.querySelector('div[data-id="500"]');
+    resultAccumulator.push(result);
+    blackHole(result);
+}
+
+function benchComplexMultiComponent(context) {
+    const result = context.container.querySelector('article#main > header h1.title');
+    resultAccumulator.push(result);
+    blackHole(result);
+}
+
+// ===================================================================
 // Main benchmark runner
 // ===================================================================
 
@@ -566,6 +719,19 @@ function runAllBenchmarks() {
     results.push(benchmarkWithSetup('Pure query: querySelector .class (100 elem)', 100000, setupClassSmall, benchQuerySelectorClass));
     results.push(benchmarkWithSetup('Pure query: querySelector .class (1000 elem)', 100000, setupClassMedium, benchQuerySelectorClass));
     results.push(benchmarkWithSetup('Pure query: querySelector .class (10000 elem)', 100000, setupClassLarge, benchQuerySelectorClass));
+    
+    console.log('Running DOM construction benchmarks (Phase 1.2)...');
+    results.push(benchmarkFn('DOM construction: Small (100 elem)', 1000, constructSmallDom));
+    results.push(benchmarkFn('DOM construction: Medium (1000 elem)', 1000, constructMediumDom));
+    results.push(benchmarkFn('DOM construction: Large (10000 elem)', 100, constructLargeDom));
+    
+    console.log('Running complex selector benchmarks...');
+    results.push(benchmarkWithSetup('Complex: Child combinator (div > p)', 100000, setupChildCombinator, benchChildCombinator));
+    results.push(benchmarkWithSetup('Complex: Descendant combinator (article p)', 100000, setupDescendantCombinator, benchDescendantCombinator));
+    results.push(benchmarkWithSetup('Complex: Adjacent sibling (h1 + p)', 100000, setupAdjacentSibling, benchAdjacentSibling));
+    results.push(benchmarkWithSetup('Complex: Type + class (div.active)', 100000, setupTypeClass, benchTypeClass));
+    results.push(benchmarkWithSetup('Complex: Attribute selector (div[data-id])', 100000, setupAttributeSelector, benchAttributeSelector));
+    results.push(benchmarkWithSetup('Complex: Multi-component (article#main > header h1.title)', 100000, setupComplexMultiComponent, benchComplexMultiComponent));
     
     // Display results
     console.log('\nResults:');

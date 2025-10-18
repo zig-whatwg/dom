@@ -156,6 +156,19 @@ pub fn runAllBenchmarks(allocator: std.mem.Allocator) ![]BenchmarkResult {
     try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector .class (1000 elem)", 100000, setupClassMedium, benchQuerySelectorClass));
     try results.append(allocator, try benchmarkWithSetup(allocator, "Pure query: querySelector .class (10000 elem)", 100000, setupClassLarge, benchQuerySelectorClass));
 
+    std.debug.print("Running DOM construction benchmarks (Phase 1.2)...\n", .{});
+    try results.append(allocator, try benchmarkFn(allocator, "DOM construction: Small (100 elem)", 1000, constructSmallDom));
+    try results.append(allocator, try benchmarkFn(allocator, "DOM construction: Medium (1000 elem)", 1000, constructMediumDom));
+    try results.append(allocator, try benchmarkFn(allocator, "DOM construction: Large (10000 elem)", 100, constructLargeDom));
+
+    std.debug.print("Running complex selector benchmarks...\n", .{});
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Complex: Child combinator (div > p)", 100000, setupChildCombinator, benchChildCombinator));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Complex: Descendant combinator (article p)", 100000, setupDescendantCombinator, benchDescendantCombinator));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Complex: Adjacent sibling (h1 + p)", 100000, setupAdjacentSibling, benchAdjacentSibling));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Complex: Type + class (div.active)", 100000, setupTypeClass, benchTypeClass));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Complex: Attribute selector (div[data-id])", 100000, setupAttributeSelector, benchAttributeSelector));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Complex: Multi-component (article#main > header h1.title)", 100000, setupComplexMultiComponent, benchComplexMultiComponent));
+
     return results.toOwnedSlice(allocator);
 }
 
@@ -565,8 +578,8 @@ fn setupTagLarge(allocator: std.mem.Allocator) !*Document {
 // Tag query benchmark functions (Phase 3)
 
 fn benchGetElementsByTagName(doc: *Document) !void {
-    const result = try doc.getElementsByTagName(doc.node.allocator, "button");
-    doc.node.allocator.free(result);
+    const result = doc.getElementsByTagName("button");
+    _ = result;
 }
 
 fn benchQuerySelectorTag(doc: *Document) !void {
@@ -654,11 +667,210 @@ fn setupClassLarge(allocator: std.mem.Allocator) !*Document {
 // Class query benchmark functions (Phase 4)
 
 fn benchGetElementsByClassName(doc: *Document) !void {
-    const result = try doc.getElementsByClassName(doc.node.allocator, "btn");
-    doc.node.allocator.free(result);
+    const result = doc.getElementsByClassName("btn");
+    _ = result;
 }
 
 fn benchQuerySelectorClass(doc: *Document) !void {
     const result = try doc.querySelector(".btn");
+    _ = result;
+}
+
+// DOM Construction benchmarks (Phase 1.2)
+
+fn constructSmallDom(allocator: std.mem.Allocator) !void {
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 100) : (i += 1) {
+        const div = try doc.createElement("div");
+        _ = try root.node.appendChild(&div.node);
+    }
+}
+
+fn constructMediumDom(allocator: std.mem.Allocator) !void {
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 1000) : (i += 1) {
+        const div = try doc.createElement("div");
+        _ = try root.node.appendChild(&div.node);
+    }
+}
+
+fn constructLargeDom(allocator: std.mem.Allocator) !void {
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("html");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 10000) : (i += 1) {
+        const div = try doc.createElement("div");
+        _ = try root.node.appendChild(&div.node);
+    }
+}
+
+// ===================================================================
+// Complex Selector Benchmarks
+// ===================================================================
+
+fn setupChildCombinator(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    // Build: div > (div > p) * 1000
+    const root = try doc.createElement("div");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 1000) : (i += 1) {
+        const div = try doc.createElement("div");
+        const p = try doc.createElement("p");
+        _ = try div.node.appendChild(&p.node);
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    return doc;
+}
+
+fn setupDescendantCombinator(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    // Build: article > div > div > p * 1000
+    const root = try doc.createElement("article");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 1000) : (i += 1) {
+        const outer = try doc.createElement("div");
+        const inner = try doc.createElement("div");
+        const p = try doc.createElement("p");
+        _ = try inner.node.appendChild(&p.node);
+        _ = try outer.node.appendChild(&inner.node);
+        _ = try root.node.appendChild(&outer.node);
+    }
+
+    return doc;
+}
+
+fn setupAdjacentSibling(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    // Build: (h1, p) * 500 pairs
+    const root = try doc.createElement("div");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 500) : (i += 1) {
+        const h1 = try doc.createElement("h1");
+        const p = try doc.createElement("p");
+        _ = try root.node.appendChild(&h1.node);
+        _ = try root.node.appendChild(&p.node);
+    }
+
+    return doc;
+}
+
+fn setupTypeClass(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    // Build: 1000 divs, 10% with class "active"
+    const root = try doc.createElement("div");
+    _ = try doc.node.appendChild(&root.node);
+
+    var i: usize = 0;
+    while (i < 1000) : (i += 1) {
+        const div = try doc.createElement("div");
+        if (i % 10 == 0) try div.setAttribute("class", "active");
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    return doc;
+}
+
+fn setupAttributeSelector(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    // Build: 1000 divs with data-id
+    const root = try doc.createElement("div");
+    _ = try doc.node.appendChild(&root.node);
+
+    var buf: [16]u8 = undefined;
+    var i: usize = 0;
+    while (i < 1000) : (i += 1) {
+        const div = try doc.createElement("div");
+        const id_str = try std.fmt.bufPrint(&buf, "{d}", .{i});
+        try div.setAttribute("data-id", id_str);
+        _ = try root.node.appendChild(&div.node);
+    }
+
+    return doc;
+}
+
+fn setupComplexMultiComponent(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    errdefer doc.release();
+
+    // Build: article#main > header > (div > h1.title) * 100
+    const article = try doc.createElement("article");
+    try article.setAttribute("id", "main");
+    _ = try doc.node.appendChild(&article.node);
+
+    const header = try doc.createElement("header");
+    _ = try article.node.appendChild(&header.node);
+
+    var i: usize = 0;
+    while (i < 100) : (i += 1) {
+        const div = try doc.createElement("div");
+        const h1 = try doc.createElement("h1");
+        try h1.setAttribute("class", "title");
+        _ = try div.node.appendChild(&h1.node);
+        _ = try header.node.appendChild(&div.node);
+    }
+
+    return doc;
+}
+
+fn benchChildCombinator(doc: *Document) !void {
+    const result = try doc.querySelector("div > p");
+    _ = result;
+}
+
+fn benchDescendantCombinator(doc: *Document) !void {
+    const result = try doc.querySelector("article p");
+    _ = result;
+}
+
+fn benchAdjacentSibling(doc: *Document) !void {
+    const result = try doc.querySelector("h1 + p");
+    _ = result;
+}
+
+fn benchTypeClass(doc: *Document) !void {
+    const result = try doc.querySelector("div.active");
+    _ = result;
+}
+
+fn benchAttributeSelector(doc: *Document) !void {
+    const result = try doc.querySelector("div[data-id=\"500\"]");
+    _ = result;
+}
+
+fn benchComplexMultiComponent(doc: *Document) !void {
+    const result = try doc.querySelector("article#main > header h1.title");
     _ = result;
 }
