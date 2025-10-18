@@ -16,6 +16,7 @@ test {
     _ = @import("nodes/Node-isConnected.zig");
     _ = @import("nodes/Node-removeChild.zig");
     _ = @import("nodes/Node-replaceChild.zig");
+    _ = @import("nodes/Node-textContent.zig");
 }
 
 // Element tests

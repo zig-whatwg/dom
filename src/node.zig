@@ -748,12 +748,7 @@ pub const Node = struct {
         // Step 3: Otherwise, collect text from all Text descendants
         const text = try tree_helpers.getDescendantTextContent(self, allocator);
 
-        // Return null for empty string per spec
-        if (text.len == 0) {
-            allocator.free(text);
-            return null;
-        }
-
+        // Return the text (may be empty string for elements with no text content)
         return text;
     }
 
@@ -3740,7 +3735,7 @@ test "Node.textContent - getter collects nested text" {
     try std.testing.expectEqualStrings("Hello World", content.?);
 }
 
-test "Node.textContent - getter returns null for empty element" {
+test "Node.textContent - getter returns empty string for empty element" {
     const allocator = std.testing.allocator;
 
     const doc = try @import("document.zig").Document.init(allocator);
@@ -3750,7 +3745,11 @@ test "Node.textContent - getter returns null for empty element" {
     defer div.prototype.release();
 
     const content = try div.prototype.textContent(allocator);
-    try std.testing.expect(content == null);
+    defer if (content) |c| allocator.free(c);
+
+    // Per WPT tests, empty elements return empty string, not null
+    try std.testing.expect(content != null);
+    try std.testing.expectEqualStrings("", content.?);
 }
 
 test "Node.textContent - setter does nothing for Document" {
