@@ -252,6 +252,7 @@ const Comment = @import("comment.zig").Comment;
 const DocumentFragment = @import("document_fragment.zig").DocumentFragment;
 const SelectorList = @import("selector/parser.zig").SelectorList;
 const FastPathType = @import("fast_path.zig").FastPathType;
+const TaggedElementCollection = @import("tagged_element_collection.zig").TaggedElementCollection;
 
 /// String interning pool for per-document string deduplication.
 ///
@@ -1085,34 +1086,34 @@ pub const Document = struct {
     /// ## Performance
     /// **O(k)** where k = number of matching elements.
     /// Uses tag map for direct lookup, avoiding O(n) tree traversal.
-    /// Zero allocations - returns borrowed slice.
+    /// Zero allocations - returns live view into internal map.
     ///
     /// ## Parameters
-    /// - `tag_name`: Tag name to match (e.g., "div", "button")
+    /// - `tag_name`: Tag name to match (e.g., "div", "container")
     ///
     /// ## Returns
-    /// Borrowed slice of elements with matching tag name.
-    /// The slice is valid until the document is modified (elements added/removed/changed).
+    /// Live collection of elements with matching tag name.
+    /// The collection automatically reflects DOM changes.
     ///
     /// ## Example
     /// ```zig
     /// const doc = try Document.init(allocator);
     /// defer doc.release();
     ///
-    /// const button1 = try doc.createElement("button");
-    /// _ = try doc.node.appendChild(&button1.node);
+    /// const container1 = try doc.createElement("container");
+    /// _ = try doc.node.appendChild(&container1.node);
     ///
-    /// const button2 = try doc.createElement("button");
-    /// _ = try doc.node.appendChild(&button2.node);
+    /// const collection = doc.getElementsByTagName("container");
+    /// // collection.length() == 1
     ///
-    /// const buttons = doc.getElementsByTagName("button");
-    /// // buttons.len == 2
-    /// // No need to free - borrowed slice
+    /// const container2 = try doc.createElement("container");
+    /// _ = try doc.node.appendChild(&container2.node);
+    /// // collection.length() == 2 (automatically updated!)
     /// ```
     ///
     /// ## JavaScript Binding
     /// ```javascript
-    /// const buttons = document.getElementsByTagName('button');
+    /// const elements = document.getElementsByTagName('div');
     /// // Returns: HTMLCollection (live)
     /// ```
     ///
@@ -1121,14 +1122,14 @@ pub const Document = struct {
     /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:518
     ///
     /// ## Note
-    /// This returns a snapshot slice (not live). The slice becomes stale after DOM mutations.
-    /// This is idiomatic Zig - zero allocations, caller must ensure document lifetime.
-    pub fn getElementsByTagName(self: *const Document, tag_name: []const u8) []const *Element {
-        if (self.tag_map.get(tag_name)) |list| {
-            return list.items;
+    /// This returns a live collection backed by Document's internal tag_map.
+    /// Changes to the DOM automatically reflect in the collection.
+    pub fn getElementsByTagName(self: *const Document, tag_name: []const u8) TaggedElementCollection {
+        if (self.tag_map.getPtr(tag_name)) |list_ptr| {
+            return TaggedElementCollection.init(list_ptr);
         }
-        // No elements with this tag
-        return &[_]*Element{};
+        // No elements with this tag - return empty collection
+        return TaggedElementCollection.initEmpty();
     }
 
     /// Returns all elements with the specified class name (O(k) lookup).
@@ -1152,14 +1153,14 @@ pub const Document = struct {
     /// ## Performance
     /// **O(k)** where k = number of matching elements.
     /// Uses class map for direct lookup, avoiding O(n) tree traversal.
-    /// Zero allocations - returns borrowed slice.
+    /// Zero allocations - returns live view into internal map.
     ///
     /// ## Parameters
     /// - `class_name`: Single class name to match (without "." prefix)
     ///
     /// ## Returns
-    /// Borrowed slice of elements with matching class name.
-    /// The slice is valid until the document is modified (elements added/removed/changed).
+    /// Live collection of elements with matching class name.
+    /// The collection automatically reflects DOM changes.
     ///
     /// ## Example
     /// ```zig
@@ -1170,13 +1171,13 @@ pub const Document = struct {
     /// try button1.setAttribute("class", "btn primary");
     /// _ = try doc.node.appendChild(&button1.node);
     ///
+    /// const collection = doc.getElementsByClassName("btn");
+    /// // collection.length() == 1
+    ///
     /// const button2 = try doc.createElement("button");
     /// try button2.setAttribute("class", "btn");
     /// _ = try doc.node.appendChild(&button2.node);
-    ///
-    /// const btns = doc.getElementsByClassName("btn");
-    /// // btns.len == 2 (both buttons have "btn" class)
-    /// // No need to free - borrowed slice
+    /// // collection.length() == 2 (automatically updated!)
     /// ```
     ///
     /// ## JavaScript Binding
@@ -1190,17 +1191,19 @@ pub const Document = struct {
     /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:519
     ///
     /// ## Note
-    /// This returns a snapshot slice (not live). The slice becomes stale after DOM mutations.
-    /// This is idiomatic Zig - zero allocations, caller must ensure document lifetime.
+    /// This returns a live collection backed by Document's internal class_map.
+    /// Changes to the DOM automatically reflect in the collection.
     /// Only supports single class name lookup (not space-separated list yet).
-    pub fn getElementsByClassName(self: *const Document, class_name: []const u8) []const *Element {
-        if (self.class_map.get(class_name)) |list| {
-            return list.items;
+    pub fn getElementsByClassName(self: *const Document, class_name: []const u8) TaggedElementCollection {
+        if (self.class_map.getPtr(class_name)) |list_ptr| {
+            return TaggedElementCollection.init(list_ptr);
         }
-        // No elements with this class
-        return &[_]*Element{};
+        // No elements with this class - return empty collection
+        return TaggedElementCollection.initEmpty();
     }
 
+    // ========================================================================
+    // ParentNode Mixin - Query Selector
     // ========================================================================
     // ParentNode Mixin - Query Selector
     // ========================================================================
@@ -2366,18 +2369,18 @@ test "Document - getElementsByTagName basic" {
 
     // Get all buttons
     const buttons = doc.getElementsByTagName("button");
-    try std.testing.expectEqual(@as(usize, 2), buttons.len);
-    try std.testing.expect(buttons[0] == button1);
-    try std.testing.expect(buttons[1] == button2);
+    try std.testing.expectEqual(@as(usize, 2), buttons.length());
+    try std.testing.expect(buttons.item(0).? == button1);
+    try std.testing.expect(buttons.item(1).? == button2);
 
     // Get all divs
     const divs = doc.getElementsByTagName("div");
-    try std.testing.expectEqual(@as(usize, 1), divs.len);
-    try std.testing.expect(divs[0] == div);
+    try std.testing.expectEqual(@as(usize, 1), divs.length());
+    try std.testing.expect(divs.item(0).? == div);
 
     // Not found
     const spans = doc.getElementsByTagName("span");
-    try std.testing.expectEqual(@as(usize, 0), spans.len);
+    try std.testing.expectEqual(@as(usize, 0), spans.length());
 }
 
 test "Document - tag map maintained on createElement" {
@@ -2401,7 +2404,7 @@ test "Document - tag map maintained on createElement" {
 
     // Tag map should have all three
     const divs = doc.getElementsByTagName("div");
-    try std.testing.expectEqual(@as(usize, 3), divs.len);
+    try std.testing.expectEqual(@as(usize, 3), divs.length());
 }
 
 test "Document - tag map cleaned up on element removal" {
@@ -2422,7 +2425,7 @@ test "Document - tag map cleaned up on element removal" {
     // Should have 2 divs
     {
         const divs = doc.getElementsByTagName("div");
-        try std.testing.expectEqual(@as(usize, 2), divs.len);
+        try std.testing.expectEqual(@as(usize, 2), divs.length());
     }
 
     // Remove one div
@@ -2432,8 +2435,8 @@ test "Document - tag map cleaned up on element removal" {
     // Should have 1 div
     {
         const divs = doc.getElementsByTagName("div");
-        try std.testing.expectEqual(@as(usize, 1), divs.len);
-        try std.testing.expect(divs[0] == div2);
+        try std.testing.expectEqual(@as(usize, 1), divs.length());
+        try std.testing.expect(divs.item(0).? == div2);
     }
 }
 
@@ -2460,23 +2463,23 @@ test "Document - getElementsByClassName basic" {
 
     // Get all "btn" elements
     const btns = doc.getElementsByClassName("btn");
-    try std.testing.expectEqual(@as(usize, 2), btns.len);
-    try std.testing.expect(btns[0] == button1);
-    try std.testing.expect(btns[1] == button2);
+    try std.testing.expectEqual(@as(usize, 2), btns.length());
+    try std.testing.expect(btns.item(0).? == button1);
+    try std.testing.expect(btns.item(1).? == button2);
 
     // Get all "primary" elements
     const primaries = doc.getElementsByClassName("primary");
-    try std.testing.expectEqual(@as(usize, 1), primaries.len);
-    try std.testing.expect(primaries[0] == button1);
+    try std.testing.expectEqual(@as(usize, 1), primaries.length());
+    try std.testing.expect(primaries.item(0).? == button1);
 
     // Get all "container" elements
     const containers = doc.getElementsByClassName("container");
-    try std.testing.expectEqual(@as(usize, 1), containers.len);
-    try std.testing.expect(containers[0] == div);
+    try std.testing.expectEqual(@as(usize, 1), containers.length());
+    try std.testing.expect(containers.item(0).? == div);
 
     // Not found
     const notfound = doc.getElementsByClassName("notfound");
-    try std.testing.expectEqual(@as(usize, 0), notfound.len);
+    try std.testing.expectEqual(@as(usize, 0), notfound.length());
 }
 
 test "Document - class map maintained on setAttribute" {
@@ -2494,19 +2497,19 @@ test "Document - class map maintained on setAttribute" {
     // Initially no class
     {
         const elements = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 0), elements.len);
+        try std.testing.expectEqual(@as(usize, 0), elements.length());
     }
 
     // Add class
     try div.setAttribute("class", "foo bar");
     {
         const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 1), foos.len);
-        try std.testing.expect(foos[0] == div);
+        try std.testing.expectEqual(@as(usize, 1), foos.length());
+        try std.testing.expect(foos.item(0).? == div);
 
         const bars = doc.getElementsByClassName("bar");
-        try std.testing.expectEqual(@as(usize, 1), bars.len);
-        try std.testing.expect(bars[0] == div);
+        try std.testing.expectEqual(@as(usize, 1), bars.length());
+        try std.testing.expect(bars.item(0).? == div);
     }
 
     // Change class
@@ -2514,15 +2517,43 @@ test "Document - class map maintained on setAttribute" {
     {
         // Old classes should be gone
         const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 0), foos.len);
+        try std.testing.expectEqual(@as(usize, 0), foos.length());
 
         const bars = doc.getElementsByClassName("bar");
-        try std.testing.expectEqual(@as(usize, 0), bars.len);
+        try std.testing.expectEqual(@as(usize, 0), bars.length());
 
         // New class should be present
         const bazs = doc.getElementsByClassName("baz");
-        try std.testing.expectEqual(@as(usize, 1), bazs.len);
-        try std.testing.expect(bazs[0] == div);
+        try std.testing.expectEqual(@as(usize, 1), bazs.length());
+        try std.testing.expect(bazs.item(0).? == div);
+    }
+
+    // Add class
+    try div.setAttribute("class", "foo bar");
+    {
+        const foos = doc.getElementsByClassName("foo");
+        try std.testing.expectEqual(@as(usize, 1), foos.length());
+        try std.testing.expect(foos.item(0).? == div);
+
+        const bars = doc.getElementsByClassName("bar");
+        try std.testing.expectEqual(@as(usize, 1), bars.length());
+        try std.testing.expect(bars.item(0).? == div);
+    }
+
+    // Change class
+    try div.setAttribute("class", "baz");
+    {
+        // Old classes should be gone
+        const foos = doc.getElementsByClassName("foo");
+        try std.testing.expectEqual(@as(usize, 0), foos.length());
+
+        const bars = doc.getElementsByClassName("bar");
+        try std.testing.expectEqual(@as(usize, 0), bars.length());
+
+        // New class should be present
+        const bazs = doc.getElementsByClassName("baz");
+        try std.testing.expectEqual(@as(usize, 1), bazs.length());
+        try std.testing.expect(bazs.item(0).? == div);
     }
 }
 
@@ -2542,7 +2573,7 @@ test "Document - class map cleaned up on removeAttribute" {
     // Should have classes
     {
         const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 1), foos.len);
+        try std.testing.expectEqual(@as(usize, 1), foos.length());
     }
 
     // Remove class attribute
@@ -2551,10 +2582,10 @@ test "Document - class map cleaned up on removeAttribute" {
     // Should be empty
     {
         const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 0), foos.len);
+        try std.testing.expectEqual(@as(usize, 0), foos.length());
 
         const bars = doc.getElementsByClassName("bar");
-        try std.testing.expectEqual(@as(usize, 0), bars.len);
+        try std.testing.expectEqual(@as(usize, 0), bars.length());
     }
 }
 
@@ -2578,7 +2609,7 @@ test "Document - class map cleaned up on element removal" {
     // Should have 2 elements with class "testclass1"
     {
         const results = doc.getElementsByClassName("testclass1");
-        try std.testing.expectEqual(@as(usize, 2), results.len);
+        try std.testing.expectEqual(@as(usize, 2), results.length());
     }
 
     // Remove one element
@@ -2588,7 +2619,7 @@ test "Document - class map cleaned up on element removal" {
     // Should have 1 element with class "testclass1"
     {
         const results = doc.getElementsByClassName("testclass1");
-        try std.testing.expectEqual(@as(usize, 1), results.len);
-        try std.testing.expect(results[0] == elem2);
+        try std.testing.expectEqual(@as(usize, 1), results.length());
+        try std.testing.expect(results.item(0).? == elem2);
     }
 }
