@@ -32,6 +32,7 @@ test {
 
 // Element tests
 test {
+    _ = @import("nodes/Element-childElementCount.zig");
     _ = @import("nodes/Element-hasAttribute.zig");
     _ = @import("nodes/Element-setAttribute.zig");
     _ = @import("nodes/Element-tagName.zig");
