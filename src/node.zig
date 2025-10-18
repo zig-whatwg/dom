@@ -1954,6 +1954,83 @@ pub const Node = struct {
 
     // === Event Dispatch Helper Functions ===
 
+    /// Retargets a node for event dispatch across shadow boundaries.
+    ///
+    /// Per WHATWG §2.10: When an event crosses a shadow boundary, the target
+    /// should appear to be the shadow host when viewed from outside the shadow tree.
+    ///
+    /// ## Algorithm
+    /// 1. Find the root of the target node (might be a shadow root)
+    /// 2. Find the root of the context node (where listener is)
+    /// 3. If roots are different and target root is a shadow root:
+    ///    - Walk up from target's shadow root to find first shadow host that's
+    ///      in the same tree as context
+    /// 4. Otherwise, return target unchanged
+    ///
+    /// ## Parameters
+    /// - `target`: The actual event target
+    /// - `context`: The node where the listener is attached
+    ///
+    /// ## Returns
+    /// The retargeted node (either target itself or an ancestor shadow host)
+    fn retargetNode(target: *Node, context: *Node) *Node {
+        // Find roots
+        var target_root = target;
+        while (target_root.parent_node) |parent| {
+            target_root = parent;
+        }
+
+        var context_root = context;
+        while (context_root.parent_node) |parent| {
+            context_root = parent;
+        }
+
+        // Same root? No retargeting needed
+        if (target_root == context_root) {
+            return target;
+        }
+
+        // Target root is not a shadow root? No retargeting
+        if (target_root.node_type != .shadow_root) {
+            return target;
+        }
+
+        // Walk up from target's shadow root to find common tree
+        var current_root = target_root;
+        while (current_root.node_type == .shadow_root) {
+            const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
+            const shadow: *ShadowRoot = @fieldParentPtr("prototype", current_root);
+            const host = &shadow.host_element.prototype;
+
+            // Is host in the same tree as context?
+            var check_node = context;
+            while (true) {
+                if (check_node == host) {
+                    // Found common ancestor - retarget to this host
+                    return host;
+                }
+                if (check_node.parent_node) |parent| {
+                    check_node = parent;
+                } else {
+                    break;
+                }
+            }
+
+            // Not in same tree yet - move up to host and check its root
+            current_root = host;
+            while (current_root.parent_node) |parent| {
+                current_root = parent;
+            }
+
+            // If current_root is not a shadow root, we've reached the document
+            if (current_root.node_type != .shadow_root) {
+                return host;
+            }
+        }
+
+        return target;
+    }
+
     /// Builds the event path from target to root, accounting for shadow DOM boundaries.
     ///
     /// Per WHATWG §2.9: The event path is the list of objects participating in event dispatch.
@@ -1994,13 +2071,19 @@ pub const Node = struct {
     /// - `node`: Node whose listeners to invoke
     /// - `event`: Event being dispatched
     /// - `capture`: true for capture phase listeners, false for bubble phase
-    fn invokeListeners(node: *Node, event: *Event, capture: bool) !void {
+    /// - `original_target`: The original event target (for retargeting)
+    fn invokeListeners(node: *Node, event: *Event, capture: bool, original_target: *Node) !void {
         if (node.rare_data == null) return;
         const rare = node.rare_data.?;
 
         if (!rare.hasEventListeners(event.event_type)) return;
 
         const listeners = rare.getEventListeners(event.event_type);
+
+        // Retarget the event for this node's listeners
+        const retargeted = retargetNode(original_target, node);
+        const saved_target = event.target;
+        event.target = @ptrCast(retargeted);
 
         for (listeners) |listener| {
             // Only invoke listeners matching the current phase
@@ -2030,6 +2113,9 @@ pub const Node = struct {
             // Unset passive listener flag
             event.in_passive_listener_flag = prev_passive;
         }
+
+        // Restore original target
+        event.target = saved_target;
     }
 
     pub fn dispatchEvent(self: *Node, event: *Event) !bool {
@@ -2065,7 +2151,7 @@ pub const Node = struct {
             if (current_node == self) continue;
 
             event.current_target = @ptrCast(current_node);
-            try invokeListeners(current_node, event, true); // capture = true
+            try invokeListeners(current_node, event, true, self); // capture = true
 
             if (event.stop_propagation_flag) break;
         }
@@ -2076,9 +2162,9 @@ pub const Node = struct {
             event.current_target = @ptrCast(self);
 
             // Fire both capture and bubble listeners at target
-            try invokeListeners(self, event, true); // capture listeners
+            try invokeListeners(self, event, true, self); // capture listeners
             if (!event.stop_propagation_flag) {
-                try invokeListeners(self, event, false); // bubble listeners
+                try invokeListeners(self, event, false, self); // bubble listeners
             }
         }
 
@@ -2090,7 +2176,7 @@ pub const Node = struct {
                 const current_node = @as(*Node, @ptrCast(@alignCast(event_path.items[i])));
 
                 event.current_target = @ptrCast(current_node);
-                try invokeListeners(current_node, event, false); // capture = false
+                try invokeListeners(current_node, event, false, self); // capture = false
 
                 if (event.stop_propagation_flag) break;
             }
@@ -4456,6 +4542,151 @@ test "Node.dispatchEvent - sets event properties correctly" {
     try std.testing.expectEqual(Event.EventPhase.none, event.event_phase);
     try std.testing.expect(event.current_target == null);
     try std.testing.expect(!event.dispatch_flag);
+}
+
+test "Node.dispatchEvent - composed event crosses shadow boundary" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Create: host -> shadow root -> inner element
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open });
+    const inner = try doc.createElement("inner");
+    _ = try shadow.prototype.appendChild(&inner.prototype);
+
+    var listener_called = false;
+    const callback = struct {
+        fn cb(evt: *Event, context: *anyopaque) void {
+            const called: *bool = @ptrCast(@alignCast(context));
+            called.* = true;
+            // When listener is on host, target should be retargeted to host
+            // (not implemented yet - this test will fail initially)
+            _ = evt;
+        }
+    }.cb;
+
+    // Add listener to host element
+    try host.prototype.addEventListener("click", callback, @ptrCast(&listener_called), false, false, false, null);
+
+    // Dispatch composed event from inner element
+    var event = Event.init("click", .{ .composed = true, .bubbles = true, .cancelable = false });
+    _ = try inner.prototype.dispatchEvent(&event);
+
+    // Listener on host should have been called (event crossed shadow boundary)
+    try std.testing.expect(listener_called);
+}
+
+test "Node.dispatchEvent - non-composed event stops at shadow boundary" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Create: host -> shadow root -> inner element
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open });
+    const inner = try doc.createElement("inner");
+    _ = try shadow.prototype.appendChild(&inner.prototype);
+
+    var host_called = false;
+    var shadow_called = false;
+
+    const host_callback = struct {
+        fn cb(_: *Event, context: *anyopaque) void {
+            const called: *bool = @ptrCast(@alignCast(context));
+            called.* = true;
+        }
+    }.cb;
+
+    const shadow_callback = struct {
+        fn cb(_: *Event, context: *anyopaque) void {
+            const called: *bool = @ptrCast(@alignCast(context));
+            called.* = true;
+        }
+    }.cb;
+
+    // Add listener to host element (outside shadow tree)
+    try host.prototype.addEventListener("click", host_callback, @ptrCast(&host_called), false, false, false, null);
+
+    // Add listener to shadow root (boundary)
+    try shadow.prototype.addEventListener("click", shadow_callback, @ptrCast(&shadow_called), false, false, false, null);
+
+    // Dispatch NON-composed event from inner element
+    var event = Event.init("click", .{ .composed = false, .bubbles = true, .cancelable = false });
+    _ = try inner.prototype.dispatchEvent(&event);
+
+    // Listener on shadow root should have been called
+    try std.testing.expect(shadow_called);
+
+    // Listener on host should NOT have been called (event stopped at shadow boundary)
+    try std.testing.expect(!host_called);
+}
+
+test "Node.dispatchEvent - event retargeting across shadow boundary" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Create: host -> shadow root -> inner element
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open });
+    const inner = try doc.createElement("inner");
+    _ = try shadow.prototype.appendChild(&inner.prototype);
+
+    const TargetCheck = struct {
+        expected_target: *Node,
+        actual_target: ?*Node = null,
+    };
+
+    var host_check = TargetCheck{ .expected_target = &host.prototype };
+    var shadow_check = TargetCheck{ .expected_target = &inner.prototype };
+
+    const host_callback = struct {
+        fn cb(evt: *Event, context: *anyopaque) void {
+            const check: *TargetCheck = @ptrCast(@alignCast(context));
+            check.actual_target = @ptrCast(@alignCast(evt.target.?));
+        }
+    }.cb;
+
+    const shadow_callback = struct {
+        fn cb(evt: *Event, context: *anyopaque) void {
+            const check: *TargetCheck = @ptrCast(@alignCast(context));
+            check.actual_target = @ptrCast(@alignCast(evt.target.?));
+        }
+    }.cb;
+
+    // Add listener to host element (outside shadow tree)
+    try host.prototype.addEventListener("click", host_callback, @ptrCast(&host_check), false, false, false, null);
+
+    // Add listener to shadow root (inside shadow tree)
+    try shadow.prototype.addEventListener("click", shadow_callback, @ptrCast(&shadow_check), false, false, false, null);
+
+    // Dispatch composed event from inner element
+    var event = Event.init("click", .{ .composed = true, .bubbles = true, .cancelable = false });
+    _ = try inner.prototype.dispatchEvent(&event);
+
+    // Listener inside shadow tree sees real target (inner element)
+    try std.testing.expect(shadow_check.actual_target == &inner.prototype);
+
+    // Listener outside shadow tree should see retargeted target (host element)
+    // Currently sees the real target (inner element) - needs retargeting
+    try std.testing.expect(host_check.actual_target != null);
+
+    // Verify retargeting works correctly
+    // Listener outside shadow tree should see retargeted target (host element)
+    try std.testing.expect(host_check.actual_target == &host.prototype);
 }
 
 test "Node.isEqualNode - returns false for different attribute values" {
