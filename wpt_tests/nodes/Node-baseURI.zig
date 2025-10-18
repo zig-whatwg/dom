@@ -25,10 +25,10 @@ test "Node.baseURI for elements in document" {
     defer doc.release();
 
     const body = try doc.createElement("body");
-    _ = try doc.prototype.appendChild(&body.node);
+    _ = try doc.prototype.appendChild(&body.prototype);
 
     const element = try doc.createElement("div");
-    _ = try body.prototype.appendChild(&element.node);
+    _ = try body.prototype.appendChild(&element.prototype);
 
     const base_uri = element.prototype.baseURI();
 

@@ -13,13 +13,13 @@ test "Passing a detached element to removeChild should throw NOT_FOUND_ERR" {
     defer doc.release();
 
     const body = try doc.createElement("body");
-    _ = try doc.prototype.appendChild(&body.node);
+    _ = try doc.prototype.appendChild(&body.prototype);
 
     const s = try doc.createElement("a");
     defer s.prototype.release(); // Must release orphaned nodes
 
     // s is detached, attempting to remove it should fail
-    const result = body.prototype.removeChild(&s.node);
+    const result = body.prototype.removeChild(&s.prototype);
     try std.testing.expectError(error.NotFoundError, result);
 }
 
@@ -31,17 +31,17 @@ test "Passing a non-detached element from wrong parent should throw NOT_FOUND_ER
     // Original test structure: doc -> html -> (body, s)
     // Where s is a sibling of body, not a child
     const html = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&html.node);
+    _ = try doc.prototype.appendChild(&html.prototype);
 
     const body = try doc.createElement("body");
-    _ = try html.prototype.appendChild(&body.node);
+    _ = try html.prototype.appendChild(&body.prototype);
 
     // Create s and append to html (making s sibling of body, not child)
     const s = try doc.createElement("b");
-    _ = try html.prototype.appendChild(&s.node);
+    _ = try html.prototype.appendChild(&s.prototype);
 
     // s is attached to html, not body - should throw NOT_FOUND_ERR
-    const result = body.prototype.removeChild(&s.node);
+    const result = body.prototype.removeChild(&s.prototype);
     try std.testing.expectError(error.NotFoundError, result);
 }
 
@@ -51,13 +51,13 @@ test "Calling removeChild on element with no children should throw NOT_FOUND_ERR
     defer doc.release();
 
     const body = try doc.createElement("body");
-    _ = try doc.prototype.appendChild(&body.node);
+    _ = try doc.prototype.appendChild(&body.prototype);
 
     const s = try doc.createElement("test");
-    _ = try body.prototype.appendChild(&s.node);
+    _ = try body.prototype.appendChild(&s.prototype);
 
     // s has no children, can't remove doc from it
-    const result = s.prototype.removeChild(&doc.node);
+    const result = s.prototype.removeChild(&doc.prototype);
     try std.testing.expectError(error.NotFoundError, result);
 }
 
@@ -70,11 +70,11 @@ test "removeChild successfully removes child" {
     defer parent.prototype.release(); // Must release orphaned nodes
     const child = try doc.createElement("span");
 
-    _ = try parent.prototype.appendChild(&child.node);
-    try std.testing.expect(parent.prototype.first_child == &child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
+    try std.testing.expect(parent.prototype.first_child == &child.prototype);
 
-    const removed = try parent.prototype.removeChild(&child.node);
-    try std.testing.expect(removed == &child.node);
+    const removed = try parent.prototype.removeChild(&child.prototype);
+    try std.testing.expect(removed == &child.prototype);
     try std.testing.expect(parent.prototype.first_child == null);
 
     // Clean up
@@ -90,10 +90,10 @@ test "removeChild returns the removed node" {
     defer parent.prototype.release(); // Must release orphaned nodes
     const child = try doc.createElement("span");
 
-    _ = try parent.prototype.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
-    const removed = try parent.prototype.removeChild(&child.node);
-    try std.testing.expect(removed == &child.node);
+    const removed = try parent.prototype.removeChild(&child.prototype);
+    try std.testing.expect(removed == &child.prototype);
 
     // The removed node should still be valid
     try std.testing.expectEqual(removed.node_type, .element);
@@ -112,16 +112,16 @@ test "removeChild updates sibling links" {
     const child2 = try doc.createElement("p");
     const child3 = try doc.createElement("a");
 
-    _ = try parent.prototype.appendChild(&child1.node);
-    _ = try parent.prototype.appendChild(&child2.node);
-    _ = try parent.prototype.appendChild(&child3.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+    _ = try parent.prototype.appendChild(&child2.prototype);
+    _ = try parent.prototype.appendChild(&child3.prototype);
 
     // Remove middle child
-    const removed = try parent.prototype.removeChild(&child2.node);
+    const removed = try parent.prototype.removeChild(&child2.prototype);
 
     // child1 should link to child3
-    try std.testing.expect(child1.prototype.next_sibling == &child3.node);
-    try std.testing.expect(child3.prototype.previous_sibling == &child1.node);
+    try std.testing.expect(child1.prototype.next_sibling == &child3.prototype);
+    try std.testing.expect(child3.prototype.previous_sibling == &child1.prototype);
 
     removed.release();
 }

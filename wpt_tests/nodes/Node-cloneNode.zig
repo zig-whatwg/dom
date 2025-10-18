@@ -21,7 +21,7 @@ test "cloneNode() shallow copy of element" {
     defer copy.release();
 
     // Should be different objects
-    try std.testing.expect(&element.node != copy);
+    try std.testing.expect(&element.prototype != copy);
 
     // Should have same nodeType and nodeName
     try std.testing.expectEqual(element.prototype.node_type, copy.node_type);
@@ -36,7 +36,7 @@ test "cloneNode() shallow copy does not clone children" {
     const parent = try doc.createElement("parent");
     defer parent.prototype.release(); // Must release orphaned nodes
     const child = try doc.createElement("child");
-    _ = try parent.prototype.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     const copy = try parent.prototype.cloneNode(false);
     defer copy.release();
@@ -58,8 +58,8 @@ test "cloneNode() deep copy clones children" {
     const child = try doc.createElement("child");
     const grandchild = try doc.createElement("grandchild");
 
-    _ = try child.prototype.appendChild(&grandchild.node);
-    _ = try parent.prototype.appendChild(&child.node);
+    _ = try child.prototype.appendChild(&grandchild.prototype);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     const copy = try parent.prototype.cloneNode(true);
     defer copy.release();
@@ -109,7 +109,7 @@ test "cloneNode() text node" {
     defer copy.release();
 
     // Should be different objects
-    try std.testing.expect(&text.node != copy);
+    try std.testing.expect(&text.prototype != copy);
 
     // Should have same node type
     try std.testing.expectEqual(text.prototype.node_type, copy.node_type);
@@ -130,7 +130,7 @@ test "cloneNode() comment node" {
     defer copy.release();
 
     // Should be different objects
-    try std.testing.expect(&comment.node != copy);
+    try std.testing.expect(&comment.prototype != copy);
 
     // Should have same node type
     try std.testing.expectEqual(comment.prototype.node_type, copy.node_type);
@@ -169,14 +169,14 @@ test "cloneNode() DocumentFragment shallow copy" {
 
     // Add children to original
     const element = try doc.createElement("element");
-    _ = try fragment.prototype.appendChild(&element.node);
+    _ = try fragment.prototype.appendChild(&element.prototype);
 
     // Shallow clone
     const copy = try fragment.prototype.cloneNode(false);
     defer copy.release();
 
     // Should be different objects
-    try std.testing.expect(&fragment.node != copy);
+    try std.testing.expect(&fragment.prototype != copy);
 
     // Should have same nodeType
     try std.testing.expectEqual(fragment.prototype.node_type, copy.node_type);
@@ -206,16 +206,16 @@ test "cloneNode() DocumentFragment deep copy" {
     const item = try doc.createElement("item");
     const text = try doc.createTextNode("content");
 
-    _ = try item.prototype.appendChild(&text.node);
-    _ = try container.prototype.appendChild(&item.node);
-    _ = try fragment.prototype.appendChild(&container.node);
+    _ = try item.prototype.appendChild(&text.prototype);
+    _ = try container.prototype.appendChild(&item.prototype);
+    _ = try fragment.prototype.appendChild(&container.prototype);
 
     // Deep clone
     const copy = try fragment.prototype.cloneNode(true);
     defer copy.release();
 
     // Should be different objects
-    try std.testing.expect(&fragment.node != copy);
+    try std.testing.expect(&fragment.prototype != copy);
 
     // Should have same nodeType
     try std.testing.expectEqual(NodeType.document_fragment, copy.node_type);
@@ -249,9 +249,9 @@ test "cloneNode() DocumentFragment with mixed node types" {
     const text = try doc.createTextNode("text node");
     const comment = try doc.createComment("comment node");
 
-    _ = try fragment.prototype.appendChild(&elem.node);
-    _ = try fragment.prototype.appendChild(&text.node);
-    _ = try fragment.prototype.appendChild(&comment.node);
+    _ = try fragment.prototype.appendChild(&elem.prototype);
+    _ = try fragment.prototype.appendChild(&text.prototype);
+    _ = try fragment.prototype.appendChild(&comment.prototype);
 
     // Deep clone
     const copy = try fragment.prototype.cloneNode(true);
@@ -290,9 +290,9 @@ test "cloneNode() deep copy with grandchildren verification" {
     const level3 = try doc.createElement("level3");
     const text = try doc.createTextNode("deep content");
 
-    _ = try level3.prototype.appendChild(&text.node);
-    _ = try level2.prototype.appendChild(&level3.node);
-    _ = try level1.prototype.appendChild(&level2.node);
+    _ = try level3.prototype.appendChild(&text.prototype);
+    _ = try level2.prototype.appendChild(&level3.prototype);
+    _ = try level1.prototype.appendChild(&level2.prototype);
 
     // Deep clone
     const copy = try level1.prototype.cloneNode(true);
@@ -330,9 +330,9 @@ test "cloneNode() deep copy preserves sibling relationships" {
     const child2 = try doc.createElement("child2");
     const child3 = try doc.createElement("child3");
 
-    _ = try parent.prototype.appendChild(&child1.node);
-    _ = try parent.prototype.appendChild(&child2.node);
-    _ = try parent.prototype.appendChild(&child3.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+    _ = try parent.prototype.appendChild(&child2.prototype);
+    _ = try parent.prototype.appendChild(&child3.prototype);
 
     // Deep clone
     const copy = try parent.prototype.cloneNode(true);
@@ -424,8 +424,8 @@ test "cloneNode() adding children to original doesn't affect shallow clone" {
     // Add children to original AFTER cloning
     const child1 = try doc.createElement("child1");
     const child2 = try doc.createElement("child2");
-    _ = try original.prototype.appendChild(&child1.node);
-    _ = try original.prototype.appendChild(&child2.node);
+    _ = try original.prototype.appendChild(&child1.prototype);
+    _ = try original.prototype.appendChild(&child2.prototype);
 
     // Original now has children
     try std.testing.expect(original.prototype.hasChildNodes());
@@ -629,21 +629,21 @@ test "cloneNode() complex nested structure" {
     const section = try doc.createElement("section");
     const item = try doc.createElement("item");
     const title = try doc.createTextNode("Title text");
-    _ = try item.prototype.appendChild(&title.node);
-    _ = try section.prototype.appendChild(&item.node);
-    _ = try root.prototype.appendChild(&section.node);
+    _ = try item.prototype.appendChild(&title.prototype);
+    _ = try section.prototype.appendChild(&item.prototype);
+    _ = try root.prototype.appendChild(&section.prototype);
 
     const content = try doc.createElement("content");
     const block1 = try doc.createElement("block");
     const text1 = try doc.createTextNode("First block");
-    _ = try block1.prototype.appendChild(&text1.node);
-    _ = try content.prototype.appendChild(&block1.node);
+    _ = try block1.prototype.appendChild(&text1.prototype);
+    _ = try content.prototype.appendChild(&block1.prototype);
 
     const block2 = try doc.createElement("block");
     const text2 = try doc.createTextNode("Second block");
-    _ = try block2.prototype.appendChild(&text2.node);
-    _ = try content.prototype.appendChild(&block2.node);
-    _ = try root.prototype.appendChild(&content.node);
+    _ = try block2.prototype.appendChild(&text2.prototype);
+    _ = try content.prototype.appendChild(&block2.prototype);
+    _ = try root.prototype.appendChild(&content.prototype);
 
     // Deep clone
     const copy = try root.prototype.cloneNode(true);
@@ -656,7 +656,7 @@ test "cloneNode() complex nested structure" {
     // Verify section
     const copy_section = copy.first_child.?;
     try std.testing.expectEqual(NodeType.element, copy_section.node_type);
-    try std.testing.expect(copy_section != &section.node);
+    try std.testing.expect(copy_section != &section.prototype);
 
     // Verify content
     const copy_content = copy_section.next_sibling.?;
