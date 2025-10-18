@@ -451,8 +451,12 @@ function generateHTML(groupedResults, browserResults) {
         }).join('')}
         
         <div class="category">
-            <h1 style="margin-bottom: 30px;">💾 Memory Usage Rankings</h1>
-            <p class="subtitle" style="margin-bottom: 30px;">Lower is better - peak memory consumption during benchmark execution</p>
+            <h1 style="margin-bottom: 30px;">💾 Memory Usage Rankings (Zig Only)</h1>
+            <p class="subtitle" style="margin-bottom: 30px;">
+                Lower is better - peak memory consumption during benchmark execution.
+                <br><strong>Note:</strong> Browser memory cannot be accurately measured via JavaScript due to GC and shared heap.
+                Only Zig measurements shown (direct allocator tracking).
+            </p>
             
             ${Object.entries(categories).map(([categoryName, benchmarks], index) => {
                 if (benchmarks.length === 0) return '';
@@ -471,43 +475,39 @@ function generateHTML(groupedResults, browserResults) {
                         <thead>
                             <tr>
                                 <th>Benchmark</th>
-                                ${implementations.map(impl => `<th>${impl}</th>`).join('')}
-                                <th>Winner (Lowest Memory)</th>
+                                <th>Zig Memory</th>
+                                <th>Memory per Element</th>
+                                <th>DOM Size</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${benchmarksWithMemory.map(bench => {
-                                const values = implementations.map(impl => {
-                                    const result = bench.implementations[impl];
-                                    return result && result.bytesPerOp ? result.bytesPerOp : Infinity;
-                                });
-                                const minValue = Math.min(...values.filter(v => v !== Infinity && v > 0));
-                                const winnerIndex = values.indexOf(minValue);
-                                const winner = minValue !== Infinity ? implementations[winnerIndex] : 'N/A';
+                                const zigResult = bench.implementations['Zig'];
+                                if (!zigResult || !zigResult.bytesPerOp || zigResult.bytesPerOp === 0) return '';
+                                
+                                const bytes = zigResult.bytesPerOp;
+                                let display;
+                                if (bytes < 1024) {
+                                    display = `${bytes}B`;
+                                } else if (bytes < 1024 * 1024) {
+                                    display = `${Math.round(bytes / 1024)}KB`;
+                                } else {
+                                    display = `${Math.round(bytes / (1024 * 1024))}MB`;
+                                }
+                                
+                                // Extract element count from name
+                                const elemMatch = bench.name.match(/\((\d+) elem\)/);
+                                const elemCount = elemMatch ? parseInt(elemMatch[1]) : 0;
+                                const bytesPerElem = elemCount > 0 ? Math.round(bytes / elemCount) : 0;
+                                const bytesPerElemDisplay = bytesPerElem > 0 ? `${bytesPerElem}B` : '-';
+                                const domSizeDisplay = elemCount > 0 ? `${elemCount} elements` : '-';
                                 
                                 return `
                                 <tr>
                                     <td><strong>${bench.name}</strong></td>
-                                    ${implementations.map((impl, i) => {
-                                        const result = bench.implementations[impl];
-                                        if (!result || !result.bytesPerOp || result.bytesPerOp === 0) return '<td>-</td>';
-                                        
-                                        const bytes = result.bytesPerOp;
-                                        let display;
-                                        if (bytes < 1024) {
-                                            display = `${bytes}B`;
-                                        } else if (bytes < 1024 * 1024) {
-                                            display = `${Math.round(bytes / 1024)}KB`;
-                                        } else {
-                                            display = `${Math.round(bytes / (1024 * 1024))}MB`;
-                                        }
-                                        
-                                        const ratio = bytes / minValue;
-                                        const ratioText = ratio > 1 ? ` (${ratio.toFixed(1)}x more)` : '';
-                                        
-                                        return `<td>${display}<span class="speedup">${ratioText}</span></td>`;
-                                    }).join('')}
-                                    <td class="winner">${winner}</td>
+                                    <td>${display}</td>
+                                    <td>${bytesPerElemDisplay}</td>
+                                    <td>${domSizeDisplay}</td>
                                 </tr>
                                 `;
                             }).join('')}

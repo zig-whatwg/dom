@@ -96,21 +96,18 @@ function benchmarkFn(name, iterations, func) {
     }
     const end = performance.now();
     
-    // Measure memory after (if available)
-    let memEnd = 0;
-    let peakMemory = 0;
-    if (performance.memory) {
-        memEnd = performance.memory.usedJSHeapSize;
-        peakMemory = performance.memory.usedJSHeapSize; // Current heap usage (runtime footprint)
-    }
-    
     const totalMs = end - start;
     const msPerOp = totalMs / actualIterations;
     const opsPerSec = msPerOp > 0 ? Math.floor(1000 / msPerOp) : 0;
     
-    const bytesAllocated = Math.max(0, memEnd - memStart);
-    // Report peak memory as bytesPerOp for consistency with Zig visualization
-    const bytesPerOp = peakMemory > 0 ? peakMemory : 0;
+    // Note: Browser memory cannot be accurately measured via performance.memory
+    // - It reports total JS heap, not per-operation memory
+    // - GC makes measurements unpredictable
+    // - Not available in Firefox/WebKit
+    // Therefore, we don't track browser memory (only Zig memory is meaningful)
+    const bytesAllocated = 0;
+    const bytesPerOp = 0;
+    const peakMemory = 0;
     
     // Use results (prevents elimination)
     blackHole(resultAccumulator);
@@ -154,21 +151,15 @@ function benchmarkWithSetup(name, iterations, setup, func) {
     }
     const end = performance.now();
     
-    // Measure memory after (if available)
-    let memEnd = 0;
-    let peakMemory = 0;
-    if (performance.memory) {
-        memEnd = performance.memory.usedJSHeapSize;
-        peakMemory = performance.memory.usedJSHeapSize; // Current heap usage (runtime footprint)
-    }
-    
     const totalMs = end - start;
     const msPerOp = totalMs / actualIterations;
     const opsPerSec = msPerOp > 0 ? Math.floor(1000 / msPerOp) : 0;
     
-    const bytesAllocated = Math.max(0, memEnd - memStart);
-    // Report peak memory as bytesPerOp for consistency with Zig visualization
-    const bytesPerOp = peakMemory > 0 ? peakMemory : 0;
+    // Note: Browser memory cannot be accurately measured
+    // Only Zig memory tracking is meaningful
+    const bytesAllocated = 0;
+    const bytesPerOp = 0;
+    const peakMemory = 0;
     
     // Use results (prevents elimination)
     blackHole(resultAccumulator);
