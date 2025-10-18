@@ -1481,6 +1481,14 @@ pub const Node = struct {
             node.setConnected(true);
             // Propagate to descendants
             tree_helpers.setDescendantsConnected(node, true);
+
+            // Update document maps (id_map, tag_map) for newly connected elements
+            // This must happen AFTER setConnected() so isConnected() returns true
+            if (self.owner_document) |owner_doc| {
+                if (owner_doc.node_type == .document) {
+                    try addNodeToDocumentMaps(node, owner_doc);
+                }
+            }
         }
 
         return node;
@@ -1962,6 +1970,107 @@ pub fn adopt(node: *Node, document: *Node) !void {
     }
 }
 
+/// Recursively adds a node and its descendants to document maps (id_map, tag_map).
+/// Called after a node tree is inserted and connected.
+/// This matches browser behavior where maps are updated during tree mutations, not setAttribute.
+fn addNodeToDocumentMaps(node: *Node, owner_doc: *Node) !void {
+    const Document = @import("document.zig").Document;
+    const doc: *Document = @fieldParentPtr("node", owner_doc);
+
+    // Handle this node if it's an element
+    if (node.node_type == .element) {
+        const Element = @import("element.zig").Element;
+        const elem: *Element = @fieldParentPtr("node", node);
+
+        // Add to id_map if element has an id (only if ID not already present - first wins)
+        if (elem.getId()) |id| {
+            const result = try doc.id_map.getOrPut(id);
+            if (!result.found_existing) {
+                result.value_ptr.* = elem;
+                doc.invalidateIdCache();
+            }
+        }
+
+        // Add to tag_map
+        const tag = elem.tag_name;
+        const result = try doc.tag_map.getOrPut(tag);
+        if (!result.found_existing) {
+            result.value_ptr.* = .{};
+        }
+        try result.value_ptr.append(doc.node.allocator, elem);
+
+        // NOTE: We deliberately don't update class_map here
+        // This will be removed in Phase 3 when we switch to tree traversal for classes
+    }
+
+    // Recursively process children
+    var child = node.first_child;
+    while (child) |c| {
+        try addNodeToDocumentMaps(c, owner_doc);
+        child = c.next_sibling;
+    }
+}
+
+/// Recursively removes a node and its descendants from document maps (id_map, tag_map).
+/// Called after a node tree is removed and disconnected.
+fn removeNodeFromDocumentMaps(node: *Node, owner_doc: *Node) void {
+    const Document = @import("document.zig").Document;
+    const doc: *Document = @fieldParentPtr("node", owner_doc);
+
+    // Handle this node if it's an element
+    if (node.node_type == .element) {
+        const Element = @import("element.zig").Element;
+        const elem: *Element = @fieldParentPtr("node", node);
+
+        // Remove from id_map if element has an id and is the one in the map
+        if (elem.getId()) |id| {
+            if (doc.id_map.get(id)) |mapped_elem| {
+                if (mapped_elem == elem) {
+                    _ = doc.id_map.remove(id);
+                    doc.invalidateIdCache();
+
+                    // Search for another element with the same ID to replace it
+                    // This handles the case where duplicate IDs exist (spec violation but browsers handle it)
+                    const ElementIterator = @import("element_iterator.zig").ElementIterator;
+                    var iter = ElementIterator.init(&doc.node);
+                    while (iter.next()) |other_elem| {
+                        if (other_elem != elem) {
+                            if (other_elem.getId()) |other_id| {
+                                if (std.mem.eql(u8, other_id, id)) {
+                                    doc.id_map.put(id, other_elem) catch {};
+                                    doc.invalidateIdCache();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Remove from tag_map
+        const tag = elem.tag_name;
+        if (doc.tag_map.getPtr(tag)) |list_ptr| {
+            // Find and remove this element from the list
+            var i: usize = 0;
+            while (i < list_ptr.items.len) {
+                if (list_ptr.items[i] == elem) {
+                    _ = list_ptr.swapRemove(i);
+                    break;
+                }
+                i += 1;
+            }
+        }
+    }
+
+    // Recursively process children
+    var child = node.first_child;
+    while (child) |c| {
+        removeNodeFromDocumentMaps(c, owner_doc);
+        child = c.next_sibling;
+    }
+}
+
 /// Pre-insert algorithm per WHATWG DOM §4.2.4.
 fn preInsert(
     node: *Node,
@@ -2056,6 +2165,14 @@ fn insert(
             n.setConnected(true);
             // Recursively set connected for descendants
             tree_helpers.setDescendantsConnected(n, true);
+
+            // Update document maps (id_map, tag_map) for newly connected elements
+            // This must happen AFTER setConnected() so isConnected() returns true
+            if (parent.owner_document) |owner_doc| {
+                if (owner_doc.node_type == .document) {
+                    addNodeToDocumentMaps(n, owner_doc) catch {}; // Best effort
+                }
+            }
         }
     }
 }
@@ -2146,6 +2263,14 @@ fn remove(node: *Node) void {
 
     // Update connected state
     if (node.isConnected()) {
+        // Remove from document maps BEFORE disconnecting
+        // (while isConnected() still returns true for the check, but we're about to disconnect)
+        if (parent.owner_document) |owner_doc| {
+            if (owner_doc.node_type == .document) {
+                removeNodeFromDocumentMaps(node, owner_doc);
+            }
+        }
+
         node.setConnected(false);
         tree_helpers.setDescendantsConnected(node, false);
     }

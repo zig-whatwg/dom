@@ -430,15 +430,40 @@ pub const Element = struct {
     /// See: https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttribute
     pub fn setAttribute(self: *Element, name: []const u8, value: []const u8) !void {
         // Handle ID attribute changes (maintain document ID map)
+        // Only update id_map if element is connected to the document tree
+        // Per browser behavior: disconnected elements don't participate in getElementById
         if (std.mem.eql(u8, name, "id")) {
-            // Remove old ID from document map if it exists
-            if (self.getAttribute("id")) |old_id| {
-                if (self.node.owner_document) |owner| {
-                    if (owner.node_type == .document) {
-                        const Document = @import("document.zig").Document;
-                        const doc: *Document = @fieldParentPtr("node", owner);
-                        _ = doc.id_map.remove(old_id);
-                        doc.invalidateIdCache();
+            if (self.node.isConnected()) {
+                // Remove old ID from document map if it exists and this element is the one mapped
+                if (self.getAttribute("id")) |old_id| {
+                    if (self.node.owner_document) |owner| {
+                        if (owner.node_type == .document) {
+                            const Document = @import("document.zig").Document;
+                            const doc: *Document = @fieldParentPtr("node", owner);
+
+                            // Only remove if this element is the one in the map
+                            if (doc.id_map.get(old_id)) |mapped_elem| {
+                                if (mapped_elem == self) {
+                                    _ = doc.id_map.remove(old_id);
+                                    doc.invalidateIdCache();
+
+                                    // Search for another element with the same ID to replace it
+                                    const ElementIterator = @import("element_iterator.zig").ElementIterator;
+                                    var iter = ElementIterator.init(&doc.node);
+                                    while (iter.next()) |other_elem| {
+                                        if (other_elem != self) {
+                                            if (other_elem.getId()) |other_id| {
+                                                if (std.mem.eql(u8, other_id, old_id)) {
+                                                    doc.id_map.put(old_id, other_elem) catch {};
+                                                    doc.invalidateIdCache();
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -475,14 +500,19 @@ pub const Element = struct {
             }
         }
 
-        // Add new ID to document map
+        // Add new ID to document map (only if connected, and only if ID not already in use - first wins)
         if (std.mem.eql(u8, name, "id")) {
-            if (self.node.owner_document) |owner| {
-                if (owner.node_type == .document) {
-                    const Document = @import("document.zig").Document;
-                    const doc: *Document = @fieldParentPtr("node", owner);
-                    try doc.id_map.put(value, self);
-                    doc.invalidateIdCache();
+            if (self.node.isConnected()) {
+                if (self.node.owner_document) |owner| {
+                    if (owner.node_type == .document) {
+                        const Document = @import("document.zig").Document;
+                        const doc: *Document = @fieldParentPtr("node", owner);
+                        const result = try doc.id_map.getOrPut(value);
+                        if (!result.found_existing) {
+                            result.value_ptr.* = self;
+                            doc.invalidateIdCache();
+                        }
+                    }
                 }
             }
         }
@@ -527,15 +557,38 @@ pub const Element = struct {
     /// ## Parameters
     /// - `name`: Attribute name to remove
     pub fn removeAttribute(self: *Element, name: []const u8) void {
-        // Remove ID from document map before removing attribute
+        // Remove ID from document map before removing attribute (only if connected and this element is mapped)
         if (std.mem.eql(u8, name, "id")) {
-            if (self.getAttribute("id")) |old_id| {
-                if (self.node.owner_document) |owner| {
-                    if (owner.node_type == .document) {
-                        const Document = @import("document.zig").Document;
-                        const doc: *Document = @fieldParentPtr("node", owner);
-                        _ = doc.id_map.remove(old_id);
-                        doc.invalidateIdCache();
+            if (self.node.isConnected()) {
+                if (self.getAttribute("id")) |old_id| {
+                    if (self.node.owner_document) |owner| {
+                        if (owner.node_type == .document) {
+                            const Document = @import("document.zig").Document;
+                            const doc: *Document = @fieldParentPtr("node", owner);
+
+                            // Only remove if this element is the one in the map
+                            if (doc.id_map.get(old_id)) |mapped_elem| {
+                                if (mapped_elem == self) {
+                                    _ = doc.id_map.remove(old_id);
+                                    doc.invalidateIdCache();
+
+                                    // Search for another element with the same ID to replace it
+                                    const ElementIterator = @import("element_iterator.zig").ElementIterator;
+                                    var iter = ElementIterator.init(&doc.node);
+                                    while (iter.next()) |other_elem| {
+                                        if (other_elem != self) {
+                                            if (other_elem.getId()) |other_id| {
+                                                if (std.mem.eql(u8, other_id, old_id)) {
+                                                    doc.id_map.put(old_id, other_elem) catch {};
+                                                    doc.invalidateIdCache();
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2701,10 +2754,13 @@ pub const Element = struct {
                     try elem.addToClassMap(new_doc_ptr, classes);
                 }
 
-                // Add to new id map
+                // Add to new id map (only if ID not already in use - first wins)
                 if (elem.getAttribute("id")) |id| {
-                    try new_doc_ptr.id_map.put(id, elem);
-                    new_doc_ptr.invalidateIdCache();
+                    const result = try new_doc_ptr.id_map.getOrPut(id);
+                    if (!result.found_existing) {
+                        result.value_ptr.* = elem;
+                        new_doc_ptr.invalidateIdCache();
+                    }
                 }
             }
         }

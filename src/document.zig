@@ -697,16 +697,9 @@ pub const Document = struct {
         // Increment document's node ref count
         self.acquireNodeRef();
 
-        // Add to tag map for O(k) getElementsByTagName lookups
-        const result = try self.tag_map.getOrPut(interned_tag);
-        if (!result.found_existing) {
-            // First element with this tag, create new list
-            result.value_ptr.* = std.ArrayList(*Element){};
-            // Pre-allocate capacity to avoid repeated reallocations
-            // 128 is a reasonable default for common tags (div, span, p, etc.)
-            try result.value_ptr.ensureTotalCapacity(self.node.allocator, 128);
-        }
-        try result.value_ptr.append(self.node.allocator, elem);
+        // NOTE: We don't add to tag_map here anymore!
+        // Elements are added to tag_map when inserted into the document tree (appendChild/insertBefore)
+        // This matches browser behavior and ensures only connected elements are in the map.
 
         return elem;
     }
@@ -1056,6 +1049,8 @@ pub const Document = struct {
         }
 
         // Full lookup with interned string
+        // No need to check isConnected() - id_map only contains connected elements!
+        // Map is updated during tree mutations (appendChild/removeChild), not here.
         const result = self.id_map.get(interned);
 
         // Update cache with interned string
