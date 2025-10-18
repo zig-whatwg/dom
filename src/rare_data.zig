@@ -268,6 +268,12 @@ pub const NodeRareData = struct {
     /// ShadowRoot freed when Element is released
     shadow_root: ?*anyopaque,
 
+    /// Assigned slot (WEAK pointer for Slottable mixin)
+    /// Points to the slot element this node is assigned to
+    /// Null if not assigned to any slot
+    /// WEAK reference - slot element owns itself, this node doesn't own the slot
+    assigned_slot: ?*anyopaque,
+
     /// Creates a new RareData structure.
     ///
     /// All fields initialized to null (allocated on first use).
@@ -280,6 +286,7 @@ pub const NodeRareData = struct {
             .custom_element_data = null,
             .animation_data = null,
             .shadow_root = null,
+            .assigned_slot = null,
         };
     }
 

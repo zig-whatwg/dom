@@ -678,6 +678,69 @@ pub const Text = struct {
     }
 
     // ========================================================================
+    // Slottable Mixin
+    // ========================================================================
+
+    /// Returns the slot element this text node is assigned to.
+    ///
+    /// ## WHATWG Specification
+    /// - **Slottable mixin**: https://dom.spec.whatwg.org/#mixin-slottable
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// interface mixin Slottable {
+    ///   readonly attribute HTMLSlotElement? assignedSlot;
+    /// };
+    /// Text includes Slottable;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Text nodes can be assigned to slots just like elements
+    ///
+    /// ## Returns
+    /// The slot element (tag name "slot") this text node is assigned to, or null
+    ///
+    /// ## Note
+    /// In a generic DOM library, we return Element (not HTMLSlotElement).
+    /// HTML libraries can extend this to return HTMLSlotElement specifically.
+    pub fn assignedSlot(self: *const Text) ?*@import("element.zig").Element {
+        const Element = @import("element.zig").Element;
+
+        // Check if rare data exists
+        const rare_data = self.node.rare_data orelse return null;
+
+        // Check if assigned slot exists
+        const slot_ptr = rare_data.assigned_slot orelse return null;
+
+        // Cast to Element (slot is just an Element with tag name "slot")
+        const slot: *Element = @ptrCast(@alignCast(slot_ptr));
+        return slot;
+    }
+
+    /// Sets the assigned slot for this text node (internal use).
+    ///
+    /// ## Parameters
+    /// - `slot`: The slot element to assign this text node to (or null to clear)
+    ///
+    /// ## Note
+    /// This is called internally during slot assignment. Users should not call this directly.
+    pub fn setAssignedSlot(self: *Text, slot: ?*@import("element.zig").Element) !void {
+        if (slot == null) {
+            // Clear assigned slot
+            if (self.node.rare_data) |rare_data| {
+                rare_data.assigned_slot = null;
+            }
+            return;
+        }
+
+        // Ensure rare data exists
+        const rare_data = try self.node.ensureRareData();
+
+        // Set assigned slot (WEAK reference)
+        rare_data.assigned_slot = @ptrCast(slot.?);
+    }
+
+    // ========================================================================
     // ChildNode Mixin (WHATWG DOM §4.2.8)
     // ========================================================================
 

@@ -260,4 +260,7 @@ test {
     _ = @import("element_iterator.zig");
     // Phase 2 verification tests
     _ = @import("getElementsByTagName_test.zig");
+
+    // Shadow DOM tests
+    _ = @import("slot_test.zig");
 }

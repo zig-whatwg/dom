@@ -1023,6 +1023,87 @@ pub const Element = struct {
     }
 
     // ========================================================================
+    // Slottable Mixin
+    // ========================================================================
+
+    /// Returns the slot element this element is assigned to.
+    ///
+    /// ## WHATWG Specification
+    /// - **Slottable mixin**: https://dom.spec.whatwg.org/#mixin-slottable
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// interface mixin Slottable {
+    ///   readonly attribute HTMLSlotElement? assignedSlot;
+    /// };
+    /// Element includes Slottable;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Element.assignedSlot: https://developer.mozilla.org/en-US/docs/Web/API/Element/assignedSlot
+    ///
+    /// ## Returns
+    /// The slot element (tag name "slot") this element is assigned to, or null
+    ///
+    /// ## Note
+    /// In a generic DOM library, we return Element (not HTMLSlotElement).
+    /// HTML libraries can extend this to return HTMLSlotElement specifically.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const host = try doc.createElement("host");
+    /// const shadow = try host.attachShadow(.{ .mode = .open });
+    ///
+    /// // Create slot in shadow tree
+    /// const slot = try doc.createElement("slot");
+    /// try slot.setAttribute("name", "header");
+    /// _ = try shadow.node.appendChild(&slot.node);
+    ///
+    /// // Create content in light DOM
+    /// const content = try doc.createElement("content");
+    /// try content.setAttribute("slot", "header");
+    /// _ = try host.node.appendChild(&content.node);
+    ///
+    /// // Content is assigned to slot
+    /// const assigned = content.assignedSlot();
+    /// // assigned == slot
+    /// ```
+    pub fn assignedSlot(self: *const Element) ?*Element {
+        // Check if rare data exists
+        const rare_data = self.node.rare_data orelse return null;
+
+        // Check if assigned slot exists
+        const slot_ptr = rare_data.assigned_slot orelse return null;
+
+        // Cast to Element (slot is just an Element with tag name "slot")
+        const slot: *Element = @ptrCast(@alignCast(slot_ptr));
+        return slot;
+    }
+
+    /// Sets the assigned slot for this element (internal use).
+    ///
+    /// ## Parameters
+    /// - `slot`: The slot element to assign this element to (or null to clear)
+    ///
+    /// ## Note
+    /// This is called internally during slot assignment. Users should not call this directly.
+    pub fn setAssignedSlot(self: *Element, slot: ?*Element) !void {
+        if (slot == null) {
+            // Clear assigned slot
+            if (self.node.rare_data) |rare_data| {
+                rare_data.assigned_slot = null;
+            }
+            return;
+        }
+
+        // Ensure rare data exists
+        const rare_data = try self.node.ensureRareData();
+
+        // Set assigned slot (WEAK reference)
+        rare_data.assigned_slot = @ptrCast(slot.?);
+    }
+
+    // ========================================================================
     // ParentNode Mixin - Query Selector
     // ========================================================================
 
