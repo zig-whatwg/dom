@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Shadow DOM Phase 4: Event Dispatch with Shadow Boundaries** 🎉
+  - **Complete Event Dispatch Algorithm (WHATWG DOM §2.10)**
+    - Implemented full three-phase event dispatch in Node.dispatchEvent()
+    - Phase 1: CAPTURING - Root → Target (capture listeners only)
+    - Phase 2: AT_TARGET - Target node (both capture & bubble listeners)
+    - Phase 3: BUBBLING - Target → Root (bubble listeners, if bubbles=true)
+  - **Helper Functions**
+    - `buildEventPath()` - Walks tree from target to root with shadow boundary crossing
+    - `invokeListeners()` - Invokes listeners for current phase with retargeting
+    - `retargetNode()` - Computes retargeted target across shadow boundaries
+  - **Event Retargeting Across Shadow Boundaries**
+    - Per WHATWG §2.10: event.target retargeted when crossing shadow boundaries
+    - Listeners inside shadow tree see real target (inner element)
+    - Listeners outside shadow tree see retargeted target (shadow host)
+    - Retargeting computed dynamically for each listener based on position
+  - **Shadow Boundary Crossing**
+    - Composed events (composed=true): Cross shadow boundaries normally
+    - Non-composed events (composed=false): Stop at shadow root boundary
+    - buildEventPath() respects composed flag when walking tree
+  - **Event.composedPath() Shadow DOM Support**
+    - Returns event path computed during dispatch
+    - Respects composed flag: non-composed events stop at shadow boundary
+    - Must be called during dispatch (path cleared after dispatch completes)
+  - **ArrayList API Update (Zig 0.15.1 Compatibility)**
+    - Updated ArrayList usage to Zig 0.15.1 API (no .init() method)
+    - Changed: `std.ArrayList(T).init(allocator)` → `std.ArrayList(T){}`
+    - Changed: `list.deinit()` → `list.deinit(allocator)`
+    - Changed: `list.append(item)` → `list.append(allocator, item)`
+    - Fixed in: event.zig, event_target.zig, event_target_test.zig, node.zig
+  - **Test Coverage**: 475/475 tests passing (+4 shadow DOM event tests), 0 leaks ✅
+  - **Comprehensive Shadow DOM Tests**
+    - Composed event crosses shadow boundary
+    - Non-composed event stops at shadow boundary
+    - Event retargeting across shadow boundary
+    - composedPath() respects composed flag
+  - **Spec References**:
+    - WHATWG DOM §2.10: Event dispatch and retargeting
+    - WHATWG DOM §2.9: composedPath() algorithm
+
 - **Extensibility Architecture Complete: EventTarget Prototype Chain & Factory Injection** 🎉
   - **Phase 0: EventTarget as Real Struct**
     - Converted EventTarget from mixin to 8-byte struct with vtable
