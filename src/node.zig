@@ -3407,7 +3407,7 @@ test "Node.contains - returns false for sibling" {
     try std.testing.expect(!child2.node.contains(&child1.node));
 }
 
-test "Node.contains - returns true for null (per spec)" {
+test "Node.contains - returns false for null (per spec)" {
     const allocator = std.testing.allocator;
 
     const doc = try @import("document.zig").Document.init(allocator);
@@ -3416,7 +3416,7 @@ test "Node.contains - returns true for null (per spec)" {
     const elem = try doc.createElement("div");
     defer elem.node.release();
 
-    try std.testing.expect(elem.node.contains(null));
+    try std.testing.expect(!elem.node.contains(null));
 }
 
 // === baseURI() Tests ===
