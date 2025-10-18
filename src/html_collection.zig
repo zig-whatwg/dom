@@ -1,0 +1,818 @@
+//! HTMLCollection - Live Collection of Elements (WHATWG DOM Core)
+//!
+//! This module implements the WHATWG DOM HTMLCollection interface for generic documents.
+//! Despite the "HTML" prefix, HTMLCollection is part of DOM Core and works with any document
+//! type (XML, custom formats, etc.). It is NOT HTML-specific.
+//!
+//! ## WHATWG Specification
+//!
+//! Relevant specification sections:
+//! - **§5.2 Interface HTMLCollection**: https://dom.spec.whatwg.org/#interface-htmlcollection
+//! - **§4.2.6 Mixin ParentNode**: https://dom.spec.whatwg.org/#interface-parentnode (children)
+//! - **§4.9 Interface Element**: https://dom.spec.whatwg.org/#dom-element-getelementsbytagname
+//! - **§5 Collections**: https://dom.spec.whatwg.org/#collections
+//!
+//! ## WebIDL
+//!
+//! ```webidl
+//! [Exposed=Window, LegacyUnenumerableNamedProperties]
+//! interface HTMLCollection {
+//!   readonly attribute unsigned long length;
+//!   getter Element? item(unsigned long index);
+//!   getter Element? namedItem(DOMString name);
+//! };
+//! ```
+//!
+//! ## Core Features
+//!
+//! ### Live Collection
+//! HTMLCollection is a "live" collection - it automatically reflects DOM changes:
+//! ```zig
+//! const parent = try doc.createElement("container");
+//! defer parent.node.release();
+//!
+//! const children = parent.children();
+//! try std.testing.expectEqual(@as(usize, 0), children.length());
+//!
+//! // Add element child - collection updates automatically
+//! const child = try doc.createElement("item");
+//! _ = try parent.node.appendChild(&child.node);
+//! try std.testing.expectEqual(@as(usize, 1), children.length()); // Now 1!
+//! ```
+//!
+//! ### Multiple Use Cases
+//! HTMLCollection supports three different backing strategies:
+//!
+//! 1. **children** property - filters Element nodes from parent's child list
+//! 2. **Document.getElementsBy*** - views Document's tag_map/class_map (O(1) access)
+//! 3. **Element.getElementsBy*** - scoped subtree search with filtering
+//!
+//! ### Elements Only
+//! Unlike NodeList (which includes all node types), HTMLCollection only includes Element nodes:
+//! ```zig
+//! const parent = try doc.createElement("parent");
+//! defer parent.node.release();
+//!
+//! // Add mixed children
+//! const elem1 = try doc.createElement("child1");
+//! _ = try parent.node.appendChild(&elem1.node);
+//!
+//! const text = try doc.createTextNode("text content");
+//! _ = try parent.node.appendChild(&text.node);
+//!
+//! const elem2 = try doc.createElement("child2");
+//! _ = try parent.node.appendChild(&elem2.node);
+//!
+//! // childNodes has 3 nodes, children has 2 elements
+//! const all_nodes = parent.node.childNodes();
+//! const only_elements = parent.children();
+//! try std.testing.expectEqual(@as(usize, 3), all_nodes.length());
+//! try std.testing.expectEqual(@as(usize, 2), only_elements.length());
+//! ```
+//!
+//! ## HTMLCollection Structure
+//!
+//! HTMLCollection is a lightweight view using a tagged union for different backing strategies:
+//! - **children**: Pointer to parent node (filters Element nodes)
+//! - **document_tagged**: Pointer to Document's ArrayList (tag_map or class_map)
+//! - **element_scoped**: Root element + filter (tag or class name)
+//!
+//! Size: 16-24 bytes (depends on union variant)
+//!
+//! **Key Properties:**
+//! - **Live**: Reflects DOM changes automatically
+//! - **Non-owning**: Doesn't own elements, just provides access
+//! - **Elements only**: Skips non-Element nodes (Text, Comment, etc.)
+//! - **Zero-copy**: Just a view into existing tree/map structure
+//! - **Generic**: Works with any document type (XML, custom), not HTML-specific
+//!
+//! ## Memory Management
+//!
+//! HTMLCollection is a stack-allocated value type (not heap-allocated):
+//! ```zig
+//! const parent = try doc.createElement("container");
+//! defer parent.node.release();
+//!
+//! const children = parent.children();
+//! // No defer needed - HTMLCollection is a plain struct value
+//!
+//! // HTMLCollection doesn't own elements - parent owns them
+//! ```
+//!
+//! **Important:**
+//! - HTMLCollection does NOT own the elements it references
+//! - Elements are owned by their parent via tree structure
+//! - Parent.release() frees all children automatically
+//! - HTMLCollection is just a view (like a slice, but live and filtered)
+//!
+//! ## Usage Examples
+//!
+//! ### ParentNode.children Property
+//! ```zig
+//! const doc = try Document.init(allocator);
+//! defer doc.release();
+//!
+//! const container = try doc.createElement("container");
+//! defer container.node.release();
+//!
+//! // Add mixed children
+//! const elem = try doc.createElement("item");
+//! _ = try container.node.appendChild(&elem.node);
+//!
+//! const text = try doc.createTextNode("text");
+//! _ = try container.node.appendChild(&text.node);
+//!
+//! // children filters to elements only
+//! const children = container.children();
+//! try std.testing.expectEqual(@as(usize, 1), children.length());
+//! ```
+//!
+//! ### Document.getElementsByTagName()
+//! ```zig
+//! const doc = try Document.init(allocator);
+//! defer doc.release();
+//!
+//! const widget1 = try doc.createElement("widget");
+//! const widget2 = try doc.createElement("widget");
+//! _ = try doc.node.appendChild(&widget1.node);
+//! _ = try doc.node.appendChild(&widget2.node);
+//!
+//! // Live collection backed by Document's tag_map
+//! const widgets = doc.getElementsByTagName("widget");
+//! try std.testing.expectEqual(@as(usize, 2), widgets.length());
+//!
+//! // Add another - collection updates automatically
+//! const widget3 = try doc.createElement("widget");
+//! _ = try doc.node.appendChild(&widget3.node);
+//! try std.testing.expectEqual(@as(usize, 3), widgets.length());
+//! ```
+//!
+//! ### Element.getElementsByClassName()
+//! ```zig
+//! const doc = try Document.init(allocator);
+//! defer doc.release();
+//!
+//! const container = try doc.createElement("container");
+//! defer container.node.release();
+//!
+//! const item1 = try doc.createElement("item");
+//! try item1.setAttribute("class", "active");
+//! _ = try container.node.appendChild(&item1.node);
+//!
+//! const item2 = try doc.createElement("item");
+//! try item2.setAttribute("class", "active");
+//! _ = try container.node.appendChild(&item2.node);
+//!
+//! // Live collection scoped to container's subtree
+//! const actives = container.getElementsByClassName("active");
+//! try std.testing.expectEqual(@as(usize, 2), actives.length());
+//! ```
+//!
+//! ## Performance Tips
+//!
+//! 1. **Cache Length** - length() traversal cost varies by backing type
+//! 2. **Document.getElementsBy*** is Fast** - O(1) via tag_map/class_map
+//! 3. **Element.getElementsBy*** is O(n)** - Traverses subtree each time
+//! 4. **children is O(n)** - Traverses child list filtering Elements
+//! 5. **Snapshot if Modifying** - Convert to array before modifying DOM during iteration
+//!
+//! ## Implementation Notes
+//!
+//! - HTMLCollection is a plain struct (16-24 bytes, tagged union)
+//! - No heap allocation (stack-allocated value type)
+//! - Document.getElementsBy* backed by tag_map/class_map (O(1) access)
+//! - Element.getElementsBy* traverses subtree each call (O(n))
+//! - children traverses child list each call filtering Elements (O(n))
+//! - Live collection - automatically reflects DOM mutations
+//! - Non-owning - elements owned by tree structure, not by HTMLCollection
+//! - Generic design - works with any document type, not HTML-specific
+
+const std = @import("std");
+const Node = @import("node.zig").Node;
+const Element = @import("element.zig").Element;
+const NodeType = @import("node.zig").NodeType;
+
+/// HTMLCollection - live collection of Element nodes.
+///
+/// Implements WHATWG DOM HTMLCollection interface for generic documents.
+/// Despite "HTML" prefix, this is DOM Core and works with any document type.
+///
+/// This is a "live" collection that automatically reflects changes to the DOM tree.
+/// Three backing strategies support different use cases:
+/// - children: Views parent's element children
+/// - document_tagged: Views Document's tag_map or class_map
+/// - element_scoped: Filters elements in subtree by tag/class
+///
+/// ## WHATWG Specification
+/// **WebIDL**: https://dom.spec.whatwg.org/#htmlcollection
+/// **Spec**: https://dom.spec.whatwg.org/#interface-htmlcollection
+///
+/// ## Memory Management
+/// HTMLCollection does NOT own the elements - it merely provides a view into the tree/maps.
+/// Elements are owned by their parent via the tree structure.
+/// Filter type for element_scoped collections
+const Filter = union(enum) {
+    tag_name: []const u8,
+    class_name: []const u8,
+};
+
+pub const HTMLCollection = struct {
+    impl: Implementation,
+
+    const Implementation = union(enum) {
+        /// For ParentNode.children - filters Element nodes from parent's child list
+        children: *Node,
+
+        /// For Document.getElementsBy* - backed by tag_map/class_map (fast O(1) access)
+        document_tagged: struct {
+            elements: ?*const std.ArrayList(*Element),
+        },
+
+        /// For Element.getElementsBy* - scoped subtree search with filter
+        element_scoped: struct {
+            root: *Element,
+            filter: Filter,
+        },
+    };
+
+    /// Creates a collection for ParentNode.children (filters Element nodes from parent).
+    ///
+    /// ## Parameters
+    /// - `parent`: Parent node whose element children to view
+    ///
+    /// ## Returns
+    /// HTMLCollection viewing parent's element children
+    pub fn initChildren(parent: *Node) HTMLCollection {
+        return .{
+            .impl = .{ .children = parent },
+        };
+    }
+
+    /// Creates a collection for Document.getElementsBy* (backed by tag_map or class_map).
+    ///
+    /// ## Parameters
+    /// - `elements`: ArrayList from Document's tag_map or class_map, or null for empty
+    ///
+    /// ## Returns
+    /// HTMLCollection viewing Document's internal map
+    pub fn initDocumentTagged(elements: ?*const std.ArrayList(*Element)) HTMLCollection {
+        return .{
+            .impl = .{ .document_tagged = .{ .elements = elements } },
+        };
+    }
+
+    /// Creates a collection for Element.getElementsByTagName (scoped to subtree).
+    ///
+    /// ## Parameters
+    /// - `root`: Root element whose descendants to search
+    /// - `tag_name`: Tag name to filter by
+    ///
+    /// ## Returns
+    /// HTMLCollection filtering root's descendants by tag name
+    pub fn initElementByTagName(root: *Element, tag_name: []const u8) HTMLCollection {
+        return .{
+            .impl = .{
+                .element_scoped = .{
+                    .root = root,
+                    .filter = .{ .tag_name = tag_name },
+                },
+            },
+        };
+    }
+
+    /// Creates a collection for Element.getElementsByClassName (scoped to subtree).
+    ///
+    /// ## Parameters
+    /// - `root`: Root element whose descendants to search
+    /// - `class_name`: Class name to filter by
+    ///
+    /// ## Returns
+    /// HTMLCollection filtering root's descendants by class name
+    pub fn initElementByClassName(root: *Element, class_name: []const u8) HTMLCollection {
+        return .{
+            .impl = .{
+                .element_scoped = .{
+                    .root = root,
+                    .filter = .{ .class_name = class_name },
+                },
+            },
+        };
+    }
+
+    /// Returns the number of elements in the collection.
+    ///
+    /// Implements WHATWG DOM HTMLCollection.length property.
+    ///
+    /// ## WHATWG Specification
+    /// **WebIDL**: `readonly attribute unsigned long length;`
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-htmlcollection-length
+    ///
+    /// ## Performance
+    /// - **children**: O(n) - traverses child list filtering Elements
+    /// - **document_tagged**: O(1) - ArrayList.items.len
+    /// - **element_scoped**: O(n) - traverses subtree with filter
+    ///
+    /// ## Returns
+    /// Number of elements in the collection
+    pub fn length(self: *const HTMLCollection) usize {
+        switch (self.impl) {
+            .children => |parent| {
+                // Count element children only
+                var count: usize = 0;
+                var current = parent.first_child;
+                while (current) |node| {
+                    if (node.node_type == .element) {
+                        count += 1;
+                    }
+                    current = node.next_sibling;
+                }
+                return count;
+            },
+            .document_tagged => |tagged| {
+                // Fast path: ArrayList backed by Document map
+                if (tagged.elements) |list| {
+                    return list.items.len;
+                }
+                return 0;
+            },
+            .element_scoped => |scoped| {
+                // Count matching descendants
+                return countMatchingDescendants(scoped.root, &scoped.filter);
+            },
+        }
+    }
+
+    /// Returns the element at the specified index.
+    ///
+    /// Implements WHATWG DOM HTMLCollection.item() method.
+    ///
+    /// ## WHATWG Specification
+    /// **WebIDL**: `getter Element? item(unsigned long index);`
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-htmlcollection-item
+    ///
+    /// ## Parameters
+    /// - `index`: Zero-based index of element to retrieve
+    ///
+    /// ## Returns
+    /// Element at index or null if index >= length
+    ///
+    /// ## Performance
+    /// - **children**: O(n) - traverses child list to index
+    /// - **document_tagged**: O(1) - ArrayList direct access
+    /// - **element_scoped**: O(n) - traverses subtree to index
+    ///
+    /// ## Example
+    /// ```zig
+    /// const child = collection.item(0); // First element
+    /// if (child) |elem| {
+    ///     std.debug.print("First element: {s}\n", .{elem.tag_name});
+    /// }
+    /// ```
+    pub fn item(self: *const HTMLCollection, index: usize) ?*Element {
+        switch (self.impl) {
+            .children => |parent| {
+                // Traverse child list filtering Elements
+                var count: usize = 0;
+                var current = parent.first_child;
+                while (current) |node| {
+                    if (node.node_type == .element) {
+                        if (count == index) {
+                            return @fieldParentPtr("node", node);
+                        }
+                        count += 1;
+                    }
+                    current = node.next_sibling;
+                }
+                return null;
+            },
+            .document_tagged => |tagged| {
+                // Fast path: ArrayList backed by Document map
+                if (tagged.elements) |list| {
+                    if (index >= list.items.len) {
+                        return null;
+                    }
+                    return list.items[index];
+                }
+                return null;
+            },
+            .element_scoped => |scoped| {
+                // Find nth matching descendant
+                return findMatchingDescendant(scoped.root, &scoped.filter, index);
+            },
+        }
+    }
+
+    /// Returns the element with the specified id or name attribute.
+    ///
+    /// Implements WHATWG DOM HTMLCollection.namedItem() method.
+    ///
+    /// ## WHATWG Specification
+    /// **WebIDL**: `getter Element? namedItem(DOMString name);`
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-htmlcollection-nameditem
+    ///
+    /// ## Parameters
+    /// - `name`: Value of id or name attribute to match
+    ///
+    /// ## Returns
+    /// First element with matching id or name attribute, or null
+    ///
+    /// ## Algorithm (WHATWG DOM §5.2.1)
+    /// 1. Search for element with id attribute matching name
+    /// 2. If not found, search for element with name attribute matching name
+    /// 3. Return first match or null
+    ///
+    /// ## Example
+    /// ```zig
+    /// const elem = collection.namedItem("submit-btn");
+    /// ```
+    pub fn namedItem(self: *const HTMLCollection, name: []const u8) ?*Element {
+        // Search all elements in collection for matching id or name attribute
+        const len = self.length();
+        var i: usize = 0;
+        while (i < len) : (i += 1) {
+            if (self.item(i)) |elem| {
+                // Check id attribute first
+                if (elem.getId()) |id| {
+                    if (std.mem.eql(u8, id, name)) {
+                        return elem;
+                    }
+                }
+                // Then check name attribute
+                if (elem.getAttribute("name")) |attr_name| {
+                    if (std.mem.eql(u8, attr_name, name)) {
+                        return elem;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    // ========================================================================
+    // Helper Functions
+    // ========================================================================
+
+    /// Counts descendants matching the filter (for element_scoped).
+    fn countMatchingDescendants(root: *Element, filter: *const Filter) usize {
+        var count: usize = 0;
+        var current = root.node.first_child;
+        while (current) |node| {
+            if (node.node_type == .element) {
+                const elem: *Element = @fieldParentPtr("node", node);
+                if (matchesFilter(elem, filter)) {
+                    count += 1;
+                }
+                // Recursively count in descendants
+                count += countMatchingDescendants(elem, filter);
+            }
+            current = node.next_sibling;
+        }
+        return count;
+    }
+
+    /// Finds the nth descendant matching the filter (for element_scoped).
+    fn findMatchingDescendant(root: *Element, filter: *const Filter, target_index: usize) ?*Element {
+        var current_index: usize = 0;
+        return findMatchingDescendantHelper(root, filter, target_index, &current_index);
+    }
+
+    fn findMatchingDescendantHelper(
+        root: *Element,
+        filter: *const Filter,
+        target_index: usize,
+        current_index: *usize,
+    ) ?*Element {
+        var current = root.node.first_child;
+        while (current) |node| {
+            if (node.node_type == .element) {
+                const elem: *Element = @fieldParentPtr("node", node);
+                if (matchesFilter(elem, filter)) {
+                    if (current_index.* == target_index) {
+                        return elem;
+                    }
+                    current_index.* += 1;
+                }
+                // Recursively search descendants
+                if (findMatchingDescendantHelper(elem, filter, target_index, current_index)) |found| {
+                    return found;
+                }
+            }
+            current = node.next_sibling;
+        }
+        return null;
+    }
+
+    /// Checks if element matches the filter.
+    fn matchesFilter(elem: *Element, filter: *const Filter) bool {
+        switch (filter.*) {
+            .tag_name => |tag| {
+                return std.mem.eql(u8, elem.tag_name, tag);
+            },
+            .class_name => |class| {
+                const class_attr = elem.getClassName();
+                if (class_attr.len == 0) {
+                    return false;
+                }
+                // Check if class_attr contains class (space-separated)
+                var iter = std.mem.splitScalar(u8, class_attr, ' ');
+                while (iter.next()) |token| {
+                    if (std.mem.eql(u8, token, class)) {
+                        return true;
+                    }
+                }
+                return false;
+            },
+        }
+    }
+};
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+const testing = std.testing;
+const Document = @import("document.zig").Document;
+const Comment = @import("comment.zig").Comment;
+
+test "HTMLCollection - children: empty collection" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    defer parent.node.release();
+
+    const collection = HTMLCollection.initChildren(&parent.node);
+    try testing.expectEqual(@as(usize, 0), collection.length());
+    try testing.expectEqual(@as(?*Element, null), collection.item(0));
+}
+
+test "HTMLCollection - children: single element" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    defer parent.node.release();
+
+    const child = try doc.createElement("child");
+    _ = try parent.node.appendChild(&child.node);
+
+    const collection = HTMLCollection.initChildren(&parent.node);
+    try testing.expectEqual(@as(usize, 1), collection.length());
+
+    const first = collection.item(0);
+    try testing.expect(first != null);
+    try testing.expectEqualStrings("child", first.?.tag_name);
+}
+
+test "HTMLCollection - children: multiple elements" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("child1");
+    _ = try parent.node.appendChild(&child1.node);
+
+    const child2 = try doc.createElement("child2");
+    _ = try parent.node.appendChild(&child2.node);
+
+    const child3 = try doc.createElement("child3");
+    _ = try parent.node.appendChild(&child3.node);
+
+    const collection = HTMLCollection.initChildren(&parent.node);
+    try testing.expectEqual(@as(usize, 3), collection.length());
+
+    try testing.expectEqualStrings("child1", collection.item(0).?.tag_name);
+    try testing.expectEqualStrings("child2", collection.item(1).?.tag_name);
+    try testing.expectEqualStrings("child3", collection.item(2).?.tag_name);
+    try testing.expectEqual(@as(?*Element, null), collection.item(3));
+}
+
+test "HTMLCollection - children: filters out non-element nodes" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    defer parent.node.release();
+
+    const elem1 = try doc.createElement("elem1");
+    _ = try parent.node.appendChild(&elem1.node);
+
+    const text = try doc.createTextNode("text content");
+    _ = try parent.node.appendChild(&text.node);
+
+    const elem2 = try doc.createElement("elem2");
+    _ = try parent.node.appendChild(&elem2.node);
+
+    const comment = try Comment.create(allocator, "comment content");
+    _ = try parent.node.appendChild(&comment.node);
+
+    const elem3 = try doc.createElement("elem3");
+    _ = try parent.node.appendChild(&elem3.node);
+
+    const all_nodes = parent.node.childNodes();
+    const only_elements = HTMLCollection.initChildren(&parent.node);
+
+    try testing.expectEqual(@as(usize, 5), all_nodes.length());
+    try testing.expectEqual(@as(usize, 3), only_elements.length());
+
+    try testing.expectEqualStrings("elem1", only_elements.item(0).?.tag_name);
+    try testing.expectEqualStrings("elem2", only_elements.item(1).?.tag_name);
+    try testing.expectEqualStrings("elem3", only_elements.item(2).?.tag_name);
+}
+
+test "HTMLCollection - children: live collection" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    defer parent.node.release();
+
+    const collection = HTMLCollection.initChildren(&parent.node);
+
+    // Initially empty
+    try testing.expectEqual(@as(usize, 0), collection.length());
+
+    // Add element - collection updates
+    const child1 = try doc.createElement("child1");
+    _ = try parent.node.appendChild(&child1.node);
+    try testing.expectEqual(@as(usize, 1), collection.length());
+
+    // Add text - collection does NOT update (text not an element)
+    const text = try doc.createTextNode("text");
+    _ = try parent.node.appendChild(&text.node);
+    try testing.expectEqual(@as(usize, 1), collection.length());
+
+    // Add another element - collection updates
+    const child2 = try doc.createElement("child2");
+    _ = try parent.node.appendChild(&child2.node);
+    try testing.expectEqual(@as(usize, 2), collection.length());
+
+    // Remove element - collection updates
+    _ = try parent.node.removeChild(&child1.node);
+    child1.node.release();
+    try testing.expectEqual(@as(usize, 1), collection.length());
+    try testing.expectEqualStrings("child2", collection.item(0).?.tag_name);
+}
+
+test "HTMLCollection - document_tagged: empty collection" {
+    const collection = HTMLCollection.initDocumentTagged(null);
+    try testing.expectEqual(@as(usize, 0), collection.length());
+    try testing.expectEqual(@as(?*Element, null), collection.item(0));
+}
+
+test "HTMLCollection - document_tagged: backed by ArrayList" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("root");
+    _ = try doc.node.appendChild(&root.node);
+
+    const elem1 = try doc.createElement("widget");
+    _ = try root.node.appendChild(&elem1.node);
+
+    const elem2 = try doc.createElement("widget");
+    _ = try root.node.appendChild(&elem2.node);
+
+    // Get collection backed by Document's tag_map
+    const collection = doc.getElementsByTagName("widget");
+    try testing.expectEqual(@as(usize, 2), collection.length());
+    try testing.expectEqualStrings("widget", collection.item(0).?.tag_name);
+    try testing.expectEqualStrings("widget", collection.item(1).?.tag_name);
+}
+
+test "HTMLCollection - element_scoped: getElementsByTagName" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("container");
+    defer container.node.release();
+
+    const widget1 = try doc.createElement("widget");
+    _ = try container.node.appendChild(&widget1.node);
+
+    const other = try doc.createElement("other");
+    _ = try container.node.appendChild(&other.node);
+
+    const widget2 = try doc.createElement("widget");
+    _ = try container.node.appendChild(&widget2.node);
+
+    const collection = HTMLCollection.initElementByTagName(container, "widget");
+    try testing.expectEqual(@as(usize, 2), collection.length());
+    try testing.expectEqualStrings("widget", collection.item(0).?.tag_name);
+    try testing.expectEqualStrings("widget", collection.item(1).?.tag_name);
+    try testing.expectEqual(@as(?*Element, null), collection.item(2));
+}
+
+test "HTMLCollection - element_scoped: getElementsByClassName" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("container");
+    defer container.node.release();
+
+    const item1 = try doc.createElement("item");
+    try item1.setAttribute("class", "active");
+    _ = try container.node.appendChild(&item1.node);
+
+    const item2 = try doc.createElement("item");
+    try item2.setAttribute("class", "inactive");
+    _ = try container.node.appendChild(&item2.node);
+
+    const item3 = try doc.createElement("item");
+    try item3.setAttribute("class", "active primary");
+    _ = try container.node.appendChild(&item3.node);
+
+    const collection = HTMLCollection.initElementByClassName(container, "active");
+    try testing.expectEqual(@as(usize, 2), collection.length());
+    try testing.expect(std.mem.eql(u8, collection.item(0).?.tag_name, "item"));
+    try testing.expect(std.mem.eql(u8, collection.item(1).?.tag_name, "item"));
+}
+
+test "HTMLCollection - element_scoped: nested descendants" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("root");
+    defer root.node.release();
+
+    const level1 = try doc.createElement("level1");
+    _ = try root.node.appendChild(&level1.node);
+
+    const widget1 = try doc.createElement("widget");
+    _ = try level1.node.appendChild(&widget1.node);
+
+    const level2 = try doc.createElement("level2");
+    _ = try level1.node.appendChild(&level2.node);
+
+    const widget2 = try doc.createElement("widget");
+    _ = try level2.node.appendChild(&widget2.node);
+
+    const collection = HTMLCollection.initElementByTagName(root, "widget");
+    try testing.expectEqual(@as(usize, 2), collection.length());
+}
+
+test "HTMLCollection - namedItem: finds by id" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("child1");
+    try child1.setAttribute("id", "first");
+    _ = try parent.node.appendChild(&child1.node);
+
+    const child2 = try doc.createElement("child2");
+    try child2.setAttribute("id", "second");
+    _ = try parent.node.appendChild(&child2.node);
+
+    const collection = HTMLCollection.initChildren(&parent.node);
+    const found = collection.namedItem("second");
+    try testing.expect(found != null);
+    try testing.expectEqualStrings("child2", found.?.tag_name);
+}
+
+test "HTMLCollection - namedItem: finds by name attribute" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    defer parent.node.release();
+
+    const child1 = try doc.createElement("child1");
+    try child1.setAttribute("name", "username");
+    _ = try parent.node.appendChild(&child1.node);
+
+    const collection = HTMLCollection.initChildren(&parent.node);
+    const found = collection.namedItem("username");
+    try testing.expect(found != null);
+    try testing.expectEqualStrings("child1", found.?.tag_name);
+}
+
+test "HTMLCollection - namedItem: not found" {
+    const allocator = testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    defer parent.node.release();
+
+    const child = try doc.createElement("child");
+    _ = try parent.node.appendChild(&child.node);
+
+    const collection = HTMLCollection.initChildren(&parent.node);
+    try testing.expectEqual(@as(?*Element, null), collection.namedItem("nonexistent"));
+}

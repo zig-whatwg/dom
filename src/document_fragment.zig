@@ -534,8 +534,8 @@ pub const DocumentFragment = struct {
     ///
     /// ## Returns
     /// Live ElementCollection of element children
-    pub fn children(self: *DocumentFragment) @import("element_collection.zig").ElementCollection {
-        return @import("element_collection.zig").ElementCollection.init(&self.node);
+    pub fn children(self: *DocumentFragment) @import("html_collection.zig").HTMLCollection {
+        return @import("html_collection.zig").HTMLCollection.initChildren(&self.node);
     }
 
     /// Returns the first child that is an element.

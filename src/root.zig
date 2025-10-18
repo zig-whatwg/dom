@@ -201,8 +201,7 @@ pub const MutationCallback = @import("rare_data.zig").MutationCallback;
 
 // Export collections
 pub const NodeList = @import("node_list.zig").NodeList;
-pub const ElementCollection = @import("element_collection.zig").ElementCollection;
-pub const TaggedElementCollection = @import("tagged_element_collection.zig").TaggedElementCollection;
+pub const HTMLCollection = @import("html_collection.zig").HTMLCollection;
 
 // Export AbortSignal and AbortController
 pub const AbortSignal = @import("abort_signal.zig").AbortSignal;
@@ -244,8 +243,7 @@ test {
     _ = @import("document_fragment.zig");
     _ = @import("rare_data.zig");
     _ = @import("node_list.zig");
-    _ = @import("element_collection.zig");
-    _ = @import("tagged_element_collection.zig");
+    _ = @import("html_collection.zig");
     _ = @import("validation.zig");
     _ = @import("tree_helpers.zig");
     _ = @import("abort_signal.zig");

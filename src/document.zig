@@ -252,7 +252,7 @@ const Comment = @import("comment.zig").Comment;
 const DocumentFragment = @import("document_fragment.zig").DocumentFragment;
 const SelectorList = @import("selector/parser.zig").SelectorList;
 const FastPathType = @import("fast_path.zig").FastPathType;
-const TaggedElementCollection = @import("tagged_element_collection.zig").TaggedElementCollection;
+const HTMLCollection = @import("html_collection.zig").HTMLCollection;
 
 /// String interning pool for per-document string deduplication.
 ///
@@ -1124,12 +1124,12 @@ pub const Document = struct {
     /// ## Note
     /// This returns a live collection backed by Document's internal tag_map.
     /// Changes to the DOM automatically reflect in the collection.
-    pub fn getElementsByTagName(self: *const Document, tag_name: []const u8) TaggedElementCollection {
+    pub fn getElementsByTagName(self: *const Document, tag_name: []const u8) HTMLCollection {
         if (self.tag_map.getPtr(tag_name)) |list_ptr| {
-            return TaggedElementCollection.init(list_ptr);
+            return HTMLCollection.initDocumentTagged(list_ptr);
         }
         // No elements with this tag - return empty collection
-        return TaggedElementCollection.initEmpty();
+        return HTMLCollection.initDocumentTagged(null);
     }
 
     /// Returns all elements with the specified class name (O(k) lookup).
@@ -1194,12 +1194,12 @@ pub const Document = struct {
     /// This returns a live collection backed by Document's internal class_map.
     /// Changes to the DOM automatically reflect in the collection.
     /// Only supports single class name lookup (not space-separated list yet).
-    pub fn getElementsByClassName(self: *const Document, class_name: []const u8) TaggedElementCollection {
+    pub fn getElementsByClassName(self: *const Document, class_name: []const u8) HTMLCollection {
         if (self.class_map.getPtr(class_name)) |list_ptr| {
-            return TaggedElementCollection.init(list_ptr);
+            return HTMLCollection.initDocumentTagged(list_ptr);
         }
         // No elements with this class - return empty collection
-        return TaggedElementCollection.initEmpty();
+        return HTMLCollection.initDocumentTagged(null);
     }
 
     // ========================================================================
@@ -1310,8 +1310,8 @@ pub const Document = struct {
     ///
     /// ## Returns
     /// Live ElementCollection of element children (typically just documentElement)
-    pub fn children(self: *Document) @import("element_collection.zig").ElementCollection {
-        return @import("element_collection.zig").ElementCollection.init(&self.node);
+    pub fn children(self: *Document) HTMLCollection {
+        return HTMLCollection.initChildren(&self.node);
     }
 
     /// Returns the first child that is an element.

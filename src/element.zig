@@ -1187,9 +1187,8 @@ pub const Element = struct {
     /// const widget2 = try doc.createElement("widget");
     /// _ = try container.node.appendChild(&widget2.node);
     ///
-    /// const widgets = try container.getElementsByTagName(allocator, "widget");
-    /// defer allocator.free(widgets);
-    /// // widgets.len == 2
+    /// const widgets = container.getElementsByTagName("widget");
+    /// // widgets.length() == 2
     /// ```
     ///
     /// ## JavaScript Binding
@@ -1203,10 +1202,10 @@ pub const Element = struct {
     /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:Element
     ///
     /// ## Note
-    /// This returns a snapshot (not live). The slice becomes stale after DOM mutations.
-    /// Caller must free the returned slice.
-    pub fn getElementsByTagName(self: *Element, allocator: Allocator, tag_name: []const u8) ![]const *Element {
-        return try self.queryAllByTagName(allocator, tag_name);
+    /// This returns a live HTMLCollection scoped to this element's descendants.
+    /// Changes to the DOM automatically reflect in the collection.
+    pub fn getElementsByTagName(self: *Element, tag_name: []const u8) @import("html_collection.zig").HTMLCollection {
+        return @import("html_collection.zig").HTMLCollection.initElementByTagName(self, tag_name);
     }
 
     /// Returns all descendant elements with the specified class name.
@@ -1249,9 +1248,8 @@ pub const Element = struct {
     /// try widget2.setAttribute("class", "primary");
     /// _ = try container.node.appendChild(&widget2.node);
     ///
-    /// const primaries = try container.getElementsByClassName(allocator, "primary");
-    /// defer allocator.free(primaries);
-    /// // primaries.len == 2
+    /// const primaries = container.getElementsByClassName("primary");
+    /// // primaries.length() == 2
     /// ```
     ///
     /// ## JavaScript Binding
@@ -1265,11 +1263,11 @@ pub const Element = struct {
     /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:Element
     ///
     /// ## Note
-    /// This returns a snapshot (not live). The slice becomes stale after DOM mutations.
-    /// Caller must free the returned slice.
+    /// This returns a live HTMLCollection scoped to this element's descendants.
+    /// Changes to the DOM automatically reflect in the collection.
     /// Only supports single class name lookup (not space-separated list yet).
-    pub fn getElementsByClassName(self: *Element, allocator: Allocator, class_name: []const u8) ![]const *Element {
-        return try self.queryAllByClass(allocator, class_name);
+    pub fn getElementsByClassName(self: *Element, class_name: []const u8) @import("html_collection.zig").HTMLCollection {
+        return @import("html_collection.zig").HTMLCollection.initElementByClassName(self, class_name);
     }
 
     // ========================================================================
@@ -1834,8 +1832,8 @@ pub const Element = struct {
     /// const children = parent.children();
     /// try std.testing.expectEqual(@as(usize, 2), children.length()); // Excludes text
     /// ```
-    pub fn children(self: *Element) @import("element_collection.zig").ElementCollection {
-        return @import("element_collection.zig").ElementCollection.init(&self.node);
+    pub fn children(self: *Element) @import("html_collection.zig").HTMLCollection {
+        return @import("html_collection.zig").HTMLCollection.initChildren(&self.node);
     }
 
     /// Returns the first child that is an element.
@@ -3833,22 +3831,19 @@ test "Element - getElementsByTagName basic" {
     _ = try root.node.appendChild(&container.node);
 
     // Get all widgets
-    const widgets = try root.getElementsByTagName(allocator, "widget");
-    defer allocator.free(widgets);
-    try std.testing.expectEqual(@as(usize, 2), widgets.len);
-    try std.testing.expect(widgets[0] == widget1);
-    try std.testing.expect(widgets[1] == widget2);
+    const widgets = root.getElementsByTagName("widget");
+    try std.testing.expectEqual(@as(usize, 2), widgets.length());
+    try std.testing.expect(widgets.item(0).? == widget1);
+    try std.testing.expect(widgets.item(1).? == widget2);
 
     // Get all containers
-    const containers = try root.getElementsByTagName(allocator, "container");
-    defer allocator.free(containers);
-    try std.testing.expectEqual(@as(usize, 1), containers.len);
-    try std.testing.expect(containers[0] == container);
+    const containers = root.getElementsByTagName("container");
+    try std.testing.expectEqual(@as(usize, 1), containers.length());
+    try std.testing.expect(containers.item(0).? == container);
 
     // Not found
-    const panels = try root.getElementsByTagName(allocator, "panel");
-    defer allocator.free(panels);
-    try std.testing.expectEqual(@as(usize, 0), panels.len);
+    const panels = root.getElementsByTagName("panel");
+    try std.testing.expectEqual(@as(usize, 0), panels.length());
 }
 
 test "Element - getElementsByTagName nested" {
@@ -3870,15 +3865,13 @@ test "Element - getElementsByTagName nested" {
     _ = try container2.node.appendChild(&widget2.node);
 
     // Get all widgets from root
-    const all_widgets = try root.getElementsByTagName(allocator, "widget");
-    defer allocator.free(all_widgets);
-    try std.testing.expectEqual(@as(usize, 2), all_widgets.len);
+    const all_widgets = root.getElementsByTagName("widget");
+    try std.testing.expectEqual(@as(usize, 2), all_widgets.length());
 
     // Get widgets from first container only
-    const container1_widgets = try container1.getElementsByTagName(allocator, "widget");
-    defer allocator.free(container1_widgets);
-    try std.testing.expectEqual(@as(usize, 1), container1_widgets.len);
-    try std.testing.expect(container1_widgets[0] == widget1);
+    const container1_widgets = container1.getElementsByTagName("widget");
+    try std.testing.expectEqual(@as(usize, 1), container1_widgets.length());
+    try std.testing.expect(container1_widgets.item(0).? == widget1);
 }
 
 test "Element - getElementsByClassName basic" {
@@ -3900,28 +3893,24 @@ test "Element - getElementsByClassName basic" {
     _ = try root.node.appendChild(&container.node);
 
     // Get all "primary" elements
-    const primaries = try root.getElementsByClassName(allocator, "primary");
-    defer allocator.free(primaries);
-    try std.testing.expectEqual(@as(usize, 2), primaries.len);
-    try std.testing.expect(primaries[0] == widget1);
-    try std.testing.expect(primaries[1] == widget2);
+    const primaries = root.getElementsByClassName("primary");
+    try std.testing.expectEqual(@as(usize, 2), primaries.length());
+    try std.testing.expect(primaries.item(0).? == widget1);
+    try std.testing.expect(primaries.item(1).? == widget2);
 
     // Get all "active" elements
-    const actives = try root.getElementsByClassName(allocator, "active");
-    defer allocator.free(actives);
-    try std.testing.expectEqual(@as(usize, 1), actives.len);
-    try std.testing.expect(actives[0] == widget1);
+    const actives = root.getElementsByClassName("active");
+    try std.testing.expectEqual(@as(usize, 1), actives.length());
+    try std.testing.expect(actives.item(0).? == widget1);
 
     // Get all "secondary" elements
-    const secondaries = try root.getElementsByClassName(allocator, "secondary");
-    defer allocator.free(secondaries);
-    try std.testing.expectEqual(@as(usize, 1), secondaries.len);
-    try std.testing.expect(secondaries[0] == container);
+    const secondaries = root.getElementsByClassName("secondary");
+    try std.testing.expectEqual(@as(usize, 1), secondaries.length());
+    try std.testing.expect(secondaries.item(0).? == container);
 
     // Not found
-    const notfound = try root.getElementsByClassName(allocator, "notfound");
-    defer allocator.free(notfound);
-    try std.testing.expectEqual(@as(usize, 0), notfound.len);
+    const notfound = root.getElementsByClassName("notfound");
+    try std.testing.expectEqual(@as(usize, 0), notfound.length());
 }
 
 test "Element - getElementsByClassName nested" {
@@ -3947,13 +3936,11 @@ test "Element - getElementsByClassName nested" {
     _ = try container2.node.appendChild(&widget2.node);
 
     // Get all "item" elements from root
-    const all_items = try root.getElementsByClassName(allocator, "item");
-    defer allocator.free(all_items);
-    try std.testing.expectEqual(@as(usize, 2), all_items.len);
+    const all_items = root.getElementsByClassName("item");
+    try std.testing.expectEqual(@as(usize, 2), all_items.length());
 
     // Get "item" elements from first container only
-    const container1_items = try container1.getElementsByClassName(allocator, "item");
-    defer allocator.free(container1_items);
-    try std.testing.expectEqual(@as(usize, 1), container1_items.len);
-    try std.testing.expect(container1_items[0] == widget1);
+    const container1_items = container1.getElementsByClassName("item");
+    try std.testing.expectEqual(@as(usize, 1), container1_items.length());
+    try std.testing.expect(container1_items.item(0).? == widget1);
 }
