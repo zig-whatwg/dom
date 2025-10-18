@@ -4689,6 +4689,112 @@ test "Node.dispatchEvent - event retargeting across shadow boundary" {
     try std.testing.expect(host_check.actual_target == &host.prototype);
 }
 
+test "Event.composedPath - respects composed flag with shadow DOM" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Create: host -> shadow root -> inner
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open });
+    const inner = try doc.createElement("inner");
+    _ = try shadow.prototype.appendChild(&inner.prototype);
+
+    // Test 1: Composed event crosses shadow boundary
+    {
+        const TestContext = struct {
+            allocator: std.mem.Allocator,
+            path_length: usize = 0,
+            inner: *Node,
+            shadow: *Node,
+            host: *Node,
+        };
+
+        var ctx = TestContext{
+            .allocator = allocator,
+            .inner = &inner.prototype,
+            .shadow = &shadow.prototype,
+            .host = &host.prototype,
+        };
+
+        const callback = struct {
+            fn cb(evt: *Event, context: *anyopaque) void {
+                const c: *TestContext = @ptrCast(@alignCast(context));
+                var path = evt.composedPath(c.allocator) catch unreachable;
+                defer path.deinit(c.allocator);
+
+                // Should have: inner, shadow root, host
+                c.path_length = path.items.len;
+                std.testing.expectEqual(@as(usize, 3), path.items.len) catch unreachable;
+
+                // Verify order
+                const node0: *Node = @ptrCast(@alignCast(path.items[0]));
+                const node1: *Node = @ptrCast(@alignCast(path.items[1]));
+                const node2: *Node = @ptrCast(@alignCast(path.items[2]));
+
+                std.testing.expect(node0 == c.inner) catch unreachable;
+                std.testing.expect(node1 == c.shadow) catch unreachable;
+                std.testing.expect(node2 == c.host) catch unreachable;
+            }
+        }.cb;
+
+        try host.prototype.addEventListener("click", callback, @ptrCast(&ctx), false, false, false, null);
+
+        var event = Event.init("click", .{ .composed = true, .bubbles = true, .cancelable = false });
+        _ = try inner.prototype.dispatchEvent(&event);
+
+        // Verify callback was called
+        try std.testing.expectEqual(@as(usize, 3), ctx.path_length);
+    }
+
+    // Test 2: Non-composed event stops at shadow boundary
+    {
+        const TestContext = struct {
+            allocator: std.mem.Allocator,
+            path_length: usize = 0,
+            inner: *Node,
+            shadow: *Node,
+        };
+
+        var ctx = TestContext{
+            .allocator = allocator,
+            .inner = &inner.prototype,
+            .shadow = &shadow.prototype,
+        };
+
+        const callback = struct {
+            fn cb(evt: *Event, context: *anyopaque) void {
+                const c: *TestContext = @ptrCast(@alignCast(context));
+                var path = evt.composedPath(c.allocator) catch unreachable;
+                defer path.deinit(c.allocator);
+
+                // Should have: inner, shadow root (stops at boundary)
+                c.path_length = path.items.len;
+                std.testing.expectEqual(@as(usize, 2), path.items.len) catch unreachable;
+
+                // Verify order
+                const node0: *Node = @ptrCast(@alignCast(path.items[0]));
+                const node1: *Node = @ptrCast(@alignCast(path.items[1]));
+
+                std.testing.expect(node0 == c.inner) catch unreachable;
+                std.testing.expect(node1 == c.shadow) catch unreachable;
+            }
+        }.cb;
+
+        try shadow.prototype.addEventListener("click", callback, @ptrCast(&ctx), false, false, false, null);
+
+        var event = Event.init("click", .{ .composed = false, .bubbles = true, .cancelable = false });
+        _ = try inner.prototype.dispatchEvent(&event);
+
+        // Verify callback was called
+        try std.testing.expectEqual(@as(usize, 2), ctx.path_length);
+    }
+}
+
 test "Node.isEqualNode - returns false for different attribute values" {
     const allocator = std.testing.allocator;
 
