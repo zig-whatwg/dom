@@ -9,17 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Memory Stress Test Suite** - Long-running DOM operation simulation for memory leak detection 🔬
-  - Persistent DOM stress test with 8.5M operations over 120 seconds
+  - Persistent DOM stress test with 2.5M operations in 30 seconds
   - HashMap-based ElementRegistry prevents use-after-free during element removal
-  - Continuous CRUD operations: create, read, update, delete with balanced distribution
+  - Continuous operations: create, read, update, delete, attributes, complex queries
+  - **Attribute operations** (8 per cycle): getAttribute, hasAttribute, hasAttributes, removeAttribute
+  - **Complex selector queries** (5 per cycle): child/descendant combinators, class/compound selectors, attribute selectors, querySelectorAll
   - Maintains stable DOM size (500-1000 nodes) with target-based growth limits
   - Memory stabilization after initial HashMap capacity growth (~6.6 MB steady state)
   - Leaf-only deletion strategy prevents cascading frees and maintains tree integrity
   - Bounded text growth (100 chars max) for realistic text node behavior
   - Interactive HTML visualization with memory/operation graphs (Chart.js)
-  - CLI runner: `zig build memory-stress -Doptimize=ReleaseSafe -- --duration 120`
-  - Results: 11 bytes/cycle growth (essentially zero after stabilization) ✅
-  - **Status: Production-ready for simulating long-running applications**
+  - Proper memory management: querySelectorAll results freed after use
+  - CLI runner: `zig build memory-stress -Doptimize=ReleaseSafe -- --duration 30`
+  - Results: 72 bytes/cycle growth (essentially zero after stabilization) ✅
+  - **Status: Production-ready for simulating long-running applications with comprehensive DOM APIs**
   - See `benchmarks/memory-stress/README.md` and `MEMORY_STRESS_TEST_COMPLETION.md`
 - **Memory Usage Benchmarks** - Track and compare memory consumption across implementations 💾
   - Added memory tracking to all benchmarks (bytes allocated, bytes per operation, peak memory)

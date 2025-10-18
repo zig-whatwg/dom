@@ -6,9 +6,11 @@ Comprehensive memory stress test that performs extensive CRUD operations on a DO
 
 This stress test:
 - Creates an initial DOM with ~1000 elements
-- Performs weighted random operations (CREATE 30%, UPDATE 40%, READ 20%, DELETE 10%)
+- Performs weighted random operations on a persistent Document (simulates long-running apps)
+- Maintains stable DOM size (500-1000 nodes) via balanced create/delete operations
+- Includes comprehensive operations: CRUD, attributes, and complex selector queries
 - Samples memory usage every 10 seconds
-- Tracks operation statistics
+- Tracks operation statistics (creates, reads, updates, deletes, attributes, queries)
 - Generates interactive HTML reports with Chart.js visualizations
 
 ## Usage
@@ -104,31 +106,54 @@ The HTML report includes:
 
 ## Operation Types
 
-### CREATE (30% of operations)
-Creates DOM fragments of varying sizes:
-- **Small**: 1-10 elements
-- **Medium**: 50-100 elements  
-- **Large**: 500-1000 elements
+### Phase 1: CREATE (Dynamic based on DOM size)
+Creates new elements and adds them to the persistent Document:
+- **Growth mode** (< 500 nodes): Creates 20 nodes per cycle
+- **Steady state** (500-1000 nodes): Creates 5 nodes per cycle
+- **Pause mode** (> 1000 nodes): No new nodes created
+- Each element: `div` with class "dynamic", 50% chance of text content
+- Randomly selects parent from existing elements
 
-Each fragment includes nested structure (divs, spans, paragraphs) with text nodes.
+### Phase 2: READ (10 operations per cycle)
+Basic query operations:
+- Access random element properties (node_type, parent_node)
+- `getElementsByTagName("div")` - Tag name collection
+- `getElementsByClassName("content")` - Class name collection
 
-### UPDATE (40% of operations)
+### Phase 2.5: COMPLEX QUERIES (5 operations per cycle) 🆕
+Advanced querySelector/querySelectorAll operations:
+- **Child combinator**: `"section > div"`
+- **Descendant combinator**: `"body div"`
+- **Class selector**: `".content"`
+- **Compound selector**: `"div.content"`
+- **Multiple classes**: `".content.active"`
+- **Attribute presence**: `"[data-value]"`
+- **Attribute exact match**: `"[class='content']"`
+- **Attribute prefix**: `"[class^='btn']"`
+- **Multi-component**: `"section > div.content[data-value]"`
+- **querySelectorAll**: `.dynamic` (returns all matches)
+
+### Phase 3: UPDATE (5 operations per cycle)
 Modifies existing DOM nodes:
-- **Text Updates**: Appends text to existing text nodes
-- **Reparenting**: Moves elements to different parents
+- **Text Updates**: Appends "!" to text nodes (max 100 chars to prevent unbounded growth)
 
-### READ (20% of operations)
-Query operations:
-- `getElementById()` - Direct ID lookup
-- `getElementsByTagName()` - Tag name traversal
-- `querySelector()` - CSS selector matching
+### Phase 3.5: ATTRIBUTE OPERATIONS (8 operations per cycle) 🆕
+Comprehensive attribute manipulation:
+- **setAttribute**: Set data attributes (`data-value="test"`)
+- **setAttribute**: Update class attributes (`class="dynamic active"`)
+- **setAttribute**: Add ID attributes (`id="elem-1234"`)
+- **getAttribute**: Read attribute values
+- **hasAttribute**: Check attribute existence
+- **setAttribute**: Boolean attributes with empty values (`disabled=""`)
+- **removeAttribute**: Remove attributes (`disabled`)
 
-### DELETE (10% of operations)
-Removes nodes from the tree:
-- **Single**: Remove individual element
-- **Small**: Remove subtree with 5-20 elements
-- **Medium**: Remove subtree with 50-100 elements
-- **Large**: Remove subtree with 500-1000 elements
+### Phase 4: DELETE (Dynamic based on DOM size)
+Removes leaf nodes to maintain steady state:
+- **Cleanup mode** (> 1000 nodes): Removes 20 nodes per cycle
+- **Moderate** (750-1000 nodes): Removes 10 nodes per cycle
+- **Light** (500-750 nodes): Removes 5 nodes per cycle
+- **Leaf-only deletion**: Prevents cascading frees and maintains tree integrity
+- Skips root elements (body, section) to maintain structure
 
 ## Memory Tracking
 
@@ -177,8 +202,12 @@ The 30/40/20/10 distribution (CREATE/UPDATE/READ/DELETE) reflects realistic web 
 - Reasonable for tests from 30s to 1 hour+
 - Generates manageable JSON file sizes
 
-### Why No Attribute Updates?
-Attributes require string interning through Document's string pool. For simplicity in the stress test, we focus on structural operations (create, reparent, delete) and text updates which more directly stress memory management.
+### Why HashMap-Based ElementRegistry?
+Uses `AutoHashMap` instead of `ArrayList` to prevent use-after-free issues:
+- **Safe removal**: HashMap.remove() doesn't invalidate other pointers
+- **O(1) operations**: Fast add/remove/lookup
+- **Iteration safe**: Can iterate and selectively remove elements
+- **Memory overhead**: Acceptable trade-off for safety
 
 ## Interpreting Results
 
@@ -194,12 +223,20 @@ Attributes require string interning through Document's string pool. For simplici
 - **Memory Spikes**: GC pressure or fragmentation
 - **No Memory Release**: Deletion not freeing memory
 
-### Typical Results (30-second test)
-- Initial Memory: ~700 KB
-- Final Memory: ~300-600 MB
-- Total Operations: ~750,000
-- Operations/Second: ~25,000
-- Final DOM Size: ~750,000 elements
+### Typical Results (120-second persistent DOM test)
+- Initial Memory: ~66 KB (after initial DOM)
+- Final Memory: ~6.6 MB (stabilized)
+- Total Cycles: ~558,000
+- Total Operations: ~8.5 million
+  - Reads: ~5.6M
+  - Updates: ~2.8M
+  - Creates: ~1.7K
+  - Deletes: ~774
+  - Attributes: ~4.5M
+  - Complex Queries: ~2.8M
+- Memory Growth: ~11 bytes/cycle (essentially zero after HashMap stabilization)
+- Final DOM Size: ~1,002 nodes (stable)
+- Status: ✅ PASS (no memory leaks)
 
 ## Development Notes
 

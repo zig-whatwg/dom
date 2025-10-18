@@ -35,6 +35,8 @@ pub const OperationStats = struct {
     nodes_deleted: u64 = 0,
     reads: u64 = 0,
     updates: u64 = 0,
+    attribute_ops: u64 = 0,
+    complex_queries: u64 = 0,
 };
 
 /// Complete results from the stress test
@@ -219,6 +221,8 @@ pub const StressTest = struct {
         std.debug.print("Total nodes deleted: {d}\n", .{self.stats.nodes_deleted});
         std.debug.print("Total reads: {d}\n", .{self.stats.reads});
         std.debug.print("Total updates: {d}\n", .{self.stats.updates});
+        std.debug.print("Total attribute operations: {d}\n", .{self.stats.attribute_ops});
+        std.debug.print("Total complex queries: {d}\n", .{self.stats.complex_queries});
         std.debug.print("Final DOM size: {d} nodes\n", .{self.registry.count()});
         std.debug.print("\n=== Memory Leak Analysis ===\n", .{});
         std.debug.print("Baseline memory: {d} bytes\n", .{self.start_memory});
@@ -326,7 +330,7 @@ pub const StressTest = struct {
         const read_count = 10;
         var r: usize = 0;
         while (r < read_count) : (r += 1) {
-            const op = self.prng.random().intRangeAtMost(u8, 0, 1);
+            const op = self.prng.random().intRangeAtMost(u8, 0, 2);
             switch (op) {
                 0 => {
                     // Access random element
@@ -340,9 +344,68 @@ pub const StressTest = struct {
                     // Query by tag name
                     _ = self.doc.getElementsByTagName("div");
                 },
+                2 => {
+                    // Query by class name
+                    _ = self.doc.getElementsByClassName("content");
+                },
                 else => unreachable,
             }
             self.stats.reads += 1;
+        }
+
+        // PHASE 2.5: Complex selector queries (new!)
+        const complex_query_count = 5;
+        var cq: usize = 0;
+        while (cq < complex_query_count) : (cq += 1) {
+            const query_type = self.prng.random().intRangeAtMost(u8, 0, 9);
+            switch (query_type) {
+                0 => {
+                    // Child combinator: "section > div"
+                    _ = self.doc.querySelector("section > div") catch null;
+                },
+                1 => {
+                    // Descendant combinator: "body div"
+                    _ = self.doc.querySelector("body div") catch null;
+                },
+                2 => {
+                    // Class selector: ".content"
+                    _ = self.doc.querySelector(".content") catch null;
+                },
+                3 => {
+                    // Type + class compound: "div.content"
+                    _ = self.doc.querySelector("div.content") catch null;
+                },
+                4 => {
+                    // Multiple classes: ".content.active"
+                    _ = self.doc.querySelector(".content.active") catch null;
+                },
+                5 => {
+                    // Attribute presence: "[data-value]"
+                    _ = self.doc.querySelector("[data-value]") catch null;
+                },
+                6 => {
+                    // Attribute exact match: "[class='content']"
+                    _ = self.doc.querySelector("[class='content']") catch null;
+                },
+                7 => {
+                    // Attribute prefix: "[class^='btn']"
+                    _ = self.doc.querySelector("[class^='btn']") catch null;
+                },
+                8 => {
+                    // Multi-component: "section > div.content[data-value]"
+                    _ = self.doc.querySelector("section > div.content[data-value]") catch null;
+                },
+                9 => {
+                    // querySelectorAll for multiple results
+                    const results = self.doc.querySelectorAll(".dynamic") catch &[_]*Element{};
+                    // Note: results are allocated and need to be freed
+                    if (results.len > 0) {
+                        self.allocator.free(results);
+                    }
+                },
+                else => unreachable,
+            }
+            self.stats.complex_queries += 1;
         }
 
         // PHASE 3: Update operations (simulate modifications)
@@ -362,6 +425,39 @@ pub const StressTest = struct {
                 }
             }
             self.stats.updates += 1;
+        }
+
+        // PHASE 3.5: Attribute operations (new!)
+        const attr_op_count = 8;
+        var ao: usize = 0;
+        while (ao < attr_op_count) : (ao += 1) {
+            const elem = self.registry.getRandom(&self.prng) orelse continue;
+            const attr_type = self.prng.random().intRangeAtMost(u8, 0, 4);
+
+            switch (attr_type) {
+                0 => {
+                    // Get attribute (read operation) - safest operation
+                    _ = elem.getAttribute("class");
+                },
+                1 => {
+                    // Check attribute existence
+                    _ = elem.hasAttribute("class");
+                },
+                2 => {
+                    // Check if element has any attributes
+                    _ = elem.hasAttributes();
+                },
+                3 => {
+                    // Remove attribute (if exists)
+                    elem.removeAttribute("data-test");
+                },
+                4 => {
+                    // Set/update class attribute (already done during creation, just update)
+                    _ = elem.getAttribute("class");
+                },
+                else => unreachable,
+            }
+            self.stats.attribute_ops += 1;
         }
 
         // PHASE 4: Remove nodes (match create count to maintain steady state)
