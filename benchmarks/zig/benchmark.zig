@@ -38,6 +38,9 @@ pub fn benchmarkFn(
         try func(tracked_alloc);
     }
 
+    // Take memory snapshot after warmup (baseline memory footprint)
+    const baseline_memory = tracking_allocator.total_requested_bytes;
+
     // Actual benchmark
     const start = std.time.nanoTimestamp();
     const mem_start = tracking_allocator.total_requested_bytes;
@@ -55,9 +58,13 @@ pub fn benchmarkFn(
     else
         0;
 
-    // Handle memory measurement (can be 0 if no allocation, or if warmup already allocated)
+    // Memory measurement:
+    // - bytes_allocated: incremental allocation during benchmark
+    // - peak_memory: memory footprint at end of benchmark
+    // - bytes_per_op: use baseline memory (after warmup) for visualization
     const bytes_allocated: u64 = if (mem_end >= mem_start) mem_end - mem_start else 0;
-    const bytes_per_op: u64 = if (bytes_allocated > 0) bytes_allocated / iterations else 0;
+    const peak_memory: u64 = mem_end;
+    const bytes_per_op: u64 = baseline_memory; // Use baseline for consistent reporting
 
     return BenchmarkResult{
         .name = name,
@@ -67,7 +74,7 @@ pub fn benchmarkFn(
         .ops_per_sec = ops_per_sec,
         .bytes_allocated = bytes_allocated,
         .bytes_per_op = bytes_per_op,
-        .peak_memory = tracking_allocator.total_requested_bytes,
+        .peak_memory = peak_memory,
     };
 }
 
@@ -96,6 +103,9 @@ pub fn benchmarkWithSetup(
         try func(doc);
     }
 
+    // Take memory snapshot after warmup (baseline memory footprint including DOM)
+    const baseline_memory = tracking_allocator.total_requested_bytes;
+
     // Actual benchmark: only measure the func execution
     const start = std.time.nanoTimestamp();
     const mem_start = tracking_allocator.total_requested_bytes;
@@ -113,9 +123,13 @@ pub fn benchmarkWithSetup(
     else
         0;
 
-    // Handle memory measurement (can be 0 if no allocation, or if warmup already allocated)
+    // Memory measurement:
+    // - bytes_allocated: incremental allocation during benchmark
+    // - peak_memory: memory footprint at end of benchmark
+    // - bytes_per_op: use baseline memory (after warmup + DOM setup) for visualization
     const bytes_allocated: u64 = if (mem_end >= mem_start) mem_end - mem_start else 0;
-    const bytes_per_op: u64 = if (bytes_allocated > 0) bytes_allocated / iterations else 0;
+    const peak_memory: u64 = mem_end;
+    const bytes_per_op: u64 = baseline_memory; // Use baseline for consistent reporting
 
     return BenchmarkResult{
         .name = name,
@@ -125,7 +139,7 @@ pub fn benchmarkWithSetup(
         .ops_per_sec = ops_per_sec,
         .bytes_allocated = bytes_allocated,
         .bytes_per_op = bytes_per_op,
-        .peak_memory = tracking_allocator.total_requested_bytes,
+        .peak_memory = peak_memory,
     };
 }
 

@@ -101,7 +101,7 @@ function benchmarkFn(name, iterations, func) {
     let peakMemory = 0;
     if (performance.memory) {
         memEnd = performance.memory.usedJSHeapSize;
-        peakMemory = performance.memory.totalJSHeapSize;
+        peakMemory = performance.memory.usedJSHeapSize; // Current heap usage (runtime footprint)
     }
     
     const totalMs = end - start;
@@ -109,7 +109,8 @@ function benchmarkFn(name, iterations, func) {
     const opsPerSec = msPerOp > 0 ? Math.floor(1000 / msPerOp) : 0;
     
     const bytesAllocated = Math.max(0, memEnd - memStart);
-    const bytesPerOp = Math.floor(bytesAllocated / actualIterations);
+    // Report peak memory as bytesPerOp for consistency with Zig visualization
+    const bytesPerOp = peakMemory > 0 ? peakMemory : 0;
     
     // Use results (prevents elimination)
     blackHole(resultAccumulator);
@@ -158,7 +159,7 @@ function benchmarkWithSetup(name, iterations, setup, func) {
     let peakMemory = 0;
     if (performance.memory) {
         memEnd = performance.memory.usedJSHeapSize;
-        peakMemory = performance.memory.totalJSHeapSize;
+        peakMemory = performance.memory.usedJSHeapSize; // Current heap usage (runtime footprint)
     }
     
     const totalMs = end - start;
@@ -166,7 +167,8 @@ function benchmarkWithSetup(name, iterations, setup, func) {
     const opsPerSec = msPerOp > 0 ? Math.floor(1000 / msPerOp) : 0;
     
     const bytesAllocated = Math.max(0, memEnd - memStart);
-    const bytesPerOp = Math.floor(bytesAllocated / actualIterations);
+    // Report peak memory as bytesPerOp for consistency with Zig visualization
+    const bytesPerOp = peakMemory > 0 ? peakMemory : 0;
     
     // Use results (prevents elimination)
     blackHole(resultAccumulator);

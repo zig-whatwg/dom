@@ -24,16 +24,16 @@ async function loadZigResults() {
         // Parse Zig benchmark output
         const lines = content.split('\n');
         for (const line of lines) {
-            // Match lines like: "Pure query: getElementById (100 elem): 5ns/op | 128B/op | 200000000 ops/sec"
-            // New format with memory tracking
-            const matchWithMemory = line.match(/^(.+?):\s+(\d+(?:\.\d+)?)(ns|µs|ms)\/op\s+\|\s+(\d+)(B|KB|MB)\/op\s+\|\s+(\d+)\s+ops\/sec/);
+            // Match lines like: "Pure query: getElementById (100 elem): 5ns/op (200000000 ops/sec) | 128MB total"
+            // New format with total memory tracking
+            const matchWithMemory = line.match(/^(.+?):\s+(\d+(?:\.\d+)?)(ns|µs|ms)\/op\s+\((\d+)\s+ops\/sec\)\s+\|\s+(\d+)(B|KB|MB|GB)\s+total/);
             if (matchWithMemory) {
                 const name = matchWithMemory[1].trim();
                 let timeValue = parseFloat(matchWithMemory[2]);
                 const timeUnit = matchWithMemory[3];
-                let memValue = parseFloat(matchWithMemory[4]);
-                const memUnit = matchWithMemory[5];
-                const opsPerSec = parseInt(matchWithMemory[6]);
+                const opsPerSec = parseInt(matchWithMemory[4]);
+                let memValue = parseFloat(matchWithMemory[5]);
+                const memUnit = matchWithMemory[6];
                 
                 // Convert time to nanoseconds
                 if (timeUnit === 'µs') timeValue *= 1000;
@@ -42,6 +42,7 @@ async function loadZigResults() {
                 // Convert memory to bytes
                 if (memUnit === 'KB') memValue *= 1024;
                 if (memUnit === 'MB') memValue *= 1024 * 1024;
+                if (memUnit === 'GB') memValue *= 1024 * 1024 * 1024;
                 
                 results.push({
                     name,
@@ -115,7 +116,10 @@ function groupResults(zigResults, browserResults) {
         }
         grouped.get(result.name).implementations['Zig'] = {
             nsPerOp: result.nsPerOp,
-            opsPerSec: result.opsPerSec
+            opsPerSec: result.opsPerSec,
+            bytesPerOp: result.bytesPerOp || 0,
+            bytesAllocated: result.bytesAllocated || 0,
+            peakMemory: result.peakMemory || 0
         };
     }
     
@@ -132,7 +136,10 @@ function groupResults(zigResults, browserResults) {
             }
             grouped.get(result.name).implementations[browserResult.browser] = {
                 nsPerOp: result.nsPerOp,
-                opsPerSec: result.opsPerSec
+                opsPerSec: result.opsPerSec,
+                bytesPerOp: result.bytesPerOp || 0,
+                bytesAllocated: result.bytesAllocated || 0,
+                peakMemory: result.peakMemory || 0
             };
         }
     }
@@ -445,7 +452,7 @@ function generateHTML(groupedResults, browserResults) {
         
         <div class="category">
             <h1 style="margin-bottom: 30px;">💾 Memory Usage Rankings</h1>
-            <p class="subtitle" style="margin-bottom: 30px;">Lower is better - bytes allocated per operation</p>
+            <p class="subtitle" style="margin-bottom: 30px;">Lower is better - peak memory consumption during benchmark execution</p>
             
             ${Object.entries(categories).map(([categoryName, benchmarks], index) => {
                 if (benchmarks.length === 0) return '';

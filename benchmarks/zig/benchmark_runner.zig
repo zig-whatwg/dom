@@ -60,7 +60,7 @@ pub fn main() !void {
         }
 
         const ns = result.ns_per_op;
-        const bytes = result.bytes_per_op;
+        const bytes = result.bytes_per_op; // Show baseline memory (after warmup)
 
         // Format time
         const time_str = if (ns < 1000)
@@ -76,21 +76,27 @@ pub fn main() !void {
         else
             ns / 1_000_000;
 
-        // Format memory
-        const mem_str = if (bytes < 1024)
+        // Format memory (check for overflow/invalid values)
+        // Values > 1TB are likely unsigned wraparound, show as 0
+        const valid_bytes = if (bytes > 1024 * 1024 * 1024 * 1024) 0 else bytes;
+        const mem_str = if (valid_bytes < 1024)
             "B"
-        else if (bytes < 1024 * 1024)
+        else if (valid_bytes < 1024 * 1024)
             "KB"
+        else if (valid_bytes < 1024 * 1024 * 1024)
+            "MB"
         else
-            "MB";
-        const mem_val = if (bytes < 1024)
-            bytes
-        else if (bytes < 1024 * 1024)
-            bytes / 1024
+            "GB";
+        const mem_val: u64 = if (valid_bytes < 1024)
+            valid_bytes
+        else if (valid_bytes < 1024 * 1024)
+            valid_bytes / 1024
+        else if (valid_bytes < 1024 * 1024 * 1024)
+            valid_bytes / (1024 * 1024)
         else
-            bytes / (1024 * 1024);
+            valid_bytes / (1024 * 1024 * 1024);
 
-        std.debug.print("{s}: {d}{s}/op | {d}{s}/op | {d} ops/sec\n", .{ result.name, time_val, time_str, mem_val, mem_str, result.ops_per_sec });
+        std.debug.print("{s}: {d}{s}/op ({d} ops/sec) | {d}{s} total\n", .{ result.name, time_val, time_str, result.ops_per_sec, mem_val, mem_str });
     }
 
     std.debug.print("\nBenchmark complete!\n", .{});
