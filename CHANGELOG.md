@@ -8,6 +8,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Shadow DOM Phase 3 (Partial): Slottable Mixin Foundation** ✅
+  - Implemented generic slot foundation per WHATWG DOM Slottable mixin
+  - **Design: Generic Slots (Not HTML-Specific)**
+    - Slots are regular `Element` with tag name "slot" (document-type agnostic)
+    - Slot name stored in "name" attribute (generic attribute system)
+    - No HTMLSlotElement (HTML libraries can extend Element to add it)
+    - Pure generic DOM - works for XML, custom document types
+  - **Slottable Mixin on Element**
+    - WebIDL: `interface mixin Slottable { readonly attribute HTMLSlotElement? assignedSlot; }`
+    - WebIDL: `Element includes Slottable;`
+    - Spec: https://dom.spec.whatwg.org/#mixin-slottable
+    - `assignedSlot()` - Returns slot element this is assigned to (or null)
+    - `setAssignedSlot()` - Internal method for manual assignment
+    - Returns `Element` (not HTMLSlotElement) - generic approach
+  - **Slottable Mixin on Text**
+    - WebIDL: `Text includes Slottable;`
+    - Same interface as Element - text nodes can be assigned to slots
+    - Supports light DOM text content distribution
+  - **Memory Management**:
+    - Added `assigned_slot` field to NodeRareData (WEAK pointer)
+    - Slottables don't own slots (no circular references)
+    - Lazy allocation via RareData pattern
+  - **Test Coverage**: 471/471 tests passing (+11 slot tests), 0 leaks ✅
+  - **NOT Implemented** (future work or for HTML libraries):
+    - Automatic slot assignment algorithm
+    - Lazy slot distribution with dirty flag
+    - slotchange event
+    - Manual assignment mode enforcement
+  - **Next Phase**: Event retargeting (Phase 4)
+
 - **Shadow DOM Phase 2 Complete: Tree Integration** ✅
   - Implemented shadow-aware tree traversal per WHATWG DOM Standard §4.2.2 & §4.4
   - **Node.getRootNode(composed)** - Enhanced with shadow boundary traversal
