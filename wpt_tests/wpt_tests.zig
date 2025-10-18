@@ -15,6 +15,7 @@ test {
     _ = @import("nodes/Node-contains.zig");
     _ = @import("nodes/Node-insertBefore.zig");
     _ = @import("nodes/Node-isConnected.zig");
+    _ = @import("nodes/Node-isSameNode.zig");
     _ = @import("nodes/Node-nodeName.zig");
     _ = @import("nodes/Node-nodeValue.zig");
     _ = @import("nodes/Node-parentNode.zig");
