@@ -636,9 +636,9 @@ pub const Document = struct {
 
     /// Increments the internal node reference count.
     ///
-    /// Called when a node sets ownerDocument=this.
-    /// Internal use only, not exposed in public API.
-    fn acquireNodeRef(self: *Document) void {
+    /// Called when a node is inserted into the document tree.
+    /// PUBLIC for node insertion logic to call.
+    pub fn acquireNodeRef(self: *Document) void {
         _ = self.node_ref_count.fetchAdd(1, .monotonic);
     }
 
@@ -686,8 +686,10 @@ pub const Document = struct {
         elem.node.owner_document = &self.node;
         elem.node.node_id = self.allocateNodeId();
 
-        // Increment document's node ref count
-        self.acquireNodeRef();
+        // Note: We do NOT call acquireNodeRef() here. Node refs are only tracked
+        // for nodes inserted into the document tree. Orphaned nodes (created but
+        // never attached) are allocated in the arena and will be freed when the
+        // document is destroyed, without needing explicit tracking.
 
         // Add to tag map for O(k) getElementsByTagName lookups
         const result = try self.tag_map.getOrPut(interned_tag);

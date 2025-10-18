@@ -488,6 +488,7 @@ pub const Node = struct {
     // === Flag bit positions ===
     pub const FLAG_IS_CONNECTED: u8 = 1 << 0;
     pub const FLAG_IS_IN_SHADOW_TREE: u8 = 1 << 1;
+    pub const FLAG_EVER_INSERTED: u8 = 1 << 2; // Node was inserted into document tree at some point
 
     // === Document position constants (WHATWG DOM §4.4) ===
     pub const DOCUMENT_POSITION_DISCONNECTED: u16 = 0x01;
@@ -1814,6 +1815,22 @@ fn insert(
         // Update parent pointer
         n.parent_node = parent;
         n.setHasParent(true);
+
+        // Mark node as having been inserted into a tree
+        // This tracks whether the node should hold a document reference
+        const was_already_inserted = (n.flags & Node.FLAG_EVER_INSERTED) != 0;
+        if (!was_already_inserted) {
+            n.flags |= Node.FLAG_EVER_INSERTED;
+
+            // Acquire document reference for first-time insertion
+            if (n.owner_document) |owner_doc| {
+                if (owner_doc.node_type == .document) {
+                    const Document = @import("document.zig").Document;
+                    const doc: *Document = @fieldParentPtr("node", owner_doc);
+                    doc.acquireNodeRef();
+                }
+            }
+        }
 
         // Update connected state
         if (parent.isConnected()) {
