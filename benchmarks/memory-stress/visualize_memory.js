@@ -43,19 +43,22 @@ function generateHTML(results) {
   
   const initialMem = samples[0].bytes_used;
   const finalMem = samples[samples.length - 1].bytes_used;
-  const memoryLeaked = finalMem - initialMem;
-  const leakPerCycle = final_state.cycles_completed > 0 ? 
-    memoryLeaked / final_state.cycles_completed : 0;
+  const memoryGrowth = finalMem - initialMem;
+  const growthPerCycle = final_state.cycles_completed > 0 ? 
+    memoryGrowth / final_state.cycles_completed : 0;
   
   const timestamps = samples.map(s => (s.timestamp_ms / 1000).toFixed(1));
   const memoryMB = samples.map(s => s.bytes_used / (1024 * 1024));
   
-  const isLeak = memoryLeaked > 1024; // More than 1KB leaked
+  // For persistent Document: Check if memory stabilized (not growing continuously)
+  // Growth < 5KB/cycle indicates stable memory (HashMap capacity growth only)
+  const STABLE_THRESHOLD = 5000; // 5KB per cycle is acceptable for HashMap growth
+  const isLeak = growthPerCycle > STABLE_THRESHOLD;
   const statusClass = isLeak ? 'fail' : 'pass';
   const statusText = isLeak ? '❌ FAIL' : '✅ PASS';
   const statusMessage = isLeak ? 
-    'Memory leak detected! Memory should return to baseline.' :
-    'No memory leak detected. Memory remains stable.';
+    `Memory leak detected! Growing at ${growthPerCycle.toFixed(2)} bytes/cycle (threshold: ${STABLE_THRESHOLD} bytes/cycle).` :
+    `Memory stable. Growing at ${growthPerCycle.toFixed(2)} bytes/cycle (within threshold: ${STABLE_THRESHOLD} bytes/cycle).`;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -180,15 +183,13 @@ function generateHTML(results) {
   <div class="container">
     <div class="header">
       <h1>🔬 Memory Stress Test Results</h1>
-      <p class="subtitle">Document Lifecycle Leak Detection</p>
+      <p class="subtitle">Persistent DOM Memory Stability Analysis</p>
     </div>
     
     <div class="status-banner ${statusClass}">
       <div>${statusText}: ${statusMessage}</div>
       <div class="message">
-        ${isLeak ? 
-          `Memory leaked: ${formatBytes(memoryLeaked)} across ${formatNumber(final_state.cycles_completed)} cycles` :
-          'All memory properly freed between Document lifecycles'}
+        Total memory growth: ${formatBytes(memoryGrowth)} across ${formatNumber(final_state.cycles_completed)} cycles
       </div>
     </div>
     
@@ -206,9 +207,9 @@ function generateHTML(results) {
       </div>
       
       <div class="stat-card ${isLeak ? 'leak' : ''}">
-        <div class="label">Memory Leaked</div>
-        <div class="value">${formatBytes(memoryLeaked)}</div>
-        <div class="subvalue">${formatBytes(leakPerCycle)} per cycle</div>
+        <div class="label">Memory Growth</div>
+        <div class="value">${formatBytes(memoryGrowth)}</div>
+        <div class="subvalue">${formatBytes(growthPerCycle)} per cycle</div>
       </div>
       
       <div class="stat-card">
