@@ -24,7 +24,7 @@
 //! Elements can have named attributes that provide metadata:
 //! ```zig
 //! const elem = try Element.create(allocator, "input");
-//! defer elem.node.release();
+//! defer elem.prototype.release();
 //!
 //! try elem.setAttribute("type", "text");
 //! try elem.setAttribute("placeholder", "Enter name");
@@ -61,10 +61,10 @@
 //! Elements use reference counting through the Node interface:
 //! ```zig
 //! const element = try Element.create(allocator, "div");
-//! defer element.node.release(); // Decrements ref_count, frees if 0
+//! defer element.prototype.release(); // Decrements ref_count, frees if 0
 //!
 //! // When sharing ownership:
-//! element.node.acquire(); // Increment ref_count
+//! element.prototype.acquire(); // Increment ref_count
 //! other_structure.element = element;
 //! // Both owners must call release()
 //! ```
@@ -81,21 +81,21 @@
 //! const allocator = std.heap.page_allocator;
 //!
 //! const article = try Element.create(allocator, "article");
-//! defer article.node.release();
+//! defer article.prototype.release();
 //!
 //! const header = try Element.create(allocator, "header");
 //! try header.setAttribute("class", "article-header");
-//! _ = try article.node.appendChild(&header.node);
+//! _ = try article.prototype.appendChild(&header.prototype);
 //!
 //! const title = try Element.create(allocator, "h1");
 //! try title.setAttribute("id", "main-title");
-//! _ = try header.node.appendChild(&title.node);
+//! _ = try header.prototype.appendChild(&title.prototype);
 //! ```
 //!
 //! ### Managing Attributes
 //! ```zig
 //! const button = try Element.create(allocator, "button");
-//! defer button.node.release();
+//! defer button.prototype.release();
 //!
 //! // Set multiple attributes
 //! try button.setAttribute("type", "submit");
@@ -119,7 +119,7 @@
 //! ### Working with Classes
 //! ```zig
 //! const div = try Element.create(allocator, "div");
-//! defer div.node.release();
+//! defer div.prototype.release();
 //!
 //! try div.setAttribute("class", "container fluid active");
 //!
@@ -135,7 +135,7 @@
 //! ### Creating Form Elements
 //! ```zig
 //! const form = try Element.create(allocator, "form");
-//! defer form.node.release();
+//! defer form.prototype.release();
 //! try form.setAttribute("method", "POST");
 //! try form.setAttribute("action", "/submit");
 //!
@@ -143,21 +143,21 @@
 //! try input.setAttribute("type", "text");
 //! try input.setAttribute("name", "username");
 //! try input.setAttribute("required", "");
-//! _ = try form.node.appendChild(&input.node);
+//! _ = try form.prototype.appendChild(&input.prototype);
 //! ```
 //!
 //! ### Building Nested Structure
 //! ```zig
 //! const nav = try Element.create(allocator, "nav");
-//! defer nav.node.release();
+//! defer nav.prototype.release();
 //!
 //! const ul = try Element.create(allocator, "ul");
 //! try ul.setAttribute("class", "menu");
-//! _ = try nav.node.appendChild(&ul.node);
+//! _ = try nav.prototype.appendChild(&ul.prototype);
 //!
 //! const li = try Element.create(allocator, "li");
 //! try li.setAttribute("class", "menu-item");
-//! _ = try ul.node.appendChild(&li.node);
+//! _ = try ul.prototype.appendChild(&li.prototype);
 //! ```
 //!
 //! ## Performance Tips
@@ -310,8 +310,8 @@ pub const AttributeMap = struct {
 /// Embeds Node as first field for vtable polymorphism.
 /// Additional fields for element-specific data (tag, attributes, classes).
 pub const Element = struct {
-    /// Base Node (MUST be first field for @fieldParentPtr to work)
-    node: Node,
+    /// Base Node prototype (MUST be first field for @fieldParentPtr to work)
+    prototype: Node,
 
     /// Tag name (pointer to interned string, 8 bytes)
     /// e.g., "div", "span", "custom-element"
@@ -355,14 +355,14 @@ pub const Element = struct {
     ///
     /// ## Memory Management
     ///
-    /// Returns Element with ref_count=1. Caller MUST call `element.node.release()` when done.
+    /// Returns Element with ref_count=1. Caller MUST call `element.prototype.release()` when done.
     /// If element is inserted into DOM tree, the tree maintains a reference.
     ///
     /// ## Example
     ///
     /// ```zig
     /// const elem = try Element.create(allocator, "div");
-    /// defer elem.node.release();
+    /// defer elem.prototype.release();
     ///
     /// try elem.setAttribute("class", "container");
     /// ```
@@ -375,7 +375,7 @@ pub const Element = struct {
         errdefer allocator.destroy(elem);
 
         // Initialize base Node
-        elem.node = .{
+        elem.prototype = .{
             .vtable = &vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .element,
@@ -433,13 +433,13 @@ pub const Element = struct {
         // Only update id_map if element is connected to the document tree
         // Per browser behavior: disconnected elements don't participate in getElementById
         if (std.mem.eql(u8, name, "id")) {
-            if (self.node.isConnected()) {
+            if (self.prototype.isConnected()) {
                 // Remove old ID from document map if it exists and this element is the one mapped
                 if (self.getAttribute("id")) |old_id| {
-                    if (self.node.owner_document) |owner| {
+                    if (self.prototype.owner_document) |owner| {
                         if (owner.node_type == .document) {
                             const Document = @import("document.zig").Document;
-                            const doc: *Document = @fieldParentPtr("node", owner);
+                            const doc: *Document = @fieldParentPtr("prototype", owner);
 
                             // Only remove if this element is the one in the map
                             if (doc.id_map.get(old_id)) |mapped_elem| {
@@ -449,7 +449,7 @@ pub const Element = struct {
 
                                     // Search for another element with the same ID to replace it
                                     const ElementIterator = @import("element_iterator.zig").ElementIterator;
-                                    var iter = ElementIterator.init(&doc.node);
+                                    var iter = ElementIterator.init(&doc.prototype);
                                     while (iter.next()) |other_elem| {
                                         if (other_elem != self) {
                                             if (other_elem.getId()) |other_id| {
@@ -479,11 +479,11 @@ pub const Element = struct {
 
         // Add new ID to document map (only if connected, and only if ID not already in use - first wins)
         if (std.mem.eql(u8, name, "id")) {
-            if (self.node.isConnected()) {
-                if (self.node.owner_document) |owner| {
+            if (self.prototype.isConnected()) {
+                if (self.prototype.owner_document) |owner| {
                     if (owner.node_type == .document) {
                         const Document = @import("document.zig").Document;
-                        const doc: *Document = @fieldParentPtr("node", owner);
+                        const doc: *Document = @fieldParentPtr("prototype", owner);
                         const result = try doc.id_map.getOrPut(value);
                         if (!result.found_existing) {
                             result.value_ptr.* = self;
@@ -536,12 +536,12 @@ pub const Element = struct {
     pub fn removeAttribute(self: *Element, name: []const u8) void {
         // Remove ID from document map before removing attribute (only if connected and this element is mapped)
         if (std.mem.eql(u8, name, "id")) {
-            if (self.node.isConnected()) {
+            if (self.prototype.isConnected()) {
                 if (self.getAttribute("id")) |old_id| {
-                    if (self.node.owner_document) |owner| {
+                    if (self.prototype.owner_document) |owner| {
                         if (owner.node_type == .document) {
                             const Document = @import("document.zig").Document;
-                            const doc: *Document = @fieldParentPtr("node", owner);
+                            const doc: *Document = @fieldParentPtr("prototype", owner);
 
                             // Only remove if this element is the one in the map
                             if (doc.id_map.get(old_id)) |mapped_elem| {
@@ -551,7 +551,7 @@ pub const Element = struct {
 
                                     // Search for another element with the same ID to replace it
                                     const ElementIterator = @import("element_iterator.zig").ElementIterator;
-                                    var iter = ElementIterator.init(&doc.node);
+                                    var iter = ElementIterator.init(&doc.prototype);
                                     while (iter.next()) |other_elem| {
                                         if (other_elem != self) {
                                             if (other_elem.getId()) |other_id| {
@@ -657,7 +657,7 @@ pub const Element = struct {
     /// ## Usage
     /// ```zig
     /// const elem = try doc.createElement("button");
-    /// defer elem.node.release();
+    /// defer elem.prototype.release();
     ///
     /// // Toggle without force (add if absent, remove if present)
     /// const is_present = try elem.toggleAttribute("disabled", null); // true - added
@@ -743,7 +743,7 @@ pub const Element = struct {
     /// ## Example
     /// ```zig
     /// const elem = try doc.createElement("div");
-    /// defer elem.node.release();
+    /// defer elem.prototype.release();
     ///
     /// const name = elem.localName();
     /// // Returns "div" (same as tagName for non-namespaced elements)
@@ -914,7 +914,7 @@ pub const Element = struct {
     /// ## Example
     /// ```zig
     /// const elem = try doc.createElement("container");
-    /// defer elem.node.release();
+    /// defer elem.prototype.release();
     ///
     /// // Attach open shadow root
     /// const shadow = try elem.attachShadow(.{
@@ -924,7 +924,7 @@ pub const Element = struct {
     ///
     /// // Add content to shadow tree
     /// const content = try doc.createElement("content");
-    /// _ = try shadow.node.appendChild(&content.node);
+    /// _ = try shadow.prototype.appendChild(&content.prototype);
     /// ```
     ///
     /// ## JavaScript Binding
@@ -937,7 +937,7 @@ pub const Element = struct {
         const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
 
         // Ensure RareData exists
-        const rare_data = try self.node.ensureRareData();
+        const rare_data = try self.prototype.ensureRareData();
 
         // Check if shadow root already exists
         if (rare_data.shadow_root != null) {
@@ -945,14 +945,14 @@ pub const Element = struct {
         }
 
         // Create shadow root
-        const shadow = try ShadowRoot.create(self.node.allocator, self, init);
+        const shadow = try ShadowRoot.create(self.prototype.allocator, self, init);
 
         // Store in RareData (OWNING pointer)
         rare_data.shadow_root = @ptrCast(shadow);
 
         // If host is connected, shadow root should be connected too
-        if (self.node.isConnected()) {
-            shadow.node.setConnected(true);
+        if (self.prototype.isConnected()) {
+            shadow.prototype.setConnected(true);
         }
 
         return shadow;
@@ -1006,7 +1006,7 @@ pub const Element = struct {
         const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
 
         // Check if RareData exists
-        const rare_data = self.node.rare_data orelse return null;
+        const rare_data = self.prototype.rare_data orelse return null;
 
         // Check if shadow root exists
         const shadow_ptr = rare_data.shadow_root orelse return null;
@@ -1057,12 +1057,12 @@ pub const Element = struct {
     /// // Create slot in shadow tree
     /// const slot = try doc.createElement("slot");
     /// try slot.setAttribute("name", "header");
-    /// _ = try shadow.node.appendChild(&slot.node);
+    /// _ = try shadow.prototype.appendChild(&slot.prototype);
     ///
     /// // Create content in light DOM
     /// const content = try doc.createElement("content");
     /// try content.setAttribute("slot", "header");
-    /// _ = try host.node.appendChild(&content.node);
+    /// _ = try host.prototype.appendChild(&content.prototype);
     ///
     /// // Content is assigned to slot
     /// const assigned = content.assignedSlot();
@@ -1070,7 +1070,7 @@ pub const Element = struct {
     /// ```
     pub fn assignedSlot(self: *const Element) ?*Element {
         // Check if rare data exists
-        const rare_data = self.node.rare_data orelse return null;
+        const rare_data = self.prototype.rare_data orelse return null;
 
         // Check if assigned slot exists
         const slot_ptr = rare_data.assigned_slot orelse return null;
@@ -1090,14 +1090,14 @@ pub const Element = struct {
     pub fn setAssignedSlot(self: *Element, slot: ?*Element) !void {
         if (slot == null) {
             // Clear assigned slot
-            if (self.node.rare_data) |rare_data| {
+            if (self.prototype.rare_data) |rare_data| {
                 rare_data.assigned_slot = null;
             }
             return;
         }
 
         // Ensure rare data exists
-        const rare_data = try self.node.ensureRareData();
+        const rare_data = try self.prototype.ensureRareData();
 
         // Set assigned slot (WEAK reference)
         rare_data.assigned_slot = @ptrCast(slot.?);
@@ -1131,7 +1131,7 @@ pub const Element = struct {
     /// const container = try doc.createElement("div");
     /// const button = try doc.createElement("button");
     /// try button.setAttribute("class", "btn primary");
-    /// _ = try container.node.appendChild(&button.node);
+    /// _ = try container.prototype.appendChild(&button.prototype);
     ///
     /// // Find button by class
     /// const result = try container.querySelector(".btn");
@@ -1148,10 +1148,10 @@ pub const Element = struct {
     pub fn querySelector(self: *Element, allocator: Allocator, selectors: []const u8) !?*Element {
         // Try to get parsed selector from cache if we have an owner document
         const parsed_selector = blk: {
-            if (self.node.owner_document) |owner| {
+            if (self.prototype.owner_document) |owner| {
                 if (owner.node_type == .document) {
                     const Document = @import("document.zig").Document;
-                    const doc: *Document = @fieldParentPtr("node", owner);
+                    const doc: *Document = @fieldParentPtr("prototype", owner);
                     break :blk try doc.selector_cache.get(selectors);
                 }
             }
@@ -1183,10 +1183,10 @@ pub const Element = struct {
                     const matcher = Matcher.init(allocator);
 
                     // Traverse descendants in tree order
-                    var current = self.node.first_child;
+                    var current = self.prototype.first_child;
                     while (current) |node| {
                         if (node.node_type == .element) {
-                            const elem: *Element = @fieldParentPtr("node", node);
+                            const elem: *Element = @fieldParentPtr("prototype", node);
 
                             if (try matcher.matches(elem, &parsed.selector_list)) {
                                 return elem;
@@ -1217,10 +1217,10 @@ pub const Element = struct {
 
         const matcher = Matcher.init(allocator);
 
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |node| {
             if (node.node_type == .element) {
-                const elem: *Element = @fieldParentPtr("node", node);
+                const elem: *Element = @fieldParentPtr("prototype", node);
 
                 if (try matcher.matches(elem, &selector_list)) {
                     return elem;
@@ -1261,11 +1261,11 @@ pub const Element = struct {
     ///
     /// const btn1 = try doc.createElement("button");
     /// try btn1.setAttribute("class", "btn");
-    /// _ = try container.node.appendChild(&btn1.node);
+    /// _ = try container.prototype.appendChild(&btn1.prototype);
     ///
     /// const btn2 = try doc.createElement("button");
     /// try btn2.setAttribute("class", "btn");
-    /// _ = try container.node.appendChild(&btn2.node);
+    /// _ = try container.prototype.appendChild(&btn2.prototype);
     ///
     /// // Find all buttons
     /// const results = try container.querySelectorAll(".btn");
@@ -1287,10 +1287,10 @@ pub const Element = struct {
     pub fn querySelectorAll(self: *Element, allocator: Allocator, selectors: []const u8) ![]const *Element {
         // Try to get parsed selector from cache if we have an owner document
         const parsed_selector = blk: {
-            if (self.node.owner_document) |owner| {
+            if (self.prototype.owner_document) |owner| {
                 if (owner.node_type == .document) {
                     const Document = @import("document.zig").Document;
-                    const doc: *Document = @fieldParentPtr("node", owner);
+                    const doc: *Document = @fieldParentPtr("prototype", owner);
                     break :blk try doc.selector_cache.get(selectors);
                 }
             }
@@ -1367,10 +1367,10 @@ pub const Element = struct {
     ) !void {
 
         // Traverse children in tree order
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |node| {
             if (node.node_type == .element) {
-                const elem: *Element = @fieldParentPtr("node", node);
+                const elem: *Element = @fieldParentPtr("prototype", node);
 
                 // Check if element matches
                 if (try matcher.matches(elem, selector_list)) {
@@ -1418,9 +1418,9 @@ pub const Element = struct {
     /// ```zig
     /// const container = try doc.createElement("container");
     /// const widget1 = try doc.createElement("widget");
-    /// _ = try container.node.appendChild(&widget1.node);
+    /// _ = try container.prototype.appendChild(&widget1.prototype);
     /// const widget2 = try doc.createElement("widget");
-    /// _ = try container.node.appendChild(&widget2.node);
+    /// _ = try container.prototype.appendChild(&widget2.prototype);
     ///
     /// const widgets = container.getElementsByTagName("widget");
     /// // widgets.length() == 2
@@ -1478,10 +1478,10 @@ pub const Element = struct {
     /// const container = try doc.createElement("container");
     /// const widget1 = try doc.createElement("widget");
     /// try widget1.setAttribute("class", "primary active");
-    /// _ = try container.node.appendChild(&widget1.node);
+    /// _ = try container.prototype.appendChild(&widget1.prototype);
     /// const widget2 = try doc.createElement("widget");
     /// try widget2.setAttribute("class", "primary");
-    /// _ = try container.node.appendChild(&widget2.node);
+    /// _ = try container.prototype.appendChild(&widget2.prototype);
     ///
     /// const primaries = container.getElementsByClassName("primary");
     /// // primaries.length() == 2
@@ -1530,17 +1530,17 @@ pub const Element = struct {
     /// const container = try doc.createElement("div");
     /// const button = try doc.createElement("button");
     /// try button.setAttribute("id", "submit-btn");
-    /// _ = try container.node.appendChild(&button.node);
+    /// _ = try container.prototype.appendChild(&button.prototype);
     ///
     /// const found = try container.queryById("submit-btn");
     /// // found == button
     /// ```
     pub fn queryById(self: *Element, id: []const u8) ?*Element {
         // Fast path: Use document ID map if available (O(1) lookup!)
-        if (self.node.owner_document) |owner| {
+        if (self.prototype.owner_document) |owner| {
             if (owner.node_type == .document) {
                 const Document = @import("document.zig").Document;
-                const doc: *Document = @fieldParentPtr("node", owner);
+                const doc: *Document = @fieldParentPtr("prototype", owner);
 
                 // Check if element with this ID exists
                 if (doc.id_map.get(id)) |elem| {
@@ -1550,9 +1550,9 @@ pub const Element = struct {
                     }
 
                     // Otherwise verify the element is actually a descendant of self
-                    var current = elem.node.parent_node;
+                    var current = elem.prototype.parent_node;
                     while (current) |parent| {
-                        if (parent == &self.node) {
+                        if (parent == &self.prototype) {
                             return elem;
                         }
                         current = parent.parent_node;
@@ -1563,7 +1563,7 @@ pub const Element = struct {
 
         // Fallback: O(n) scan if no document or element not in our subtree
         const ElementIterator = @import("element_iterator.zig").ElementIterator;
-        var iter = ElementIterator.init(&self.node);
+        var iter = ElementIterator.init(&self.prototype);
 
         while (iter.next()) |elem| {
             if (elem.getId()) |elem_id| {
@@ -1597,7 +1597,7 @@ pub const Element = struct {
     /// const container = try doc.createElement("div");
     /// const button = try doc.createElement("button");
     /// try button.setAttribute("class", "btn primary");
-    /// _ = try container.node.appendChild(&button.node);
+    /// _ = try container.prototype.appendChild(&button.prototype);
     ///
     /// const found = container.queryByClass("primary");
     /// // found == button
@@ -1606,7 +1606,7 @@ pub const Element = struct {
         // Phase 3: Tree traversal with bloom filter (class_map removed)
         // Bloom filter provides O(1) fast rejection for non-matching elements
         const ElementIterator = @import("element_iterator.zig").ElementIterator;
-        var iter = ElementIterator.init(&self.node);
+        var iter = ElementIterator.init(&self.prototype);
 
         while (iter.next()) |elem| {
             // Fast bloom filter check first
@@ -1641,17 +1641,17 @@ pub const Element = struct {
     /// ```zig
     /// const container = try doc.createElement("div");
     /// const button = try doc.createElement("button");
-    /// _ = try container.node.appendChild(&button.node);
+    /// _ = try container.prototype.appendChild(&button.prototype);
     ///
     /// const found = container.queryByTagName("button");
     /// // found == button
     /// ```
     pub fn queryByTagName(self: *Element, tag_name: []const u8) ?*Element {
         // Fast path: Use document tag map if available
-        if (self.node.owner_document) |owner| {
+        if (self.prototype.owner_document) |owner| {
             if (owner.node_type == .document) {
                 const Document = @import("document.zig").Document;
-                const doc: *Document = @fieldParentPtr("node", owner);
+                const doc: *Document = @fieldParentPtr("prototype", owner);
 
                 // Check if any elements with this tag exist
                 if (doc.tag_map.get(tag_name)) |list| {
@@ -1666,9 +1666,9 @@ pub const Element = struct {
                         }
 
                         // Verify element is descendant of self
-                        var current = elem.node.parent_node;
+                        var current = elem.prototype.parent_node;
                         while (current) |parent| {
-                            if (parent == &self.node) {
+                            if (parent == &self.prototype) {
                                 return elem;
                             }
                             current = parent.parent_node;
@@ -1680,7 +1680,7 @@ pub const Element = struct {
 
         // Fallback: O(n) scan if no document or no elements in our subtree
         const ElementIterator = @import("element_iterator.zig").ElementIterator;
-        var iter = ElementIterator.init(&self.node);
+        var iter = ElementIterator.init(&self.prototype);
 
         while (iter.next()) |elem| {
             if (std.mem.eql(u8, elem.tag_name, tag_name)) {
@@ -1712,7 +1712,7 @@ pub const Element = struct {
         var results = std.ArrayList(*Element){};
         defer results.deinit(allocator);
 
-        var iter = ElementIterator.init(&self.node);
+        var iter = ElementIterator.init(&self.prototype);
         while (iter.next()) |elem| {
             // Fast bloom filter check first
             if (!elem.class_bloom.mayContain(class_name)) continue;
@@ -1741,10 +1741,10 @@ pub const Element = struct {
     /// - `error.OutOfMemory`: Failed to allocate result array
     pub fn queryAllByTagName(self: *Element, allocator: Allocator, tag_name: []const u8) ![]const *Element {
         // Fast path: Use document tag map if available
-        if (self.node.owner_document) |owner| {
+        if (self.prototype.owner_document) |owner| {
             if (owner.node_type == .document) {
                 const Document = @import("document.zig").Document;
-                const doc: *Document = @fieldParentPtr("node", owner);
+                const doc: *Document = @fieldParentPtr("prototype", owner);
 
                 // Check if any elements with this tag exist
                 if (doc.tag_map.get(tag_name)) |list| {
@@ -1762,9 +1762,9 @@ pub const Element = struct {
                         }
 
                         // Verify element is descendant of self
-                        var current = elem.node.parent_node;
+                        var current = elem.prototype.parent_node;
                         while (current) |parent| {
-                            if (parent == &self.node) {
+                            if (parent == &self.prototype) {
                                 try results.append(allocator, elem);
                                 break;
                             }
@@ -1785,7 +1785,7 @@ pub const Element = struct {
         var results = std.ArrayList(*Element){};
         defer results.deinit(allocator);
 
-        var iter = ElementIterator.init(&self.node);
+        var iter = ElementIterator.init(&self.prototype);
         while (iter.next()) |elem| {
             if (std.mem.eql(u8, elem.tag_name, tag_name)) {
                 try results.append(allocator, elem);
@@ -1889,10 +1889,10 @@ pub const Element = struct {
     ///
     /// const form = try doc.createElement("form");
     /// try form.setAttribute("class", "login-form");
-    /// _ = try doc.node.appendChild(&form.node);
+    /// _ = try doc.prototype.appendChild(&form.prototype);
     ///
     /// const button = try doc.createElement("button");
-    /// _ = try form.node.appendChild(&button.node);
+    /// _ = try form.prototype.appendChild(&button.prototype);
     ///
     /// // Find closest form from button
     /// const closest_form = try button.closest(allocator, "form");
@@ -1941,10 +1941,10 @@ pub const Element = struct {
         }
 
         // Traverse ancestors
-        var current = self.node.parent_node;
+        var current = self.prototype.parent_node;
         while (current) |parent_node| {
             if (parent_node.node_type == .element) {
-                const parent_elem: *Element = @fieldParentPtr("node", parent_node);
+                const parent_elem: *Element = @fieldParentPtr("prototype", parent_node);
                 if (try matcher.matches(parent_elem, &selector_list)) {
                     return parent_elem;
                 }
@@ -1986,20 +1986,20 @@ pub const Element = struct {
     ///
     /// // Add mixed children
     /// const elem1 = try doc.createElement("child1");
-    /// _ = try parent.node.appendChild(&elem1.node);
+    /// _ = try parent.prototype.appendChild(&elem1.prototype);
     ///
     /// const text = try doc.createTextNode("text");
-    /// _ = try parent.node.appendChild(&text.node);
+    /// _ = try parent.prototype.appendChild(&text.prototype);
     ///
     /// const elem2 = try doc.createElement("child2");
-    /// _ = try parent.node.appendChild(&elem2.node);
+    /// _ = try parent.prototype.appendChild(&elem2.prototype);
     ///
     /// // children() returns live collection of elements only
     /// const children = parent.children();
     /// try std.testing.expectEqual(@as(usize, 2), children.length()); // Excludes text
     /// ```
     pub fn children(self: *Element) @import("html_collection.zig").HTMLCollection {
-        return @import("html_collection.zig").HTMLCollection.initChildren(&self.node);
+        return @import("html_collection.zig").HTMLCollection.initChildren(&self.prototype);
     }
 
     /// Returns the first child that is an element.
@@ -2028,18 +2028,18 @@ pub const Element = struct {
     /// ```zig
     /// const parent = try doc.createElement("parent");
     /// const text = try doc.createTextNode("text");
-    /// _ = try parent.node.appendChild(&text.node);
+    /// _ = try parent.prototype.appendChild(&text.prototype);
     /// const elem = try doc.createElement("child");
-    /// _ = try parent.node.appendChild(&elem.node);
+    /// _ = try parent.prototype.appendChild(&elem.prototype);
     ///
     /// // firstElementChild skips text node
     /// try std.testing.expect(parent.firstElementChild() == elem);
     /// ```
     pub fn firstElementChild(self: *const Element) ?*Element {
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |child| {
             if (child.node_type == .element) {
-                return @fieldParentPtr("node", child);
+                return @fieldParentPtr("prototype", child);
             }
             current = child.next_sibling;
         }
@@ -2072,18 +2072,18 @@ pub const Element = struct {
     /// ```zig
     /// const parent = try doc.createElement("parent");
     /// const elem = try doc.createElement("first");
-    /// _ = try parent.node.appendChild(&elem.node);
+    /// _ = try parent.prototype.appendChild(&elem.prototype);
     /// const text = try doc.createTextNode("text");
-    /// _ = try parent.node.appendChild(&text.node);
+    /// _ = try parent.prototype.appendChild(&text.prototype);
     ///
     /// // lastElementChild skips text node
     /// try std.testing.expect(parent.lastElementChild() == elem);
     /// ```
     pub fn lastElementChild(self: *const Element) ?*Element {
-        var current = self.node.last_child;
+        var current = self.prototype.last_child;
         while (current) |child| {
             if (child.node_type == .element) {
-                return @fieldParentPtr("node", child);
+                return @fieldParentPtr("prototype", child);
             }
             current = child.previous_sibling;
         }
@@ -2115,16 +2115,16 @@ pub const Element = struct {
     /// ## Example
     /// ```zig
     /// const parent = try doc.createElement("parent");
-    /// _ = try parent.node.appendChild(&(try doc.createElement("child1")).node);
-    /// _ = try parent.node.appendChild(&(try doc.createTextNode("text")).node);
-    /// _ = try parent.node.appendChild(&(try doc.createElement("child2")).node);
+    /// _ = try parent.prototype.appendChild(&(try doc.createElement("child1")).node);
+    /// _ = try parent.prototype.appendChild(&(try doc.createTextNode("text")).node);
+    /// _ = try parent.prototype.appendChild(&(try doc.createElement("child2")).node);
     ///
     /// // Count = 2 (excludes text node)
     /// try std.testing.expectEqual(@as(u32, 2), parent.childElementCount());
     /// ```
     pub fn childElementCount(self: *const Element) u32 {
         var count: u32 = 0;
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |child| {
             if (child.node_type == .element) {
                 count += 1;
@@ -2173,23 +2173,23 @@ pub const Element = struct {
     /// ```zig
     /// const parent = try doc.createElement("parent");
     /// const existing = try doc.createElement("existing");
-    /// _ = try parent.node.appendChild(&existing.node);
+    /// _ = try parent.prototype.appendChild(&existing.prototype);
     ///
     /// const child = try doc.createElement("child");
     /// try parent.prepend(&[_]Element.NodeOrString{
-    ///     .{ .node = &child.node },
+    ///     .{ .node = &child.prototype },
     ///     .{ .string = "text" },
     /// });
     /// // Order: child, text, existing
     /// ```
     pub fn prepend(self: *Element, nodes: []const NodeOrString) !void {
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
         if (result == null) return;
 
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try self.node.insertBefore(node_to_insert, self.node.first_child);
+        const returned_node = try self.prototype.insertBefore(node_to_insert, self.prototype.first_child);
 
         if (should_release) {
             returned_node.release();
@@ -2228,18 +2228,18 @@ pub const Element = struct {
     /// const parent = try doc.createElement("parent");
     /// const child = try doc.createElement("child");
     /// try parent.append(&[_]Element.NodeOrString{
-    ///     .{ .node = &child.node },
+    ///     .{ .node = &child.prototype },
     ///     .{ .string = "text" },
     /// });
     /// ```
     pub fn append(self: *Element, nodes: []const NodeOrString) !void {
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
         if (result == null) return;
 
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try self.node.appendChild(node_to_insert);
+        const returned_node = try self.prototype.appendChild(node_to_insert);
 
         if (should_release) {
             returned_node.release();
@@ -2277,23 +2277,23 @@ pub const Element = struct {
     /// ## Example
     /// ```zig
     /// const parent = try doc.createElement("parent");
-    /// _ = try parent.node.appendChild(&(try doc.createElement("old")).node);
+    /// _ = try parent.prototype.appendChild(&(try doc.createElement("old")).node);
     ///
     /// const new_child = try doc.createElement("new");
     /// try parent.replaceChildren(&[_]Element.NodeOrString{
-    ///     .{ .node = &new_child.node },
+    ///     .{ .node = &new_child.prototype },
     /// });
     /// ```
     pub fn replaceChildren(self: *Element, nodes: []const NodeOrString) !void {
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
 
-        while (self.node.first_child) |child| {
-            const removed = try self.node.removeChild(child);
+        while (self.prototype.first_child) |child| {
+            const removed = try self.prototype.removeChild(child);
             removed.release();
         }
 
         if (result) |r| {
-            const returned_node = try self.node.appendChild(r.node);
+            const returned_node = try self.prototype.appendChild(r.node);
             if (r.should_release_after_insert) {
                 returned_node.release();
             }
@@ -2318,7 +2318,7 @@ pub const Element = struct {
         if (owner_doc.node_type != .document) {
             return error.InvalidStateError;
         }
-        const doc: *Document = @fieldParentPtr("node", owner_doc);
+        const doc: *Document = @fieldParentPtr("prototype", owner_doc);
 
         if (items.len == 1) {
             switch (items[0]) {
@@ -2331,7 +2331,7 @@ pub const Element = struct {
                 .string => |s| {
                     const text = try doc.createTextNode(s);
                     return ConvertResult{
-                        .node = &text.node,
+                        .node = &text.prototype,
                         .should_release_after_insert = false,
                     };
                 },
@@ -2339,22 +2339,22 @@ pub const Element = struct {
         }
 
         const fragment = try doc.createDocumentFragment();
-        errdefer fragment.node.release();
+        errdefer fragment.prototype.release();
 
         for (items) |item| {
             switch (item) {
                 .node => |n| {
-                    _ = try fragment.node.appendChild(n);
+                    _ = try fragment.prototype.appendChild(n);
                 },
                 .string => |s| {
                     const text = try doc.createTextNode(s);
-                    _ = try fragment.node.appendChild(&text.node);
+                    _ = try fragment.prototype.appendChild(&text.prototype);
                 },
             }
         }
 
         return ConvertResult{
-            .node = &fragment.node,
+            .node = &fragment.prototype,
             .should_release_after_insert = true,
         };
     }
@@ -2389,20 +2389,20 @@ pub const Element = struct {
     /// ```zig
     /// const parent = try doc.createElement("parent");
     /// const elem1 = try doc.createElement("child1");
-    /// _ = try parent.node.appendChild(&elem1.node);
+    /// _ = try parent.prototype.appendChild(&elem1.prototype);
     /// const text = try doc.createTextNode("text");
-    /// _ = try parent.node.appendChild(&text.node);
+    /// _ = try parent.prototype.appendChild(&text.prototype);
     /// const elem2 = try doc.createElement("child2");
-    /// _ = try parent.node.appendChild(&elem2.node);
+    /// _ = try parent.prototype.appendChild(&elem2.prototype);
     ///
     /// // elem2.previousElementSibling() skips text node, returns elem1
     /// try std.testing.expect(elem2.previousElementSibling() == elem1);
     /// ```
     pub fn previousElementSibling(self: *const Element) ?*Element {
-        var current = self.node.previous_sibling;
+        var current = self.prototype.previous_sibling;
         while (current) |sibling| {
             if (sibling.node_type == .element) {
-                return @fieldParentPtr("node", sibling);
+                return @fieldParentPtr("prototype", sibling);
             }
             current = sibling.previous_sibling;
         }
@@ -2435,20 +2435,20 @@ pub const Element = struct {
     /// ```zig
     /// const parent = try doc.createElement("parent");
     /// const elem1 = try doc.createElement("child1");
-    /// _ = try parent.node.appendChild(&elem1.node);
+    /// _ = try parent.prototype.appendChild(&elem1.prototype);
     /// const text = try doc.createTextNode("text");
-    /// _ = try parent.node.appendChild(&text.node);
+    /// _ = try parent.prototype.appendChild(&text.prototype);
     /// const elem2 = try doc.createElement("child2");
-    /// _ = try parent.node.appendChild(&elem2.node);
+    /// _ = try parent.prototype.appendChild(&elem2.prototype);
     ///
     /// // elem1.nextElementSibling() skips text node, returns elem2
     /// try std.testing.expect(elem1.nextElementSibling() == elem2);
     /// ```
     pub fn nextElementSibling(self: *const Element) ?*Element {
-        var current = self.node.next_sibling;
+        var current = self.prototype.next_sibling;
         while (current) |sibling| {
             if (sibling.node_type == .element) {
-                return @fieldParentPtr("node", sibling);
+                return @fieldParentPtr("prototype", sibling);
             }
             current = sibling.next_sibling;
         }
@@ -2485,15 +2485,15 @@ pub const Element = struct {
     /// ```zig
     /// const parent = try doc.createElement("parent");
     /// const child = try doc.createElement("child");
-    /// _ = try parent.node.appendChild(&child.node);
+    /// _ = try parent.prototype.appendChild(&child.prototype);
     ///
     /// // Remove child from parent
     /// try child.remove();
-    /// try std.testing.expect(parent.node.first_child == null);
+    /// try std.testing.expect(parent.prototype.first_child == null);
     /// ```
     pub fn remove(self: *Element) !void {
-        if (self.node.parent_node) |parent| {
-            _ = try parent.removeChild(&self.node);
+        if (self.prototype.parent_node) |parent| {
+            _ = try parent.removeChild(&self.prototype);
         }
     }
 
@@ -2531,22 +2531,22 @@ pub const Element = struct {
     /// ```zig
     /// const parent = try doc.createElement("parent");
     /// const target = try doc.createElement("target");
-    /// _ = try parent.node.appendChild(&target.node);
+    /// _ = try parent.prototype.appendChild(&target.prototype);
     ///
     /// const new_node = try doc.createElement("new");
-    /// try target.before(&[_]NodeOrString{.{ .node = &new_node.node }});
+    /// try target.before(&[_]NodeOrString{.{ .node = &new_node.prototype }});
     /// // Order: new, target
     /// ```
     pub fn before(self: *Element, nodes: []const NodeOrString) !void {
-        const parent = self.node.parent_node orelse return;
+        const parent = self.prototype.parent_node orelse return;
 
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
         if (result == null) return;
 
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try parent.insertBefore(node_to_insert, &self.node);
+        const returned_node = try parent.insertBefore(node_to_insert, &self.prototype);
 
         if (should_release) {
             returned_node.release();
@@ -2587,22 +2587,22 @@ pub const Element = struct {
     /// ```zig
     /// const parent = try doc.createElement("parent");
     /// const target = try doc.createElement("target");
-    /// _ = try parent.node.appendChild(&target.node);
+    /// _ = try parent.prototype.appendChild(&target.prototype);
     ///
     /// const new_node = try doc.createElement("new");
-    /// try target.after(&[_]NodeOrString{.{ .node = &new_node.node }});
+    /// try target.after(&[_]NodeOrString{.{ .node = &new_node.prototype }});
     /// // Order: target, new
     /// ```
     pub fn after(self: *Element, nodes: []const NodeOrString) !void {
-        const parent = self.node.parent_node orelse return;
+        const parent = self.prototype.parent_node orelse return;
 
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
         if (result == null) return;
 
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try parent.insertBefore(node_to_insert, self.node.next_sibling);
+        const returned_node = try parent.insertBefore(node_to_insert, self.prototype.next_sibling);
 
         if (should_release) {
             returned_node.release();
@@ -2644,25 +2644,25 @@ pub const Element = struct {
     /// ```zig
     /// const parent = try doc.createElement("parent");
     /// const old = try doc.createElement("old");
-    /// _ = try parent.node.appendChild(&old.node);
+    /// _ = try parent.prototype.appendChild(&old.prototype);
     ///
     /// const new_node = try doc.createElement("new");
-    /// try old.replaceWith(&[_]NodeOrString{.{ .node = &new_node.node }});
+    /// try old.replaceWith(&[_]NodeOrString{.{ .node = &new_node.prototype }});
     /// // parent now contains: new (old is removed)
     /// ```
     pub fn replaceWith(self: *Element, nodes: []const NodeOrString) !void {
-        const parent = self.node.parent_node orelse return;
+        const parent = self.prototype.parent_node orelse return;
 
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
 
         if (result) |r| {
-            _ = try parent.replaceChild(r.node, &self.node);
+            _ = try parent.replaceChild(r.node, &self.prototype);
             if (r.should_release_after_insert) {
-                r.node.release();
+                r.prototype.release();
             }
         } else {
             // Empty nodes array - just remove self
-            _ = try parent.removeChild(&self.node);
+            _ = try parent.removeChild(&self.prototype);
         }
     }
 
@@ -2685,14 +2685,14 @@ pub const Element = struct {
 
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {
-        const elem: *Element = @fieldParentPtr("node", node);
+        const elem: *Element = @fieldParentPtr("prototype", node);
 
         // Release document reference if owned by a document
-        if (elem.node.owner_document) |owner_doc| {
+        if (elem.prototype.owner_document) |owner_doc| {
             if (owner_doc.node_type == .document) {
                 // Get Document from its node field (node is first field)
                 const Document = @import("document.zig").Document;
-                const doc: *Document = @fieldParentPtr("node", owner_doc);
+                const doc: *Document = @fieldParentPtr("prototype", owner_doc);
 
                 // Remove from tag map
                 if (doc.tag_map.getPtr(elem.tag_name)) |list_ptr| {
@@ -2712,10 +2712,10 @@ pub const Element = struct {
         }
 
         // Clean up rare data if allocated
-        elem.node.deinitRareData();
+        elem.prototype.deinitRareData();
 
         // Release all children
-        var current = elem.node.first_child;
+        var current = elem.prototype.first_child;
         while (current) |child| {
             const next = child.next_sibling;
             child.parent_node = null;
@@ -2725,12 +2725,12 @@ pub const Element = struct {
         }
 
         elem.attributes.deinit();
-        elem.node.allocator.destroy(elem);
+        elem.prototype.allocator.destroy(elem);
     }
 
     /// Vtable implementation: node name (returns tag name)
     fn nodeNameImpl(node: *const Node) []const u8 {
-        const elem: *const Element = @fieldParentPtr("node", node);
+        const elem: *const Element = @fieldParentPtr("prototype", node);
         return elem.tag_name;
     }
 
@@ -2746,14 +2746,14 @@ pub const Element = struct {
 
     /// Vtable implementation: clone node
     fn cloneNodeImpl(node: *const Node, deep: bool) !*Node {
-        const elem: *const Element = @fieldParentPtr("node", node);
+        const elem: *const Element = @fieldParentPtr("prototype", node);
 
         // Create new element with same tag
-        const cloned = try Element.create(elem.node.allocator, elem.tag_name);
-        errdefer cloned.node.release();
+        const cloned = try Element.create(elem.prototype.allocator, elem.tag_name);
+        errdefer cloned.prototype.release();
 
         // Preserve owner document (WHATWG DOM §4.5.1 Clone algorithm)
-        cloned.node.owner_document = elem.node.owner_document;
+        cloned.prototype.owner_document = elem.prototype.owner_document;
 
         // Copy attributes
         var attr_iter = elem.attributes.map.iterator();
@@ -2763,29 +2763,29 @@ pub const Element = struct {
 
         // Deep clone children if requested
         if (deep) {
-            var child = elem.node.first_child;
+            var child = elem.prototype.first_child;
             while (child) |child_node| {
                 const child_clone = try child_node.cloneNode(true);
                 errdefer child_clone.release();
-                _ = try cloned.node.appendChild(child_clone);
+                _ = try cloned.prototype.appendChild(child_clone);
                 // NO release - parent owns child (ref_count=1, has_parent=true)
                 child = child_node.next_sibling;
             }
         }
 
-        return &cloned.node;
+        return &cloned.prototype;
     }
 
     /// Vtable implementation: adopting steps
     /// Called when node is adopted into a new document
     fn adoptingStepsImpl(node: *Node, old_document: ?*Node) !void {
-        const elem: *Element = @fieldParentPtr("node", node);
+        const elem: *Element = @fieldParentPtr("prototype", node);
 
         // Remove from old document's maps if it had one
         if (old_document) |old_doc| {
             if (old_doc.node_type == .document) {
                 const Document = @import("document.zig").Document;
-                const old_doc_ptr: *Document = @fieldParentPtr("node", old_doc);
+                const old_doc_ptr: *Document = @fieldParentPtr("prototype", old_doc);
 
                 // Remove from old tag map
                 if (old_doc_ptr.tag_map.getPtr(elem.tag_name)) |list_ptr| {
@@ -2811,7 +2811,7 @@ pub const Element = struct {
         if (node.owner_document) |new_doc| {
             if (new_doc.node_type == .document) {
                 const Document = @import("document.zig").Document;
-                const new_doc_ptr: *Document = @fieldParentPtr("node", new_doc);
+                const new_doc_ptr: *Document = @fieldParentPtr("prototype", new_doc);
 
                 // Re-intern tag name in new document's string pool
                 const new_tag_name = try new_doc_ptr.string_pool.intern(elem.tag_name);
@@ -2822,7 +2822,7 @@ pub const Element = struct {
                 if (!gop.found_existing) {
                     gop.value_ptr.* = std.ArrayList(*Element){};
                 }
-                try gop.value_ptr.append(new_doc_ptr.node.allocator, elem);
+                try gop.value_ptr.append(new_doc_ptr.prototype.allocator, elem);
 
                 // NOTE: Phase 3 - class_map removed, no need to add classes
 
@@ -2903,23 +2903,23 @@ test "Element - creation and cleanup" {
     const allocator = std.testing.allocator;
 
     const elem = try Element.create(allocator, "element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Verify node properties
-    try std.testing.expectEqual(NodeType.element, elem.node.node_type);
-    try std.testing.expectEqual(@as(u32, 1), elem.node.getRefCount());
+    try std.testing.expectEqual(NodeType.element, elem.prototype.node_type);
+    try std.testing.expectEqual(@as(u32, 1), elem.prototype.getRefCount());
     try std.testing.expectEqualStrings("element", elem.tag_name);
 
     // Verify vtable dispatch
-    try std.testing.expectEqualStrings("element", elem.node.nodeName());
-    try std.testing.expect(elem.node.nodeValue() == null);
+    try std.testing.expectEqualStrings("element", elem.prototype.nodeName());
+    try std.testing.expect(elem.prototype.nodeValue() == null);
 }
 
 test "Element - attributes" {
     const allocator = std.testing.allocator;
 
     const elem = try Element.create(allocator, "element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Initially no attributes
     try std.testing.expectEqual(@as(usize, 0), elem.attributeCount());
@@ -2950,7 +2950,7 @@ test "Element - class bloom filter" {
     const allocator = std.testing.allocator;
 
     const elem = try Element.create(allocator, "element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Set class attribute
     try elem.setAttribute("class", "foo bar baz");
@@ -2976,16 +2976,16 @@ test "Element - cloneNode shallow" {
     const allocator = std.testing.allocator;
 
     const elem = try Element.create(allocator, "element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     try elem.setAttribute("id", "original");
     try elem.setAttribute("class", "foo bar");
 
     // Clone (shallow)
-    const cloned_node = try elem.node.cloneNode(false);
+    const cloned_node = try elem.prototype.cloneNode(false);
     defer cloned_node.release();
 
-    const cloned: *Element = @fieldParentPtr("node", cloned_node);
+    const cloned: *Element = @fieldParentPtr("prototype", cloned_node);
 
     // Verify clone properties
     try std.testing.expectEqualStrings("element", cloned.tag_name);
@@ -2994,8 +2994,8 @@ test "Element - cloneNode shallow" {
     try std.testing.expectEqualStrings("foo bar", cloned.getAttribute("class").?);
 
     // Verify independent ref counts
-    try std.testing.expectEqual(@as(u32, 1), elem.node.getRefCount());
-    try std.testing.expectEqual(@as(u32, 1), cloned.node.getRefCount());
+    try std.testing.expectEqual(@as(u32, 1), elem.prototype.getRefCount());
+    try std.testing.expectEqual(@as(u32, 1), cloned.prototype.getRefCount());
 }
 
 test "Element - memory leak test" {
@@ -3004,13 +3004,13 @@ test "Element - memory leak test" {
     // Test 1: Simple creation
     {
         const elem = try Element.create(allocator, "element");
-        defer elem.node.release();
+        defer elem.prototype.release();
     }
 
     // Test 2: With attributes
     {
         const elem = try Element.create(allocator, "element");
-        defer elem.node.release();
+        defer elem.prototype.release();
 
         try elem.setAttribute("id", "test");
         try elem.setAttribute("class", "foo bar");
@@ -3020,24 +3020,24 @@ test "Element - memory leak test" {
     // Test 3: Clone
     {
         const elem = try Element.create(allocator, "item");
-        defer elem.node.release();
+        defer elem.prototype.release();
 
         try elem.setAttribute("id", "original");
 
-        const cloned = try elem.node.cloneNode(false);
+        const cloned = try elem.prototype.cloneNode(false);
         defer cloned.release();
     }
 
     // Test 4: Multiple acquire/release
     {
         const elem = try Element.create(allocator, "p");
-        defer elem.node.release();
+        defer elem.prototype.release();
 
-        elem.node.acquire();
-        defer elem.node.release();
+        elem.prototype.acquire();
+        defer elem.prototype.release();
 
-        elem.node.acquire();
-        defer elem.node.release();
+        elem.prototype.acquire();
+        defer elem.prototype.release();
     }
 
     // If we reach here without leaks, std.testing.allocator validates success
@@ -3047,25 +3047,25 @@ test "Element - ref counting" {
     const allocator = std.testing.allocator;
 
     const elem = try Element.create(allocator, "element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Initial ref count
-    try std.testing.expectEqual(@as(u32, 1), elem.node.getRefCount());
+    try std.testing.expectEqual(@as(u32, 1), elem.prototype.getRefCount());
 
     // Acquire
-    elem.node.acquire();
-    try std.testing.expectEqual(@as(u32, 2), elem.node.getRefCount());
+    elem.prototype.acquire();
+    try std.testing.expectEqual(@as(u32, 2), elem.prototype.getRefCount());
 
     // Release
-    elem.node.release();
-    try std.testing.expectEqual(@as(u32, 1), elem.node.getRefCount());
+    elem.prototype.release();
+    try std.testing.expectEqual(@as(u32, 1), elem.prototype.getRefCount());
 }
 
 test "Element - id property" {
     const allocator = std.testing.allocator;
 
     const elem = try Element.create(allocator, "element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Initially no id
     try std.testing.expect(elem.getId() == null);
@@ -3086,7 +3086,7 @@ test "Element - className property" {
     const allocator = std.testing.allocator;
 
     const elem = try Element.create(allocator, "element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Initially no class (returns empty string)
     try std.testing.expectEqualStrings("", elem.getClassName());
@@ -3107,7 +3107,7 @@ test "Element - hasAttributes" {
     const allocator = std.testing.allocator;
 
     const elem = try Element.create(allocator, "element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Initially no attributes
     try std.testing.expect(!elem.hasAttributes());
@@ -3130,7 +3130,7 @@ test "Element - getAttributeNames" {
     const allocator = std.testing.allocator;
 
     const elem = try Element.create(allocator, "element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Initially no attributes
     {
@@ -3172,7 +3172,7 @@ test "Element - localName property" {
     const allocator = std.testing.allocator;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // For non-namespaced elements, localName === tagName
     try std.testing.expectEqualStrings("div", elem.localName());
@@ -3183,7 +3183,7 @@ test "Element - localName for custom element" {
     const allocator = std.testing.allocator;
 
     const elem = try Element.create(allocator, "my-custom-element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     try std.testing.expectEqualStrings("my-custom-element", elem.localName());
 }
@@ -3199,15 +3199,15 @@ test "Element - queryById fast path" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("id", "submit-btn");
-    _ = try container.node.appendChild(&button.node);
+    _ = try container.prototype.appendChild(&button.prototype);
 
     const span = try doc.createElement("span");
     try span.setAttribute("id", "label");
-    _ = try container.node.appendChild(&span.node);
+    _ = try container.prototype.appendChild(&span.prototype);
 
     // Find by ID
     const found = container.queryById("submit-btn");
@@ -3231,15 +3231,15 @@ test "Element - queryByClass fast path" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const button1 = try doc.createElement("button");
     try button1.setAttribute("class", "btn primary");
-    _ = try container.node.appendChild(&button1.node);
+    _ = try container.prototype.appendChild(&button1.prototype);
 
     const button2 = try doc.createElement("button");
     try button2.setAttribute("class", "btn secondary");
-    _ = try container.node.appendChild(&button2.node);
+    _ = try container.prototype.appendChild(&button2.prototype);
 
     // Find first .primary
     const found = container.queryByClass("primary");
@@ -3263,13 +3263,13 @@ test "Element - queryByTagName fast path" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const button = try doc.createElement("button");
-    _ = try container.node.appendChild(&button.node);
+    _ = try container.prototype.appendChild(&button.prototype);
 
     const span = try doc.createElement("span");
-    _ = try container.node.appendChild(&span.node);
+    _ = try container.prototype.appendChild(&span.prototype);
 
     // Find button
     const found_button = container.queryByTagName("button");
@@ -3293,19 +3293,19 @@ test "Element - queryAllByClass fast path" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const button1 = try doc.createElement("button");
     try button1.setAttribute("class", "btn primary");
-    _ = try container.node.appendChild(&button1.node);
+    _ = try container.prototype.appendChild(&button1.prototype);
 
     const button2 = try doc.createElement("button");
     try button2.setAttribute("class", "btn secondary");
-    _ = try container.node.appendChild(&button2.node);
+    _ = try container.prototype.appendChild(&button2.prototype);
 
     const span = try doc.createElement("span");
     try span.setAttribute("class", "primary");
-    _ = try container.node.appendChild(&span.node);
+    _ = try container.prototype.appendChild(&span.prototype);
 
     // Find all .btn
     const btns = try container.queryAllByClass(allocator, "btn");
@@ -3332,16 +3332,16 @@ test "Element - queryAllByTagName fast path" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const button1 = try doc.createElement("button");
-    _ = try container.node.appendChild(&button1.node);
+    _ = try container.prototype.appendChild(&button1.prototype);
 
     const button2 = try doc.createElement("button");
-    _ = try container.node.appendChild(&button2.node);
+    _ = try container.prototype.appendChild(&button2.prototype);
 
     const span = try doc.createElement("span");
-    _ = try container.node.appendChild(&span.node);
+    _ = try container.prototype.appendChild(&span.prototype);
 
     // Find all buttons
     const buttons = try container.queryAllByTagName(allocator, "button");
@@ -3372,11 +3372,11 @@ test "Element - querySelector uses cache with simple ID" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("id", "submit");
-    _ = try container.node.appendChild(&button.node);
+    _ = try container.prototype.appendChild(&button.prototype);
 
     // First query should parse and cache
     const result1 = try container.querySelector(allocator, "#submit");
@@ -3398,11 +3398,11 @@ test "Element - querySelector uses cache with simple class" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("class", "primary");
-    _ = try container.node.appendChild(&button.node);
+    _ = try container.prototype.appendChild(&button.prototype);
 
     // First query should parse and cache
     const result1 = try container.querySelector(allocator, ".primary");
@@ -3424,15 +3424,15 @@ test "Element - querySelectorAll uses cache with simple class" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const button1 = try doc.createElement("button");
     try button1.setAttribute("class", "btn");
-    _ = try container.node.appendChild(&button1.node);
+    _ = try container.prototype.appendChild(&button1.prototype);
 
     const button2 = try doc.createElement("button");
     try button2.setAttribute("class", "btn");
-    _ = try container.node.appendChild(&button2.node);
+    _ = try container.prototype.appendChild(&button2.prototype);
 
     // First query should parse and cache
     const results1 = try container.querySelectorAll(allocator, ".btn");
@@ -3454,12 +3454,12 @@ test "Element - multiple different selectors cached" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("id", "submit");
     try button.setAttribute("class", "btn primary");
-    _ = try container.node.appendChild(&button.node);
+    _ = try container.prototype.appendChild(&button.prototype);
 
     // Query by ID
     _ = try container.querySelector(allocator, "#submit");
@@ -3489,15 +3489,15 @@ test "Element - queryById uses id_map when available" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Build nested structure
     const container = try doc.createElement("div");
-    _ = try root.node.appendChild(&container.node);
+    _ = try root.prototype.appendChild(&container.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("id", "deep-button");
-    _ = try container.node.appendChild(&button.node);
+    _ = try container.prototype.appendChild(&button.prototype);
 
     // queryById on root should find button via O(1) id_map lookup
     const found = root.queryById("deep-button");
@@ -3512,18 +3512,18 @@ test "Element - queryById only returns descendants" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Create two separate branches
     const branch1 = try doc.createElement("div");
-    _ = try root.node.appendChild(&branch1.node);
+    _ = try root.prototype.appendChild(&branch1.prototype);
 
     const branch2 = try doc.createElement("div");
-    _ = try root.node.appendChild(&branch2.node);
+    _ = try root.prototype.appendChild(&branch2.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("id", "target");
-    _ = try branch2.node.appendChild(&button.node);
+    _ = try branch2.prototype.appendChild(&button.prototype);
 
     // queryById on branch1 should NOT find button (different subtree)
     const not_found = branch1.queryById("target");
@@ -3542,21 +3542,21 @@ test "Element - querySelector #id uses id_map" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Create deeply nested structure
     const div1 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div1.node);
+    _ = try root.prototype.appendChild(&div1.prototype);
 
     const div2 = try doc.createElement("div");
-    _ = try div1.node.appendChild(&div2.node);
+    _ = try div1.prototype.appendChild(&div2.prototype);
 
     const div3 = try doc.createElement("div");
-    _ = try div2.node.appendChild(&div3.node);
+    _ = try div2.prototype.appendChild(&div3.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("id", "deep-target");
-    _ = try div3.node.appendChild(&button.node);
+    _ = try div3.prototype.appendChild(&button.prototype);
 
     // querySelector should use O(1) id_map lookup
     const found = try root.querySelector(allocator, "#deep-target");
@@ -3571,10 +3571,10 @@ test "Element - setAttribute updates id_map" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button = try doc.createElement("button");
-    _ = try root.node.appendChild(&button.node);
+    _ = try root.prototype.appendChild(&button.prototype);
 
     // Set ID
     try button.setAttribute("id", "original");
@@ -3593,11 +3593,11 @@ test "Element - removeAttribute cleans id_map" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("id", "temp");
-    _ = try root.node.appendChild(&button.node);
+    _ = try root.prototype.appendChild(&button.prototype);
 
     // ID should be in map
     try std.testing.expect(doc.getElementById("temp").? == button);
@@ -3618,16 +3618,16 @@ test "Element - queryByTagName uses tag_map" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const div1 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div1.node);
+    _ = try root.prototype.appendChild(&div1.prototype);
 
     const button = try doc.createElement("button");
-    _ = try div1.node.appendChild(&button.node);
+    _ = try div1.prototype.appendChild(&button.prototype);
 
     const div2 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div2.node);
+    _ = try root.prototype.appendChild(&div2.prototype);
 
     // queryByTagName should use O(k) tag_map lookup
     const found = root.queryByTagName("button");
@@ -3642,16 +3642,16 @@ test "Element - queryAllByTagName uses tag_map" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const div1 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div1.node);
+    _ = try root.prototype.appendChild(&div1.prototype);
 
     const div2 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div2.node);
+    _ = try root.prototype.appendChild(&div2.prototype);
 
     const button = try doc.createElement("button");
-    _ = try root.node.appendChild(&button.node);
+    _ = try root.prototype.appendChild(&button.prototype);
 
     // queryAllByTagName should use tag_map
     const divs = try root.queryAllByTagName(allocator, "div");
@@ -3666,10 +3666,10 @@ test "Element - querySelector tag uses tag_map" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button = try doc.createElement("button");
-    _ = try root.node.appendChild(&button.node);
+    _ = try root.prototype.appendChild(&button.prototype);
 
     // querySelector("tag") should use O(k) tag_map lookup
     const found = try root.querySelector(allocator, "button");
@@ -3688,18 +3688,18 @@ test "Element - queryByClass uses class_map" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const div1 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div1.node);
+    _ = try root.prototype.appendChild(&div1.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("class", "btn primary");
-    _ = try div1.node.appendChild(&button.node);
+    _ = try div1.prototype.appendChild(&button.prototype);
 
     const div2 = try doc.createElement("div");
     try div2.setAttribute("class", "container");
-    _ = try root.node.appendChild(&div2.node);
+    _ = try root.prototype.appendChild(&div2.prototype);
 
     // queryByClass should use O(k) class_map lookup
     const found = root.queryByClass("btn");
@@ -3719,19 +3719,19 @@ test "Element - queryAllByClass uses class_map" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button1 = try doc.createElement("button");
     try button1.setAttribute("class", "btn");
-    _ = try root.node.appendChild(&button1.node);
+    _ = try root.prototype.appendChild(&button1.prototype);
 
     const button2 = try doc.createElement("button");
     try button2.setAttribute("class", "btn primary");
-    _ = try root.node.appendChild(&button2.node);
+    _ = try root.prototype.appendChild(&button2.prototype);
 
     const div = try doc.createElement("div");
     try div.setAttribute("class", "container");
-    _ = try root.node.appendChild(&div.node);
+    _ = try root.prototype.appendChild(&div.prototype);
 
     // queryAllByClass should use class_map
     const btns = try root.queryAllByClass(allocator, "btn");
@@ -3746,11 +3746,11 @@ test "Element - querySelector .class uses class_map" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("class", "btn");
-    _ = try root.node.appendChild(&button.node);
+    _ = try root.prototype.appendChild(&button.prototype);
 
     // querySelector(".class") should use O(k) class_map lookup
     const found = try root.querySelector(allocator, ".btn");
@@ -3765,11 +3765,11 @@ test "Element - class_map with multiple classes per element" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("class", "btn btn-primary active");
-    _ = try root.node.appendChild(&button.node);
+    _ = try root.prototype.appendChild(&button.prototype);
 
     // Should find element by any of its classes
     const by_btn = root.queryByClass("btn");
@@ -3789,11 +3789,11 @@ test "Element - queryByClass only returns descendants" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const div = try doc.createElement("div");
     try div.setAttribute("class", "container");
-    _ = try root.node.appendChild(&div.node);
+    _ = try root.prototype.appendChild(&div.prototype);
 
     // Querying from div for "container" should not find itself
     const found = div.queryByClass("container");
@@ -3803,7 +3803,7 @@ test "Element - queryByClass only returns descendants" {
 test "Element - toggleAttribute basic toggle" {
     const allocator = std.testing.allocator;
     const elem = try Element.create(allocator, "button");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Initially no disabled attribute
     try std.testing.expect(!elem.hasAttribute("disabled"));
@@ -3822,7 +3822,7 @@ test "Element - toggleAttribute basic toggle" {
 test "Element - toggleAttribute with force parameter" {
     const allocator = std.testing.allocator;
     const elem = try Element.create(allocator, "button");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Force add (attribute not present)
     const forced_add = try elem.toggleAttribute("disabled", true);
@@ -3848,7 +3848,7 @@ test "Element - toggleAttribute with force parameter" {
 test "Element - toggleAttribute with empty value" {
     const allocator = std.testing.allocator;
     const elem = try Element.create(allocator, "button");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Toggle adds attribute with empty value
     _ = try elem.toggleAttribute("disabled", null);
@@ -3865,7 +3865,7 @@ test "Element - children returns empty collection" {
     defer doc.release();
 
     const parent = try doc.createElement("parent");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const collection = parent.children();
     try std.testing.expectEqual(@as(usize, 0), collection.length());
@@ -3879,23 +3879,23 @@ test "Element - children excludes non-element nodes" {
     defer doc.release();
 
     const parent = try doc.createElement("parent");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     // Add mixed children: element, text, element, comment, element
     const elem1 = try doc.createElement("elem1");
-    _ = try parent.node.appendChild(&elem1.node);
+    _ = try parent.prototype.appendChild(&elem1.prototype);
 
     const text = try doc.createTextNode("text");
-    _ = try parent.node.appendChild(&text.node);
+    _ = try parent.prototype.appendChild(&text.prototype);
 
     const elem2 = try doc.createElement("elem2");
-    _ = try parent.node.appendChild(&elem2.node);
+    _ = try parent.prototype.appendChild(&elem2.prototype);
 
     const comment = try doc.createComment("comment");
-    _ = try parent.node.appendChild(&comment.node);
+    _ = try parent.prototype.appendChild(&comment.prototype);
 
     const elem3 = try doc.createElement("elem3");
-    _ = try parent.node.appendChild(&elem3.node);
+    _ = try parent.prototype.appendChild(&elem3.prototype);
 
     // children should only include elements
     const collection = parent.children();
@@ -3914,7 +3914,7 @@ test "Element - children is live collection" {
     defer doc.release();
 
     const parent = try doc.createElement("parent");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const collection = parent.children();
 
@@ -3923,22 +3923,22 @@ test "Element - children is live collection" {
 
     // Add element - collection updates
     const child1 = try doc.createElement("child1");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
     try std.testing.expectEqual(@as(usize, 1), collection.length());
 
     // Add text - collection does NOT update
     const text = try doc.createTextNode("text");
-    _ = try parent.node.appendChild(&text.node);
+    _ = try parent.prototype.appendChild(&text.prototype);
     try std.testing.expectEqual(@as(usize, 1), collection.length());
 
     // Add another element - collection updates
     const child2 = try doc.createElement("child2");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
     try std.testing.expectEqual(@as(usize, 2), collection.length());
 
     // Remove element - collection updates
-    _ = try parent.node.removeChild(&child1.node);
-    child1.node.release(); // Manual release for removed node
+    _ = try parent.prototype.removeChild(&child1.prototype);
+    child1.prototype.release(); // Manual release for removed node
     try std.testing.expectEqual(@as(usize, 1), collection.length());
     try std.testing.expectEqualStrings("child2", collection.item(0).?.tag_name);
 }
@@ -3947,16 +3947,16 @@ test "Element - getElementsByTagName basic" {
     const allocator = std.testing.allocator;
 
     const root = try Element.create(allocator, "root");
-    defer root.node.release();
+    defer root.prototype.release();
 
     const widget1 = try Element.create(allocator, "widget");
-    _ = try root.node.appendChild(&widget1.node);
+    _ = try root.prototype.appendChild(&widget1.prototype);
 
     const widget2 = try Element.create(allocator, "widget");
-    _ = try root.node.appendChild(&widget2.node);
+    _ = try root.prototype.appendChild(&widget2.prototype);
 
     const container = try Element.create(allocator, "container");
-    _ = try root.node.appendChild(&container.node);
+    _ = try root.prototype.appendChild(&container.prototype);
 
     // Get all widgets
     const widgets = root.getElementsByTagName("widget");
@@ -3978,19 +3978,19 @@ test "Element - getElementsByTagName nested" {
     const allocator = std.testing.allocator;
 
     const root = try Element.create(allocator, "root");
-    defer root.node.release();
+    defer root.prototype.release();
 
     const container1 = try Element.create(allocator, "container");
-    _ = try root.node.appendChild(&container1.node);
+    _ = try root.prototype.appendChild(&container1.prototype);
 
     const widget1 = try Element.create(allocator, "widget");
-    _ = try container1.node.appendChild(&widget1.node);
+    _ = try container1.prototype.appendChild(&widget1.prototype);
 
     const container2 = try Element.create(allocator, "container");
-    _ = try root.node.appendChild(&container2.node);
+    _ = try root.prototype.appendChild(&container2.prototype);
 
     const widget2 = try Element.create(allocator, "widget");
-    _ = try container2.node.appendChild(&widget2.node);
+    _ = try container2.prototype.appendChild(&widget2.prototype);
 
     // Get all widgets from root
     const all_widgets = root.getElementsByTagName("widget");
@@ -4006,19 +4006,19 @@ test "Element - getElementsByClassName basic" {
     const allocator = std.testing.allocator;
 
     const root = try Element.create(allocator, "root");
-    defer root.node.release();
+    defer root.prototype.release();
 
     const widget1 = try Element.create(allocator, "widget");
     try widget1.setAttribute("class", "primary active");
-    _ = try root.node.appendChild(&widget1.node);
+    _ = try root.prototype.appendChild(&widget1.prototype);
 
     const widget2 = try Element.create(allocator, "widget");
     try widget2.setAttribute("class", "primary");
-    _ = try root.node.appendChild(&widget2.node);
+    _ = try root.prototype.appendChild(&widget2.prototype);
 
     const container = try Element.create(allocator, "container");
     try container.setAttribute("class", "secondary");
-    _ = try root.node.appendChild(&container.node);
+    _ = try root.prototype.appendChild(&container.prototype);
 
     // Get all "primary" elements
     const primaries = root.getElementsByClassName("primary");
@@ -4045,23 +4045,23 @@ test "Element - getElementsByClassName nested" {
     const allocator = std.testing.allocator;
 
     const root = try Element.create(allocator, "root");
-    defer root.node.release();
+    defer root.prototype.release();
 
     const container1 = try Element.create(allocator, "container");
     try container1.setAttribute("class", "group");
-    _ = try root.node.appendChild(&container1.node);
+    _ = try root.prototype.appendChild(&container1.prototype);
 
     const widget1 = try Element.create(allocator, "widget");
     try widget1.setAttribute("class", "item");
-    _ = try container1.node.appendChild(&widget1.node);
+    _ = try container1.prototype.appendChild(&widget1.prototype);
 
     const container2 = try Element.create(allocator, "container");
     try container2.setAttribute("class", "group");
-    _ = try root.node.appendChild(&container2.node);
+    _ = try root.prototype.appendChild(&container2.prototype);
 
     const widget2 = try Element.create(allocator, "widget");
     try widget2.setAttribute("class", "item");
-    _ = try container2.node.appendChild(&widget2.node);
+    _ = try container2.prototype.appendChild(&widget2.prototype);
 
     // Get all "item" elements from root
     const all_items = root.getElementsByClassName("item");

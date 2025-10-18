@@ -12,8 +12,8 @@ test "Node.baseURI returns a string" {
     defer doc.release();
 
     const element = try doc.createElement("div");
-    defer element.node.release(); // Must release orphaned nodes
-    const base_uri = element.node.baseURI();
+    defer element.prototype.release(); // Must release orphaned nodes
+    const base_uri = element.prototype.baseURI();
 
     // baseURI should return a string (even if placeholder)
     try std.testing.expect(base_uri.len >= 0);
@@ -25,12 +25,12 @@ test "Node.baseURI for elements in document" {
     defer doc.release();
 
     const body = try doc.createElement("body");
-    _ = try doc.node.appendChild(&body.node);
+    _ = try doc.prototype.appendChild(&body.node);
 
     const element = try doc.createElement("div");
-    _ = try body.node.appendChild(&element.node);
+    _ = try body.prototype.appendChild(&element.node);
 
-    const base_uri = element.node.baseURI();
+    const base_uri = element.prototype.baseURI();
 
     // Should return a valid string
     try std.testing.expect(base_uri.len >= 0);
@@ -42,8 +42,8 @@ test "Node.baseURI for detached elements" {
     defer doc.release();
 
     const element = try doc.createElement("div");
-    defer element.node.release(); // Must release orphaned nodes
-    const base_uri = element.node.baseURI();
+    defer element.prototype.release(); // Must release orphaned nodes
+    const base_uri = element.prototype.baseURI();
 
     // Detached elements should still return a baseURI
     try std.testing.expect(base_uri.len >= 0);

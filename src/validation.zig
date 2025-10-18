@@ -27,44 +27,44 @@
 //! Validates node can be inserted into parent before child:
 //! ```zig
 //! const parent = try Element.create(allocator, "div");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
 //! const child = try Element.create(allocator, "span");
 //!
 //! // Validate before inserting
-//! try ensurePreInsertValidity(&child.node, &parent.node, null);
+//! try ensurePreInsertValidity(&child.prototype, &parent.prototype, null);
 //! // If validation passes, insertion is safe
-//! _ = try parent.node.appendChild(&child.node);
+//! _ = try parent.prototype.appendChild(&child.prototype);
 //! ```
 //!
 //! ### Replace Validation
 //! Validates node can replace child in parent:
 //! ```zig
 //! const parent = try Element.create(allocator, "div");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
 //! const old_child = try Element.create(allocator, "span");
-//! _ = try parent.node.appendChild(&old_child.node);
+//! _ = try parent.prototype.appendChild(&old_child.prototype);
 //!
 //! const new_child = try Element.create(allocator, "p");
 //!
 //! // Validate replacement
-//! try ensureReplaceValidity(new_child, &parent.node, &old_child.node);
-//! _ = try parent.node.replaceChild(new_child, &old_child.node);
+//! try ensureReplaceValidity(new_child, &parent.prototype, &old_child.prototype);
+//! _ = try parent.prototype.replaceChild(new_child, &old_child.prototype);
 //! ```
 //!
 //! ### Pre-Remove Validation
 //! Validates child can be removed from parent:
 //! ```zig
 //! const parent = try Element.create(allocator, "div");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
 //! const child = try Element.create(allocator, "span");
-//! _ = try parent.node.appendChild(&child.node);
+//! _ = try parent.prototype.appendChild(&child.prototype);
 //!
 //! // Validate removal
-//! try ensurePreRemoveValidity(&child.node, &parent.node);
-//! _ = try parent.node.removeChild(&child.node);
+//! try ensurePreRemoveValidity(&child.prototype, &parent.prototype);
+//! _ = try parent.prototype.removeChild(&child.prototype);
 //! ```
 //!
 //! ## Validation Rules
@@ -128,16 +128,16 @@
 //! ### Preventing Circular References
 //! ```zig
 //! const grandparent = try Element.create(allocator, "div");
-//! defer grandparent.node.release();
+//! defer grandparent.prototype.release();
 //!
 //! const parent = try Element.create(allocator, "div");
-//! _ = try grandparent.node.appendChild(&parent.node);
+//! _ = try grandparent.prototype.appendChild(&parent.prototype);
 //!
 //! const child = try Element.create(allocator, "span");
-//! _ = try parent.node.appendChild(&child.node);
+//! _ = try parent.prototype.appendChild(&child.prototype);
 //!
 //! // Try to create circular reference (child → parent → grandparent → child)
-//! const result = ensurePreInsertValidity(&grandparent.node, &child.node, null);
+//! const result = ensurePreInsertValidity(&grandparent.prototype, &child.prototype, null);
 //! // Returns error.HierarchyRequestError ✅
 //! ```
 //!
@@ -147,10 +147,10 @@
 //! defer doc.release();
 //!
 //! const html = try doc.createElement("html");
-//! _ = try doc.node.appendChild(&html.node); // First element - OK
+//! _ = try doc.prototype.appendChild(&html.prototype); // First element - OK
 //!
 //! const html2 = try doc.createElement("html");
-//! const result = ensurePreInsertValidity(&html2.node, &doc.node, null);
+//! const result = ensurePreInsertValidity(&html2.prototype, &doc.prototype, null);
 //! // Returns error.HierarchyRequestError (Document already has element child)
 //! ```
 //!
@@ -627,23 +627,23 @@ test "validation - circular reference detection" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("span");
-    defer child.node.release();
+    defer child.prototype.release();
 
     // Set up parent-child relationship first
-    child.node.parent_node = &parent.node;
-    parent.node.first_child = &child.node;
-    parent.node.last_child = &child.node;
+    child.prototype.parent_node = &parent.prototype;
+    parent.prototype.first_child = &child.prototype;
+    parent.prototype.last_child = &child.prototype;
     defer {
-        child.node.parent_node = null;
-        parent.node.first_child = null;
-        parent.node.last_child = null;
+        child.prototype.parent_node = null;
+        parent.prototype.first_child = null;
+        parent.prototype.last_child = null;
     }
 
     // Try to insert parent into its own child (circular)
-    const result = ensurePreInsertValidity(&parent.node, &child.node, null);
+    const result = ensurePreInsertValidity(&parent.prototype, &child.prototype, null);
     try std.testing.expectError(error.HierarchyRequestError, result);
 }
 
@@ -654,13 +654,13 @@ test "validation - invalid parent type" {
     defer doc.release();
 
     const text = try doc.createTextNode("text");
-    defer text.node.release();
+    defer text.prototype.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Try to insert into text node (invalid parent)
-    const result = ensurePreInsertValidity(&elem.node, &text.node, null);
+    const result = ensurePreInsertValidity(&elem.prototype, &text.prototype, null);
     try std.testing.expectError(error.HierarchyRequestError, result);
 }
 
@@ -671,16 +671,16 @@ test "validation - child parent mismatch" {
     defer doc.release();
 
     const parent1 = try doc.createElement("div");
-    defer parent1.node.release();
+    defer parent1.prototype.release();
 
     const parent2 = try doc.createElement("span");
-    defer parent2.node.release();
+    defer parent2.prototype.release();
 
     const child = try doc.createElement("p");
-    defer child.node.release();
+    defer child.prototype.release();
 
     // Child's parent is not parent2
-    const result = ensurePreInsertValidity(&child.node, &parent2.node, &child.node);
+    const result = ensurePreInsertValidity(&child.prototype, &parent2.prototype, &child.prototype);
     try std.testing.expectError(error.NotFoundError, result);
 }
 
@@ -691,10 +691,10 @@ test "validation - text node into document" {
     defer doc.release();
 
     const text = try doc.createTextNode("text");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Text cannot be child of document
-    const result = ensurePreInsertValidity(&text.node, &doc.node, null);
+    const result = ensurePreInsertValidity(&text.prototype, &doc.prototype, null);
     try std.testing.expectError(error.HierarchyRequestError, result);
 }
 
@@ -705,12 +705,12 @@ test "validation - pre-remove with wrong parent" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("span");
-    defer child.node.release();
+    defer child.prototype.release();
 
     // Child's parent is null, not parent
-    const result = ensurePreRemoveValidity(&child.node, &parent.node);
+    const result = ensurePreRemoveValidity(&child.prototype, &parent.prototype);
     try std.testing.expectError(error.NotFoundError, result);
 }

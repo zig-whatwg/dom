@@ -45,7 +45,7 @@
 //! All nodes know their owner document:
 //! ```zig
 //! const elem = try doc.createElement("span");
-//! // elem.node.owner_document == &doc.node
+//! // elem.prototype.owner_document == &doc.node
 //! ```
 //!
 //! ## Document Architecture
@@ -85,18 +85,18 @@
 //! // Create root element
 //! const html = try doc.createElement("html");
 //! doc.document_element = html;
-//! _ = try doc.node.appendChild(&html.node);
+//! _ = try doc.prototype.appendChild(&html.prototype);
 //!
 //! // Build tree
 //! const body = try doc.createElement("body");
-//! _ = try html.node.appendChild(&body.node);
+//! _ = try html.prototype.appendChild(&body.prototype);
 //!
 //! const div = try doc.createElement("div");
 //! try div.setAttribute("id", "content");
-//! _ = try body.node.appendChild(&div.node);
+//! _ = try body.prototype.appendChild(&div.prototype);
 //!
 //! const text = try doc.createTextNode("Hello, World!");
-//! _ = try div.node.appendChild(&text.node);
+//! _ = try div.prototype.appendChild(&text.prototype);
 //! ```
 //!
 //! ### Building HTML Document
@@ -110,33 +110,33 @@
 //! const head = try doc.createElement("head");
 //! const body = try doc.createElement("body");
 //!
-//! _ = try html.node.appendChild(&head.node);
-//! _ = try html.node.appendChild(&body.node);
+//! _ = try html.prototype.appendChild(&head.prototype);
+//! _ = try html.prototype.appendChild(&body.prototype);
 //! doc.document_element = html;
-//! _ = try doc.node.appendChild(&html.node);
+//! _ = try doc.prototype.appendChild(&html.prototype);
 //!
 //! // Add title
 //! const title = try doc.createElement("title");
 //! const title_text = try doc.createTextNode("My Page");
-//! _ = try title.node.appendChild(&title_text.node);
-//! _ = try head.node.appendChild(&title.node);
+//! _ = try title.prototype.appendChild(&title_text.prototype);
+//! _ = try head.prototype.appendChild(&title.prototype);
 //! ```
 //!
 //! ### Creating Document Fragment
 //!
 //! ```zig
 //! const frag = try doc.createDocumentFragment();
-//! defer frag.node.release();
+//! defer frag.prototype.release();
 //!
 //! // Build fragment
 //! const li1 = try doc.createElement("li");
 //! const li2 = try doc.createElement("li");
-//! _ = try frag.node.appendChild(&li1.node);
-//! _ = try frag.node.appendChild(&li2.node);
+//! _ = try frag.prototype.appendChild(&li1.prototype);
+//! _ = try frag.prototype.appendChild(&li2.prototype);
 //!
 //! // Insert fragment into document
 //! const ul = try doc.createElement("ul");
-//! _ = try ul.node.appendChild(&frag.node);
+//! _ = try ul.prototype.appendChild(&frag.prototype);
 //! // Fragment's children moved to ul
 //! ```
 //!
@@ -151,7 +151,7 @@
 //!
 //!     const html = try doc.createElement("html");
 //!     doc.document_element = html;
-//!     _ = try doc.node.appendChild(&html.node);
+//!     _ = try doc.prototype.appendChild(&html.prototype);
 //!
 //!     return doc;
 //! }
@@ -467,7 +467,7 @@ pub const SelectorCache = struct {
 /// Document remains alive while EITHER count > 0.
 pub const Document = struct {
     /// Base Node (MUST be first field for @fieldParentPtr)
-    node: Node,
+    prototype: Node,
 
     /// External reference count (from application code)
     /// Atomic for thread safety
@@ -544,7 +544,7 @@ pub const Document = struct {
     /// defer doc.release();
     ///
     /// const elem = try doc.createElement("div");
-    /// defer elem.node.release();
+    /// defer elem.prototype.release();
     /// ```
     pub fn init(allocator: Allocator) !*Document {
         const doc = try allocator.create(Document);
@@ -573,7 +573,7 @@ pub const Document = struct {
         // NOTE: class_map removed in Phase 3 - no longer needed
 
         // Initialize base Node
-        doc.node = .{
+        doc.prototype = .{
             .vtable = &vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .document,
@@ -586,7 +586,7 @@ pub const Document = struct {
             .first_child = null,
             .last_child = null,
             .next_sibling = null,
-            .owner_document = &doc.node, // Document owns itself
+            .owner_document = &doc.prototype, // Document owns itself
             .rare_data = null,
         };
 
@@ -626,7 +626,7 @@ pub const Document = struct {
             self.is_destroying = true;
 
             // Release tree nodes cleanly (calls their deinit hooks)
-            var current = self.node.first_child;
+            var current = self.prototype.first_child;
             while (current) |child| {
                 const next = child.next_sibling;
                 child.parent_node = null;
@@ -636,8 +636,8 @@ pub const Document = struct {
             }
 
             // Clear child pointers
-            self.node.first_child = null;
-            self.node.last_child = null;
+            self.prototype.first_child = null;
+            self.prototype.last_child = null;
 
             // Force cleanup regardless of node_ref_count
             // Orphaned nodes (created but never inserted) are freed by arena.deinit()
@@ -685,12 +685,12 @@ pub const Document = struct {
 
         // Create element using general-purpose allocator (required for cross-document adoption)
         // NOTE: Cannot use arena allocator because nodes may be adopted to other documents
-        const elem = try Element.create(self.node.allocator, interned_tag);
-        errdefer elem.node.release();
+        const elem = try Element.create(self.prototype.allocator, interned_tag);
+        errdefer elem.prototype.release();
 
         // Set owner document and assign node ID
-        elem.node.owner_document = &self.node;
-        elem.node.node_id = self.allocateNodeId();
+        elem.prototype.owner_document = &self.prototype;
+        elem.prototype.node_id = self.allocateNodeId();
 
         // Increment document's node ref count
         self.acquireNodeRef();
@@ -713,12 +713,12 @@ pub const Document = struct {
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate text node
     pub fn createTextNode(self: *Document, data: []const u8) !*Text {
-        const text = try Text.create(self.node.allocator, data);
-        errdefer text.node.release();
+        const text = try Text.create(self.prototype.allocator, data);
+        errdefer text.prototype.release();
 
         // Set owner document and assign node ID
-        text.node.owner_document = &self.node;
-        text.node.node_id = self.allocateNodeId();
+        text.prototype.owner_document = &self.prototype;
+        text.prototype.node_id = self.allocateNodeId();
 
         // Increment document's node ref count
         self.acquireNodeRef();
@@ -737,12 +737,12 @@ pub const Document = struct {
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate comment node
     pub fn createComment(self: *Document, data: []const u8) !*Comment {
-        const comment = try Comment.create(self.node.allocator, data);
-        errdefer comment.node.release();
+        const comment = try Comment.create(self.prototype.allocator, data);
+        errdefer comment.prototype.release();
 
         // Set owner document and assign node ID
-        comment.node.owner_document = &self.node;
-        comment.node.node_id = self.allocateNodeId();
+        comment.prototype.owner_document = &self.prototype;
+        comment.prototype.node_id = self.allocateNodeId();
 
         // Increment document's node ref count
         self.acquireNodeRef();
@@ -763,7 +763,7 @@ pub const Document = struct {
     /// Create a new DocumentFragment node with its node document set to this.
     ///
     /// ## Memory Management
-    /// Returns DocumentFragment with ref_count=1. Caller MUST call `fragment.node.release()`.
+    /// Returns DocumentFragment with ref_count=1. Caller MUST call `fragment.prototype.release()`.
     ///
     /// ## Returns
     /// New document fragment owned by this document
@@ -781,24 +781,24 @@ pub const Document = struct {
     /// defer doc.release();
     ///
     /// const fragment = try doc.createDocumentFragment();
-    /// defer fragment.node.release();
+    /// defer fragment.prototype.release();
     ///
     /// // Add elements to fragment
     /// const elem1 = try doc.createElement("div");
     /// const elem2 = try doc.createElement("span");
-    /// _ = try fragment.node.appendChild(&elem1.node);
-    /// _ = try fragment.node.appendChild(&elem2.node);
+    /// _ = try fragment.prototype.appendChild(&elem1.prototype);
+    /// _ = try fragment.prototype.appendChild(&elem2.prototype);
     ///
     /// // Insert fragment into document (moves children)
-    /// _ = try doc.node.appendChild(&fragment.node);
+    /// _ = try doc.prototype.appendChild(&fragment.prototype);
     /// ```
     pub fn createDocumentFragment(self: *Document) !*DocumentFragment {
-        const fragment = try DocumentFragment.create(self.node.allocator);
-        errdefer fragment.node.release();
+        const fragment = try DocumentFragment.create(self.prototype.allocator);
+        errdefer fragment.prototype.release();
 
         // Set owner document and assign node ID
-        fragment.node.owner_document = &self.node;
-        fragment.node.node_id = self.allocateNodeId();
+        fragment.prototype.owner_document = &self.prototype;
+        fragment.prototype.node_id = self.allocateNodeId();
 
         // Increment document's node ref count
         self.acquireNodeRef();
@@ -851,11 +851,11 @@ pub const Document = struct {
     ///
     /// // Create element in doc1
     /// const elem = try doc1.createElement("div");
-    /// try std.testing.expect(elem.node.getOwnerDocument() == doc1);
+    /// try std.testing.expect(elem.prototype.getOwnerDocument() == doc1);
     ///
     /// // Adopt to doc2
-    /// _ = try doc2.adoptNode(&elem.node);
-    /// try std.testing.expect(elem.node.getOwnerDocument() == doc2);
+    /// _ = try doc2.adoptNode(&elem.prototype);
+    /// try std.testing.expect(elem.prototype.getOwnerDocument() == doc2);
     /// ```
     pub fn adoptNode(self: *Document, node: *Node) !*Node {
         // Step 1: If node is a document, throw NotSupportedError
@@ -871,7 +871,7 @@ pub const Document = struct {
 
         // Step 4: Adopt node into this document
         const adopt_fn = @import("node.zig").adopt;
-        try adopt_fn(node, &self.node);
+        try adopt_fn(node, &self.prototype);
 
         // Step 5: Return node
         return node;
@@ -893,10 +893,10 @@ pub const Document = struct {
     /// ```
     pub fn documentElement(self: *const Document) ?*Element {
         // Walk children looking for first element
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |node| {
             if (node.node_type == .element) {
-                return @fieldParentPtr("node", node);
+                return @fieldParentPtr("prototype", node);
             }
             current = node.next_sibling;
         }
@@ -938,7 +938,7 @@ pub const Document = struct {
     pub fn doctype(self: *const Document) ?*Node {
         // TODO: Full implementation requires DocumentType struct
         // For now, search for DocumentType node among children
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |node| {
             if (node.node_type == .document_type) {
                 return node;
@@ -987,7 +987,7 @@ pub const Document = struct {
     ///
     /// const button = try doc.createElement("button");
     /// try button.setAttribute("id", "submit");
-    /// _ = try doc.node.appendChild(&button.node);
+    /// _ = try doc.prototype.appendChild(&button.prototype);
     ///
     /// const found = doc.getElementById("submit");
     /// // found == button (O(1) lookup!)
@@ -1094,13 +1094,13 @@ pub const Document = struct {
     /// defer doc.release();
     ///
     /// const container1 = try doc.createElement("container");
-    /// _ = try doc.node.appendChild(&container1.node);
+    /// _ = try doc.prototype.appendChild(&container1.prototype);
     ///
     /// const collection = doc.getElementsByTagName("container");
     /// // collection.length() == 1
     ///
     /// const container2 = try doc.createElement("container");
-    /// _ = try doc.node.appendChild(&container2.node);
+    /// _ = try doc.prototype.appendChild(&container2.prototype);
     /// // collection.length() == 2 (automatically updated!)
     /// ```
     ///
@@ -1168,14 +1168,14 @@ pub const Document = struct {
     ///
     /// const button1 = try doc.createElement("button");
     /// try button1.setAttribute("class", "btn primary");
-    /// _ = try doc.node.appendChild(&button1.node);
+    /// _ = try doc.prototype.appendChild(&button1.prototype);
     ///
     /// const collection = doc.getElementsByClassName("btn");
     /// // collection.length() == 1
     ///
     /// const button2 = try doc.createElement("button");
     /// try button2.setAttribute("class", "btn");
-    /// _ = try doc.node.appendChild(&button2.node);
+    /// _ = try doc.prototype.appendChild(&button2.prototype);
     /// // collection.length() == 2 (automatically updated!)
     /// ```
     ///
@@ -1200,7 +1200,7 @@ pub const Document = struct {
     pub fn getElementsByClassName(self: *const Document, class_name: []const u8) HTMLCollection {
         // Use HTMLCollection's document-level class traversal
         // This traverses the entire document tree, using bloom filters for fast rejection
-        return HTMLCollection.initDocumentByClassName(&self.node, class_name);
+        return HTMLCollection.initDocumentByClassName(&self.prototype, class_name);
     }
 
     // ========================================================================
@@ -1228,11 +1228,11 @@ pub const Document = struct {
     /// defer doc.release();
     ///
     /// const html = try doc.createElement("html");
-    /// _ = try doc.node.appendChild(&html.node);
+    /// _ = try doc.prototype.appendChild(&html.prototype);
     ///
     /// const button = try doc.createElement("button");
     /// try button.setAttribute("class", "btn");
-    /// _ = try html.node.appendChild(&button.node);
+    /// _ = try html.prototype.appendChild(&button.prototype);
     ///
     /// // Find button from document root
     /// const result = try doc.querySelector(".btn");
@@ -1248,7 +1248,7 @@ pub const Document = struct {
     pub fn querySelector(self: *Document, selectors: []const u8) !?*Element {
         // Delegate to documentElement if it exists
         if (self.documentElement()) |root| {
-            return try root.querySelector(self.node.allocator, selectors);
+            return try root.querySelector(self.prototype.allocator, selectors);
         }
         return null;
     }
@@ -1287,7 +1287,7 @@ pub const Document = struct {
     pub fn querySelectorAll(self: *Document, selectors: []const u8) ![]const *Element {
         // Delegate to documentElement if it exists
         if (self.documentElement()) |root| {
-            return try root.querySelectorAll(self.node.allocator, selectors);
+            return try root.querySelectorAll(self.prototype.allocator, selectors);
         }
         // Return empty slice if no document element
         return &[_]*Element{};
@@ -1312,7 +1312,7 @@ pub const Document = struct {
     /// ## Returns
     /// Live ElementCollection of element children (typically just documentElement)
     pub fn children(self: *Document) HTMLCollection {
-        return HTMLCollection.initChildren(&self.node);
+        return HTMLCollection.initChildren(&self.prototype);
     }
 
     /// Returns the first child that is an element.
@@ -1337,10 +1337,10 @@ pub const Document = struct {
     /// ## Returns
     /// First element child or null (typically documentElement)
     pub fn firstElementChild(self: *const Document) ?*Element {
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |child| {
             if (child.node_type == .element) {
-                return @fieldParentPtr("node", child);
+                return @fieldParentPtr("prototype", child);
             }
             current = child.next_sibling;
         }
@@ -1369,10 +1369,10 @@ pub const Document = struct {
     /// ## Returns
     /// Last element child or null (typically documentElement)
     pub fn lastElementChild(self: *const Document) ?*Element {
-        var current = self.node.last_child;
+        var current = self.prototype.last_child;
         while (current) |child| {
             if (child.node_type == .element) {
-                return @fieldParentPtr("node", child);
+                return @fieldParentPtr("prototype", child);
             }
             current = child.previous_sibling;
         }
@@ -1402,7 +1402,7 @@ pub const Document = struct {
     /// Count of element children (typically 0 or 1 for documents)
     pub fn childElementCount(self: *const Document) u32 {
         var count: u32 = 0;
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |child| {
             if (child.node_type == .element) {
                 count += 1;
@@ -1446,7 +1446,7 @@ pub const Document = struct {
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try self.node.insertBefore(node_to_insert, self.node.first_child);
+        const returned_node = try self.prototype.insertBefore(node_to_insert, self.prototype.first_child);
 
         if (should_release) {
             returned_node.release();
@@ -1479,7 +1479,7 @@ pub const Document = struct {
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try self.node.appendChild(node_to_insert);
+        const returned_node = try self.prototype.appendChild(node_to_insert);
 
         if (should_release) {
             returned_node.release();
@@ -1509,13 +1509,13 @@ pub const Document = struct {
     pub fn replaceChildren(self: *Document, nodes: []const NodeOrString) !void {
         const result = try self.convertNodesToNode(nodes);
 
-        while (self.node.first_child) |child| {
-            const removed = try self.node.removeChild(child);
+        while (self.prototype.first_child) |child| {
+            const removed = try self.prototype.removeChild(child);
             removed.release();
         }
 
         if (result) |r| {
-            const returned_node = try self.node.appendChild(r.node);
+            const returned_node = try self.prototype.appendChild(r.node);
             if (r.should_release_after_insert) {
                 returned_node.release();
             }
@@ -1545,7 +1545,7 @@ pub const Document = struct {
                 .string => |s| {
                     const text = try self.createTextNode(s);
                     return ConvertResult{
-                        .node = &text.node,
+                        .node = &text.prototype,
                         .should_release_after_insert = false,
                     };
                 },
@@ -1553,22 +1553,22 @@ pub const Document = struct {
         }
 
         const fragment = try self.createDocumentFragment();
-        errdefer fragment.node.release();
+        errdefer fragment.prototype.release();
 
         for (items) |item| {
             switch (item) {
                 .node => |n| {
-                    _ = try fragment.node.appendChild(n);
+                    _ = try fragment.prototype.appendChild(n);
                 },
                 .string => |s| {
                     const text = try self.createTextNode(s);
-                    _ = try fragment.node.appendChild(&text.node);
+                    _ = try fragment.prototype.appendChild(&text.prototype);
                 },
             }
         }
 
         return ConvertResult{
-            .node = &fragment.node,
+            .node = &fragment.prototype,
             .should_release_after_insert = true,
         };
     }
@@ -1598,7 +1598,7 @@ pub const Document = struct {
     fn cleanupElementAttributesRecursive(node: *Node) void {
         // Clean up attributes if this is an element
         if (node.node_type == .element) {
-            const elem: *Element = @fieldParentPtr("node", node);
+            const elem: *Element = @fieldParentPtr("prototype", node);
             elem.attributes.deinit();
         }
 
@@ -1613,11 +1613,11 @@ pub const Document = struct {
 
     fn deinitInternal(self: *Document) void {
         // Clean up rare data if allocated
-        self.node.deinitRareData();
+        self.prototype.deinitRareData();
 
         // Clean up attributes for all elements before arena deinit
         // (attributes use general-purpose allocator, not arena)
-        if (self.node.first_child) |first_child| {
+        if (self.prototype.first_child) |first_child| {
             cleanupElementAttributesRecursive(first_child);
         }
 
@@ -1631,7 +1631,7 @@ pub const Document = struct {
         // IMPORTANT: Must deinit tag_map BEFORE string_pool because tag_map keys are string pointers
         var tag_it = self.tag_map.valueIterator();
         while (tag_it.next()) |list_ptr| {
-            list_ptr.deinit(self.node.allocator);
+            list_ptr.deinit(self.prototype.allocator);
         }
         self.tag_map.deinit();
 
@@ -1644,7 +1644,7 @@ pub const Document = struct {
         self.node_arena.deinit();
 
         // Free document structure
-        self.node.allocator.destroy(self);
+        self.prototype.allocator.destroy(self);
     }
 
     // === Vtable implementations ===
@@ -1658,7 +1658,7 @@ pub const Document = struct {
 
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {
-        const doc: *Document = @fieldParentPtr("node", node);
+        const doc: *Document = @fieldParentPtr("prototype", node);
         doc.release();
     }
 
@@ -1756,13 +1756,13 @@ test "Document - creation and cleanup" {
     defer doc.release();
 
     // Verify node properties
-    try std.testing.expectEqual(NodeType.document, doc.node.node_type);
+    try std.testing.expectEqual(NodeType.document, doc.prototype.node_type);
     try std.testing.expectEqual(@as(usize, 1), doc.external_ref_count.load(.monotonic));
     try std.testing.expectEqual(@as(usize, 0), doc.node_ref_count.load(.monotonic));
 
     // Verify vtable dispatch
-    try std.testing.expectEqualStrings("#document", doc.node.nodeName());
-    try std.testing.expect(doc.node.nodeValue() == null);
+    try std.testing.expectEqualStrings("#document", doc.prototype.nodeName());
+    try std.testing.expect(doc.prototype.nodeValue() == null);
 }
 
 test "Document - dual ref counting" {
@@ -1791,12 +1791,12 @@ test "Document - createElement" {
 
     // Create element
     const elem = try doc.createElement("test-element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Verify element properties
     try std.testing.expectEqualStrings("test-element", elem.tag_name);
-    try std.testing.expectEqual(&doc.node, elem.node.owner_document.?);
-    try std.testing.expect(elem.node.node_id > 0);
+    try std.testing.expectEqual(&doc.prototype, elem.prototype.owner_document.?);
+    try std.testing.expect(elem.prototype.node_id > 0);
 
     // Verify document's node ref count incremented
     try std.testing.expectEqual(@as(usize, 1), doc.node_ref_count.load(.monotonic));
@@ -1810,12 +1810,12 @@ test "Document - createTextNode" {
 
     // Create text node
     const text = try doc.createTextNode("Hello World");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Verify text properties
     try std.testing.expectEqualStrings("Hello World", text.data);
-    try std.testing.expectEqual(&doc.node, text.node.owner_document.?);
-    try std.testing.expect(text.node.node_id > 0);
+    try std.testing.expectEqual(&doc.prototype, text.prototype.owner_document.?);
+    try std.testing.expect(text.prototype.node_id > 0);
 
     // Verify document's node ref count incremented
     try std.testing.expectEqual(@as(usize, 1), doc.node_ref_count.load(.monotonic));
@@ -1829,12 +1829,12 @@ test "Document - createComment" {
 
     // Create comment node
     const comment = try doc.createComment(" TODO: implement ");
-    defer comment.node.release();
+    defer comment.prototype.release();
 
     // Verify comment properties
     try std.testing.expectEqualStrings(" TODO: implement ", comment.data);
-    try std.testing.expectEqual(&doc.node, comment.node.owner_document.?);
-    try std.testing.expect(comment.node.node_id > 0);
+    try std.testing.expectEqual(&doc.prototype, comment.prototype.owner_document.?);
+    try std.testing.expect(comment.prototype.node_id > 0);
 
     // Verify document's node ref count incremented
     try std.testing.expectEqual(@as(usize, 1), doc.node_ref_count.load(.monotonic));
@@ -1848,13 +1848,13 @@ test "Document - createDocumentFragment" {
 
     // Create document fragment
     const fragment = try doc.createDocumentFragment();
-    defer fragment.node.release();
+    defer fragment.prototype.release();
 
     // Verify fragment properties
-    try std.testing.expect(fragment.node.node_type == .document_fragment);
-    try std.testing.expectEqualStrings("#document-fragment", fragment.node.nodeName());
-    try std.testing.expectEqual(&doc.node, fragment.node.owner_document.?);
-    try std.testing.expect(fragment.node.node_id > 0);
+    try std.testing.expect(fragment.prototype.node_type == .document_fragment);
+    try std.testing.expectEqualStrings("#document-fragment", fragment.prototype.nodeName());
+    try std.testing.expectEqual(&doc.prototype, fragment.prototype.owner_document.?);
+    try std.testing.expect(fragment.prototype.node_id > 0);
 
     // Verify document's node ref count incremented
     try std.testing.expectEqual(@as(usize, 1), doc.node_ref_count.load(.monotonic));
@@ -1867,18 +1867,18 @@ test "Document - createDocumentFragment with children" {
     defer doc.release();
 
     const fragment = try doc.createDocumentFragment();
-    defer fragment.node.release();
+    defer fragment.prototype.release();
 
     // Add children to fragment
     const elem1 = try doc.createElement("div");
     const elem2 = try doc.createElement("span");
 
-    _ = try fragment.node.appendChild(&elem1.node);
-    _ = try fragment.node.appendChild(&elem2.node);
+    _ = try fragment.prototype.appendChild(&elem1.prototype);
+    _ = try fragment.prototype.appendChild(&elem2.prototype);
 
     // Verify fragment has children
-    try std.testing.expect(fragment.node.hasChildNodes());
-    try std.testing.expectEqual(@as(usize, 2), fragment.node.childNodes().length());
+    try std.testing.expect(fragment.prototype.hasChildNodes());
+    try std.testing.expectEqual(@as(usize, 2), fragment.prototype.childNodes().length());
 }
 
 test "Document - string interning in createElement" {
@@ -1889,10 +1889,10 @@ test "Document - string interning in createElement" {
 
     // Create multiple elements with same tag
     const elem1 = try doc.createElement("test-element");
-    defer elem1.node.release();
+    defer elem1.prototype.release();
 
     const elem2 = try doc.createElement("test-element");
-    defer elem2.node.release();
+    defer elem2.prototype.release();
 
     // Tag names should point to same interned string
     try std.testing.expectEqual(elem1.tag_name.ptr, elem2.tag_name.ptr);
@@ -1909,23 +1909,23 @@ test "Document - multiple node types" {
 
     // Create various nodes
     const elem = try doc.createElement("test-element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const text = try doc.createTextNode("content");
-    defer text.node.release();
+    defer text.prototype.release();
 
     const comment = try doc.createComment(" note ");
-    defer comment.node.release();
+    defer comment.prototype.release();
 
     // All should have unique IDs
-    try std.testing.expect(elem.node.node_id != text.node.node_id);
-    try std.testing.expect(text.node.node_id != comment.node.node_id);
-    try std.testing.expect(elem.node.node_id != comment.node.node_id);
+    try std.testing.expect(elem.prototype.node_id != text.prototype.node_id);
+    try std.testing.expect(text.prototype.node_id != comment.prototype.node_id);
+    try std.testing.expect(elem.prototype.node_id != comment.prototype.node_id);
 
     // All should reference document
-    try std.testing.expectEqual(&doc.node, elem.node.owner_document.?);
-    try std.testing.expectEqual(&doc.node, text.node.owner_document.?);
-    try std.testing.expectEqual(&doc.node, comment.node.owner_document.?);
+    try std.testing.expectEqual(&doc.prototype, elem.prototype.owner_document.?);
+    try std.testing.expectEqual(&doc.prototype, text.prototype.owner_document.?);
+    try std.testing.expectEqual(&doc.prototype, comment.prototype.owner_document.?);
 
     // Document should track 3 node refs
     try std.testing.expectEqual(@as(usize, 3), doc.node_ref_count.load(.monotonic));
@@ -1946,10 +1946,10 @@ test "Document - memory leak test" {
         defer doc.release();
 
         const elem1 = try doc.createElement("element-one");
-        defer elem1.node.release();
+        defer elem1.prototype.release();
 
         const elem2 = try doc.createElement("element-two");
-        defer elem2.node.release();
+        defer elem2.prototype.release();
     }
 
     // Test 3: Document with all node types
@@ -1958,13 +1958,13 @@ test "Document - memory leak test" {
         defer doc.release();
 
         const elem = try doc.createElement("test-element");
-        defer elem.node.release();
+        defer elem.prototype.release();
 
         const text = try doc.createTextNode("test");
-        defer text.node.release();
+        defer text.prototype.release();
 
         const comment = try doc.createComment(" test ");
-        defer comment.node.release();
+        defer comment.prototype.release();
     }
 
     // Test 4: Document with string interning
@@ -1974,17 +1974,17 @@ test "Document - memory leak test" {
 
         // Create elements with interning
         const elem1 = try doc.createElement("test-element");
-        defer elem1.node.release();
+        defer elem1.prototype.release();
 
         const elem2 = try doc.createElement("another-element");
-        defer elem2.node.release();
+        defer elem2.prototype.release();
 
         const elem3 = try doc.createElement("test-element"); // Reuse interned
-        defer elem3.node.release();
+        defer elem3.prototype.release();
 
         // Custom element
         const custom = try doc.createElement("my-custom-element");
-        defer custom.node.release();
+        defer custom.prototype.release();
     }
 
     // If we reach here without leaks, std.testing.allocator validates success
@@ -2023,13 +2023,13 @@ test "Document - documentElement" {
 
     // Create and add root element (Phase 2 will do this via appendChild)
     const root_elem = try doc.createElement("root");
-    defer root_elem.node.release();
+    defer root_elem.prototype.release();
 
     // Manually add to document children
-    doc.node.first_child = &root_elem.node;
-    doc.node.last_child = &root_elem.node;
-    root_elem.node.parent_node = &doc.node;
-    root_elem.node.setHasParent(true);
+    doc.prototype.first_child = &root_elem.prototype;
+    doc.prototype.last_child = &root_elem.prototype;
+    root_elem.prototype.parent_node = &doc.prototype;
+    root_elem.prototype.setHasParent(true);
 
     // documentElement should return the root element
     const root = doc.documentElement();
@@ -2038,10 +2038,10 @@ test "Document - documentElement" {
     try std.testing.expectEqualStrings("root", root.?.tag_name);
 
     // Clean up manual connection
-    doc.node.first_child = null;
-    doc.node.last_child = null;
-    root_elem.node.parent_node = null;
-    root_elem.node.setHasParent(false);
+    doc.prototype.first_child = null;
+    doc.prototype.last_child = null;
+    root_elem.prototype.parent_node = null;
+    root_elem.prototype.setHasParent(false);
 }
 
 test "Document - documentElement with mixed children" {
@@ -2052,20 +2052,20 @@ test "Document - documentElement with mixed children" {
 
     // Create comment (before root element)
     const comment = try doc.createComment(" metadata ");
-    defer comment.node.release();
+    defer comment.prototype.release();
 
     // Create root element
     const root_elem = try doc.createElement("root");
-    defer root_elem.node.release();
+    defer root_elem.prototype.release();
 
     // Manually add both to document (comment first, then root element)
-    doc.node.first_child = &comment.node;
-    doc.node.last_child = &root_elem.node;
-    comment.node.next_sibling = &root_elem.node;
-    comment.node.parent_node = &doc.node;
-    root_elem.node.parent_node = &doc.node;
-    root_elem.node.setHasParent(true);
-    comment.node.setHasParent(true);
+    doc.prototype.first_child = &comment.prototype;
+    doc.prototype.last_child = &root_elem.prototype;
+    comment.prototype.next_sibling = &root_elem.prototype;
+    comment.prototype.parent_node = &doc.prototype;
+    root_elem.prototype.parent_node = &doc.prototype;
+    root_elem.prototype.setHasParent(true);
+    comment.prototype.setHasParent(true);
 
     // documentElement should skip comment and return root element
     const root = doc.documentElement();
@@ -2073,13 +2073,13 @@ test "Document - documentElement with mixed children" {
     try std.testing.expectEqual(root_elem, root.?);
 
     // Clean up manual connections
-    doc.node.first_child = null;
-    doc.node.last_child = null;
-    comment.node.next_sibling = null;
-    comment.node.parent_node = null;
-    root_elem.node.parent_node = null;
-    root_elem.node.setHasParent(false);
-    comment.node.setHasParent(false);
+    doc.prototype.first_child = null;
+    doc.prototype.last_child = null;
+    comment.prototype.next_sibling = null;
+    comment.prototype.parent_node = null;
+    root_elem.prototype.parent_node = null;
+    root_elem.prototype.setHasParent(false);
+    comment.prototype.setHasParent(false);
 }
 
 test "Document - doctype property returns null (no DocumentType yet)" {
@@ -2101,7 +2101,7 @@ test "Document - doctype property with element children" {
     // Add an element child
     const elem = try doc.createElement("html");
 
-    _ = try doc.node.appendChild(&elem.node);
+    _ = try doc.prototype.appendChild(&elem.prototype);
 
     // Still no DocumentType, should return null
     try std.testing.expect(doc.doctype() == null);
@@ -2227,11 +2227,11 @@ test "Document - getElementById basic" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("id", "submit");
-    _ = try root.node.appendChild(&button.node);
+    _ = try root.prototype.appendChild(&button.prototype);
 
     // O(1) lookup!
     const found = doc.getElementById("submit");
@@ -2250,10 +2250,10 @@ test "Document - getElementById updates on setAttribute" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button = try doc.createElement("button");
-    _ = try root.node.appendChild(&button.node);
+    _ = try root.prototype.appendChild(&button.prototype);
 
     // Initially no ID
     try std.testing.expect(doc.getElementById("test") == null);
@@ -2279,11 +2279,11 @@ test "Document - getElementById cleans up on removeAttribute" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("id", "remove-test");
-    _ = try root.node.appendChild(&button.node);
+    _ = try root.prototype.appendChild(&button.prototype);
 
     // ID exists
     try std.testing.expect(doc.getElementById("remove-test") != null);
@@ -2300,20 +2300,20 @@ test "Document - getElementById multiple elements" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Create multiple elements with IDs
     const button1 = try doc.createElement("button");
     try button1.setAttribute("id", "btn1");
-    _ = try root.node.appendChild(&button1.node);
+    _ = try root.prototype.appendChild(&button1.prototype);
 
     const button2 = try doc.createElement("button");
     try button2.setAttribute("id", "btn2");
-    _ = try root.node.appendChild(&button2.node);
+    _ = try root.prototype.appendChild(&button2.prototype);
 
     const button3 = try doc.createElement("button");
     try button3.setAttribute("id", "btn3");
-    _ = try root.node.appendChild(&button3.node);
+    _ = try root.prototype.appendChild(&button3.prototype);
 
     // All should be findable
     try std.testing.expect(doc.getElementById("btn1").? == button1);
@@ -2328,11 +2328,11 @@ test "Document - querySelector uses getElementById for #id" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("id", "target");
-    _ = try root.node.appendChild(&button.node);
+    _ = try root.prototype.appendChild(&button.prototype);
 
     // querySelector("#id") should use fast path with O(1) lookup
     const found = try doc.querySelector("#target");
@@ -2351,16 +2351,16 @@ test "Document - getElementsByTagName basic" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button1 = try doc.createElement("button");
-    _ = try root.node.appendChild(&button1.node);
+    _ = try root.prototype.appendChild(&button1.prototype);
 
     const button2 = try doc.createElement("button");
-    _ = try root.node.appendChild(&button2.node);
+    _ = try root.prototype.appendChild(&button2.prototype);
 
     const div = try doc.createElement("div");
-    _ = try root.node.appendChild(&div.node);
+    _ = try root.prototype.appendChild(&div.prototype);
 
     // Get all buttons
     const buttons = doc.getElementsByTagName("button");
@@ -2385,17 +2385,17 @@ test "Document - tag map maintained on createElement" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Create multiple elements with same tag
     const div1 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div1.node);
+    _ = try root.prototype.appendChild(&div1.prototype);
 
     const div2 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div2.node);
+    _ = try root.prototype.appendChild(&div2.prototype);
 
     const div3 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div3.node);
+    _ = try root.prototype.appendChild(&div3.prototype);
 
     // Tag map should have all three
     const divs = doc.getElementsByTagName("div");
@@ -2409,13 +2409,13 @@ test "Document - tag map cleaned up on element removal" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const div1 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div1.node);
+    _ = try root.prototype.appendChild(&div1.prototype);
 
     const div2 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div2.node);
+    _ = try root.prototype.appendChild(&div2.prototype);
 
     // Should have 2 divs
     {
@@ -2424,8 +2424,8 @@ test "Document - tag map cleaned up on element removal" {
     }
 
     // Remove one div
-    _ = try root.node.removeChild(&div1.node);
-    div1.node.release();
+    _ = try root.prototype.removeChild(&div1.prototype);
+    div1.prototype.release();
 
     // Should have 1 div
     {
@@ -2442,19 +2442,19 @@ test "Document - getElementsByClassName basic" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button1 = try doc.createElement("button");
     try button1.setAttribute("class", "btn primary");
-    _ = try root.node.appendChild(&button1.node);
+    _ = try root.prototype.appendChild(&button1.prototype);
 
     const button2 = try doc.createElement("button");
     try button2.setAttribute("class", "btn");
-    _ = try root.node.appendChild(&button2.node);
+    _ = try root.prototype.appendChild(&button2.prototype);
 
     const div = try doc.createElement("div");
     try div.setAttribute("class", "container");
-    _ = try root.node.appendChild(&div.node);
+    _ = try root.prototype.appendChild(&div.prototype);
 
     // Get all "btn" elements
     const btns = doc.getElementsByClassName("btn");
@@ -2484,10 +2484,10 @@ test "Document - class map maintained on setAttribute" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const div = try doc.createElement("div");
-    _ = try root.node.appendChild(&div.node);
+    _ = try root.prototype.appendChild(&div.prototype);
 
     // Initially no class
     {
@@ -2559,11 +2559,11 @@ test "Document - class map cleaned up on removeAttribute" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const div = try doc.createElement("div");
     try div.setAttribute("class", "foo bar");
-    _ = try root.node.appendChild(&div.node);
+    _ = try root.prototype.appendChild(&div.prototype);
 
     // Should have classes
     {
@@ -2591,15 +2591,15 @@ test "Document - class map cleaned up on element removal" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const elem1 = try doc.createElement("element");
     try elem1.setAttribute("class", "testclass1");
-    _ = try root.node.appendChild(&elem1.node);
+    _ = try root.prototype.appendChild(&elem1.prototype);
 
     const elem2 = try doc.createElement("element");
     try elem2.setAttribute("class", "testclass1");
-    _ = try root.node.appendChild(&elem2.node);
+    _ = try root.prototype.appendChild(&elem2.prototype);
 
     // Should have 2 elements with class "testclass1"
     {
@@ -2608,8 +2608,8 @@ test "Document - class map cleaned up on element removal" {
     }
 
     // Remove one element
-    _ = try root.node.removeChild(&elem1.node);
-    elem1.node.release();
+    _ = try root.prototype.removeChild(&elem1.prototype);
+    elem1.prototype.release();
 
     // Should have 1 element with class "testclass1"
     {

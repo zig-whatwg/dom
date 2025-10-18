@@ -10,7 +10,7 @@ test "getElementsByTagName - elements added to map on appendChild" {
 
     // Create root element (Document can only have one element child)
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Initially, tag_map should have no "div" entries
     const initial = doc.getElementsByTagName("div");
@@ -24,7 +24,7 @@ test "getElementsByTagName - elements added to map on appendChild" {
     try std.testing.expectEqual(@as(usize, 0), before_append.length());
 
     // Append to root element
-    _ = try root.node.appendChild(&div1.node);
+    _ = try root.prototype.appendChild(&div1.prototype);
 
     // NOW it should be in the tag_map
     const after_append = doc.getElementsByTagName("div");
@@ -37,18 +37,18 @@ test "getElementsByTagName - elements removed from map on removeChild" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const div1 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div1.node);
+    _ = try root.prototype.appendChild(&div1.prototype);
 
     // Should be 1 element
     const before_remove = doc.getElementsByTagName("div");
     try std.testing.expectEqual(@as(usize, 1), before_remove.length());
 
     // Remove from root
-    _ = try root.node.removeChild(&div1.node);
-    div1.node.release();
+    _ = try root.prototype.removeChild(&div1.prototype);
+    div1.prototype.release();
 
     // Should be 0 elements
     const after_remove = doc.getElementsByTagName("div");
@@ -61,15 +61,15 @@ test "getElementsByTagName - multiple elements with same tag" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const div1 = try doc.createElement("div");
     const div2 = try doc.createElement("div");
     const span1 = try doc.createElement("span");
 
-    _ = try root.node.appendChild(&div1.node);
-    _ = try root.node.appendChild(&div2.node);
-    _ = try root.node.appendChild(&span1.node);
+    _ = try root.prototype.appendChild(&div1.prototype);
+    _ = try root.prototype.appendChild(&div2.prototype);
+    _ = try root.prototype.appendChild(&span1.prototype);
 
     const divs = doc.getElementsByTagName("div");
     try std.testing.expectEqual(@as(usize, 2), divs.length());
@@ -84,21 +84,21 @@ test "getElementsByTagName - nested elements" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const div1 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div1.node);
+    _ = try root.prototype.appendChild(&div1.prototype);
 
     const div2 = try doc.createElement("div");
-    _ = try div1.node.appendChild(&div2.node);
+    _ = try div1.prototype.appendChild(&div2.prototype);
 
     // All nested divs should be in tag_map
     const divs = doc.getElementsByTagName("div");
     try std.testing.expectEqual(@as(usize, 2), divs.length());
 
     // Remove root - should remove all descendants from tag_map
-    _ = try doc.node.removeChild(&root.node);
-    root.node.release();
+    _ = try doc.prototype.removeChild(&root.prototype);
+    root.prototype.release();
 
     const after_remove = doc.getElementsByTagName("div");
     try std.testing.expectEqual(@as(usize, 0), after_remove.length());
@@ -110,7 +110,7 @@ test "getElementsByTagName - live collection behavior" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Get collection before adding elements
     const divs = doc.getElementsByTagName("div");
@@ -118,21 +118,21 @@ test "getElementsByTagName - live collection behavior" {
 
     // Add first div
     const div1 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div1.node);
+    _ = try root.prototype.appendChild(&div1.prototype);
 
     // Collection should update automatically (live)
     try std.testing.expectEqual(@as(usize, 1), divs.length());
 
     // Add second div
     const div2 = try doc.createElement("div");
-    _ = try root.node.appendChild(&div2.node);
+    _ = try root.prototype.appendChild(&div2.prototype);
 
     // Collection should reflect the addition
     try std.testing.expectEqual(@as(usize, 2), divs.length());
 
     // Remove first div
-    _ = try root.node.removeChild(&div1.node);
-    div1.node.release();
+    _ = try root.prototype.removeChild(&div1.prototype);
+    div1.prototype.release();
 
     // Collection should reflect the removal
     try std.testing.expectEqual(@as(usize, 1), divs.length());

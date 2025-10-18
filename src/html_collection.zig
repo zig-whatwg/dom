@@ -29,14 +29,14 @@
 //! HTMLCollection is a "live" collection - it automatically reflects DOM changes:
 //! ```zig
 //! const parent = try doc.createElement("container");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
 //! const children = parent.children();
 //! try std.testing.expectEqual(@as(usize, 0), children.length());
 //!
 //! // Add element child - collection updates automatically
 //! const child = try doc.createElement("item");
-//! _ = try parent.node.appendChild(&child.node);
+//! _ = try parent.prototype.appendChild(&child.prototype);
 //! try std.testing.expectEqual(@as(usize, 1), children.length()); // Now 1!
 //! ```
 //!
@@ -52,20 +52,20 @@
 //! Unlike NodeList (which includes all node types), HTMLCollection only includes Element nodes:
 //! ```zig
 //! const parent = try doc.createElement("parent");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
 //! // Add mixed children
 //! const elem1 = try doc.createElement("child1");
-//! _ = try parent.node.appendChild(&elem1.node);
+//! _ = try parent.prototype.appendChild(&elem1.prototype);
 //!
 //! const text = try doc.createTextNode("text content");
-//! _ = try parent.node.appendChild(&text.node);
+//! _ = try parent.prototype.appendChild(&text.prototype);
 //!
 //! const elem2 = try doc.createElement("child2");
-//! _ = try parent.node.appendChild(&elem2.node);
+//! _ = try parent.prototype.appendChild(&elem2.prototype);
 //!
 //! // childNodes has 3 nodes, children has 2 elements
-//! const all_nodes = parent.node.childNodes();
+//! const all_nodes = parent.prototype.childNodes();
 //! const only_elements = parent.children();
 //! try std.testing.expectEqual(@as(usize, 3), all_nodes.length());
 //! try std.testing.expectEqual(@as(usize, 2), only_elements.length());
@@ -93,7 +93,7 @@
 //! HTMLCollection is a stack-allocated value type (not heap-allocated):
 //! ```zig
 //! const parent = try doc.createElement("container");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
 //! const children = parent.children();
 //! // No defer needed - HTMLCollection is a plain struct value
@@ -115,14 +115,14 @@
 //! defer doc.release();
 //!
 //! const container = try doc.createElement("container");
-//! defer container.node.release();
+//! defer container.prototype.release();
 //!
 //! // Add mixed children
 //! const elem = try doc.createElement("item");
-//! _ = try container.node.appendChild(&elem.node);
+//! _ = try container.prototype.appendChild(&elem.prototype);
 //!
 //! const text = try doc.createTextNode("text");
-//! _ = try container.node.appendChild(&text.node);
+//! _ = try container.prototype.appendChild(&text.prototype);
 //!
 //! // children filters to elements only
 //! const children = container.children();
@@ -136,8 +136,8 @@
 //!
 //! const widget1 = try doc.createElement("widget");
 //! const widget2 = try doc.createElement("widget");
-//! _ = try doc.node.appendChild(&widget1.node);
-//! _ = try doc.node.appendChild(&widget2.node);
+//! _ = try doc.prototype.appendChild(&widget1.prototype);
+//! _ = try doc.prototype.appendChild(&widget2.prototype);
 //!
 //! // Live collection backed by Document's tag_map
 //! const widgets = doc.getElementsByTagName("widget");
@@ -145,7 +145,7 @@
 //!
 //! // Add another - collection updates automatically
 //! const widget3 = try doc.createElement("widget");
-//! _ = try doc.node.appendChild(&widget3.node);
+//! _ = try doc.prototype.appendChild(&widget3.prototype);
 //! try std.testing.expectEqual(@as(usize, 3), widgets.length());
 //! ```
 //!
@@ -155,15 +155,15 @@
 //! defer doc.release();
 //!
 //! const container = try doc.createElement("container");
-//! defer container.node.release();
+//! defer container.prototype.release();
 //!
 //! const item1 = try doc.createElement("item");
 //! try item1.setAttribute("class", "active");
-//! _ = try container.node.appendChild(&item1.node);
+//! _ = try container.prototype.appendChild(&item1.prototype);
 //!
 //! const item2 = try doc.createElement("item");
 //! try item2.setAttribute("class", "active");
-//! _ = try container.node.appendChild(&item2.node);
+//! _ = try container.prototype.appendChild(&item2.prototype);
 //!
 //! // Live collection scoped to container's subtree
 //! const actives = container.getElementsByClassName("active");
@@ -411,7 +411,7 @@ pub const HTMLCollection = struct {
                 while (current) |node| {
                     if (node.node_type == .element) {
                         if (count == index) {
-                            return @fieldParentPtr("node", node);
+                            return @fieldParentPtr("prototype", node);
                         }
                         count += 1;
                     }
@@ -493,10 +493,10 @@ pub const HTMLCollection = struct {
     /// Counts descendants matching the filter (for element_scoped).
     fn countMatchingDescendants(root: *Element, filter: *const Filter) usize {
         var count: usize = 0;
-        var current = root.node.first_child;
+        var current = root.prototype.first_child;
         while (current) |node| {
             if (node.node_type == .element) {
-                const elem: *Element = @fieldParentPtr("node", node);
+                const elem: *Element = @fieldParentPtr("prototype", node);
                 if (matchesFilter(elem, filter)) {
                     count += 1;
                 }
@@ -520,10 +520,10 @@ pub const HTMLCollection = struct {
         target_index: usize,
         current_index: *usize,
     ) ?*Element {
-        var current = root.node.first_child;
+        var current = root.prototype.first_child;
         while (current) |node| {
             if (node.node_type == .element) {
-                const elem: *Element = @fieldParentPtr("node", node);
+                const elem: *Element = @fieldParentPtr("prototype", node);
                 if (matchesFilter(elem, filter)) {
                     if (current_index.* == target_index) {
                         return elem;
@@ -611,9 +611,9 @@ test "HTMLCollection - children: empty collection" {
     defer doc.release();
 
     const parent = try doc.createElement("parent");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
-    const collection = HTMLCollection.initChildren(&parent.node);
+    const collection = HTMLCollection.initChildren(&parent.prototype);
     try testing.expectEqual(@as(usize, 0), collection.length());
     try testing.expectEqual(@as(?*Element, null), collection.item(0));
 }
@@ -624,12 +624,12 @@ test "HTMLCollection - children: single element" {
     defer doc.release();
 
     const parent = try doc.createElement("parent");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("child");
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
-    const collection = HTMLCollection.initChildren(&parent.node);
+    const collection = HTMLCollection.initChildren(&parent.prototype);
     try testing.expectEqual(@as(usize, 1), collection.length());
 
     const first = collection.item(0);
@@ -643,18 +643,18 @@ test "HTMLCollection - children: multiple elements" {
     defer doc.release();
 
     const parent = try doc.createElement("parent");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("child1");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
 
     const child2 = try doc.createElement("child2");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
     const child3 = try doc.createElement("child3");
-    _ = try parent.node.appendChild(&child3.node);
+    _ = try parent.prototype.appendChild(&child3.prototype);
 
-    const collection = HTMLCollection.initChildren(&parent.node);
+    const collection = HTMLCollection.initChildren(&parent.prototype);
     try testing.expectEqual(@as(usize, 3), collection.length());
 
     try testing.expectEqualStrings("child1", collection.item(0).?.tag_name);
@@ -669,25 +669,25 @@ test "HTMLCollection - children: filters out non-element nodes" {
     defer doc.release();
 
     const parent = try doc.createElement("parent");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const elem1 = try doc.createElement("elem1");
-    _ = try parent.node.appendChild(&elem1.node);
+    _ = try parent.prototype.appendChild(&elem1.prototype);
 
     const text = try doc.createTextNode("text content");
-    _ = try parent.node.appendChild(&text.node);
+    _ = try parent.prototype.appendChild(&text.prototype);
 
     const elem2 = try doc.createElement("elem2");
-    _ = try parent.node.appendChild(&elem2.node);
+    _ = try parent.prototype.appendChild(&elem2.prototype);
 
     const comment = try Comment.create(allocator, "comment content");
-    _ = try parent.node.appendChild(&comment.node);
+    _ = try parent.prototype.appendChild(&comment.prototype);
 
     const elem3 = try doc.createElement("elem3");
-    _ = try parent.node.appendChild(&elem3.node);
+    _ = try parent.prototype.appendChild(&elem3.prototype);
 
-    const all_nodes = parent.node.childNodes();
-    const only_elements = HTMLCollection.initChildren(&parent.node);
+    const all_nodes = parent.prototype.childNodes();
+    const only_elements = HTMLCollection.initChildren(&parent.prototype);
 
     try testing.expectEqual(@as(usize, 5), all_nodes.length());
     try testing.expectEqual(@as(usize, 3), only_elements.length());
@@ -703,31 +703,31 @@ test "HTMLCollection - children: live collection" {
     defer doc.release();
 
     const parent = try doc.createElement("parent");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
-    const collection = HTMLCollection.initChildren(&parent.node);
+    const collection = HTMLCollection.initChildren(&parent.prototype);
 
     // Initially empty
     try testing.expectEqual(@as(usize, 0), collection.length());
 
     // Add element - collection updates
     const child1 = try doc.createElement("child1");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
     try testing.expectEqual(@as(usize, 1), collection.length());
 
     // Add text - collection does NOT update (text not an element)
     const text = try doc.createTextNode("text");
-    _ = try parent.node.appendChild(&text.node);
+    _ = try parent.prototype.appendChild(&text.prototype);
     try testing.expectEqual(@as(usize, 1), collection.length());
 
     // Add another element - collection updates
     const child2 = try doc.createElement("child2");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
     try testing.expectEqual(@as(usize, 2), collection.length());
 
     // Remove element - collection updates
-    _ = try parent.node.removeChild(&child1.node);
-    child1.node.release();
+    _ = try parent.prototype.removeChild(&child1.prototype);
+    child1.prototype.release();
     try testing.expectEqual(@as(usize, 1), collection.length());
     try testing.expectEqualStrings("child2", collection.item(0).?.tag_name);
 }
@@ -744,13 +744,13 @@ test "HTMLCollection - document_tagged: backed by ArrayList" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const elem1 = try doc.createElement("widget");
-    _ = try root.node.appendChild(&elem1.node);
+    _ = try root.prototype.appendChild(&elem1.prototype);
 
     const elem2 = try doc.createElement("widget");
-    _ = try root.node.appendChild(&elem2.node);
+    _ = try root.prototype.appendChild(&elem2.prototype);
 
     // Get collection backed by Document's tag_map
     const collection = doc.getElementsByTagName("widget");
@@ -765,16 +765,16 @@ test "HTMLCollection - element_scoped: getElementsByTagName" {
     defer doc.release();
 
     const container = try doc.createElement("container");
-    defer container.node.release();
+    defer container.prototype.release();
 
     const widget1 = try doc.createElement("widget");
-    _ = try container.node.appendChild(&widget1.node);
+    _ = try container.prototype.appendChild(&widget1.prototype);
 
     const other = try doc.createElement("other");
-    _ = try container.node.appendChild(&other.node);
+    _ = try container.prototype.appendChild(&other.prototype);
 
     const widget2 = try doc.createElement("widget");
-    _ = try container.node.appendChild(&widget2.node);
+    _ = try container.prototype.appendChild(&widget2.prototype);
 
     const collection = HTMLCollection.initElementByTagName(container, "widget");
     try testing.expectEqual(@as(usize, 2), collection.length());
@@ -789,19 +789,19 @@ test "HTMLCollection - element_scoped: getElementsByClassName" {
     defer doc.release();
 
     const container = try doc.createElement("container");
-    defer container.node.release();
+    defer container.prototype.release();
 
     const item1 = try doc.createElement("item");
     try item1.setAttribute("class", "active");
-    _ = try container.node.appendChild(&item1.node);
+    _ = try container.prototype.appendChild(&item1.prototype);
 
     const item2 = try doc.createElement("item");
     try item2.setAttribute("class", "inactive");
-    _ = try container.node.appendChild(&item2.node);
+    _ = try container.prototype.appendChild(&item2.prototype);
 
     const item3 = try doc.createElement("item");
     try item3.setAttribute("class", "active primary");
-    _ = try container.node.appendChild(&item3.node);
+    _ = try container.prototype.appendChild(&item3.prototype);
 
     const collection = HTMLCollection.initElementByClassName(container, "active");
     try testing.expectEqual(@as(usize, 2), collection.length());
@@ -815,19 +815,19 @@ test "HTMLCollection - element_scoped: nested descendants" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    defer root.node.release();
+    defer root.prototype.release();
 
     const level1 = try doc.createElement("level1");
-    _ = try root.node.appendChild(&level1.node);
+    _ = try root.prototype.appendChild(&level1.prototype);
 
     const widget1 = try doc.createElement("widget");
-    _ = try level1.node.appendChild(&widget1.node);
+    _ = try level1.prototype.appendChild(&widget1.prototype);
 
     const level2 = try doc.createElement("level2");
-    _ = try level1.node.appendChild(&level2.node);
+    _ = try level1.prototype.appendChild(&level2.prototype);
 
     const widget2 = try doc.createElement("widget");
-    _ = try level2.node.appendChild(&widget2.node);
+    _ = try level2.prototype.appendChild(&widget2.prototype);
 
     const collection = HTMLCollection.initElementByTagName(root, "widget");
     try testing.expectEqual(@as(usize, 2), collection.length());
@@ -839,17 +839,17 @@ test "HTMLCollection - namedItem: finds by id" {
     defer doc.release();
 
     const parent = try doc.createElement("parent");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("child1");
     try child1.setAttribute("id", "first");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
 
     const child2 = try doc.createElement("child2");
     try child2.setAttribute("id", "second");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
-    const collection = HTMLCollection.initChildren(&parent.node);
+    const collection = HTMLCollection.initChildren(&parent.prototype);
     const found = collection.namedItem("second");
     try testing.expect(found != null);
     try testing.expectEqualStrings("child2", found.?.tag_name);
@@ -861,13 +861,13 @@ test "HTMLCollection - namedItem: finds by name attribute" {
     defer doc.release();
 
     const parent = try doc.createElement("parent");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("child1");
     try child1.setAttribute("name", "username");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
 
-    const collection = HTMLCollection.initChildren(&parent.node);
+    const collection = HTMLCollection.initChildren(&parent.prototype);
     const found = collection.namedItem("username");
     try testing.expect(found != null);
     try testing.expectEqualStrings("child1", found.?.tag_name);
@@ -879,11 +879,11 @@ test "HTMLCollection - namedItem: not found" {
     defer doc.release();
 
     const parent = try doc.createElement("parent");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("child");
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
-    const collection = HTMLCollection.initChildren(&parent.node);
+    const collection = HTMLCollection.initChildren(&parent.prototype);
     try testing.expectEqual(@as(?*Element, null), collection.namedItem("nonexistent"));
 }

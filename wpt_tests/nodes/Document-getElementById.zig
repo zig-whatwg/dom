@@ -21,11 +21,11 @@ test "getElementById with null-like string" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.node);
 
     const element = try doc.createElement("div");
     try element.setAttribute("id", "null");
-    _ = try root.node.appendChild(&element.node);
+    _ = try root.prototype.appendChild(&element.node);
 
     const result = doc.getElementById("null");
     try std.testing.expect(result != null);
@@ -38,11 +38,11 @@ test "getElementById with undefined-like string" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.node);
 
     const element = try doc.createElement("div");
     try element.setAttribute("id", "undefined");
-    _ = try root.node.appendChild(&element.node);
+    _ = try root.prototype.appendChild(&element.node);
 
     const result = doc.getElementById("undefined");
     try std.testing.expect(result != null);
@@ -55,13 +55,13 @@ test "getElementById with script-inserted element" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.node);
 
     const TEST_ID = "test2";
 
     const test_elem = try doc.createElement("div");
     try test_elem.setAttribute("id", TEST_ID);
-    _ = try root.node.appendChild(&test_elem.node);
+    _ = try root.prototype.appendChild(&test_elem.node);
 
     // Test: appended element
     const result = doc.getElementById(TEST_ID);
@@ -69,8 +69,8 @@ test "getElementById with script-inserted element" {
     try std.testing.expectEqualStrings("div", result.?.tag_name);
 
     // Test: removed element
-    _ = try root.node.removeChild(&test_elem.node);
-    test_elem.node.release();
+    _ = try root.prototype.removeChild(&test_elem.node);
+    test_elem.prototype.release();
     const removed = doc.getElementById(TEST_ID);
     try std.testing.expectEqual(@as(?*Element, null), removed);
 }
@@ -81,12 +81,12 @@ test "getElementById updates when id attribute changes" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.node);
 
     const TEST_ID = "test3";
     const test_elem = try doc.createElement("div");
     try test_elem.setAttribute("id", TEST_ID);
-    _ = try root.node.appendChild(&test_elem.node);
+    _ = try root.prototype.appendChild(&test_elem.node);
 
     // Update id
     const UPDATED_ID = "test3-updated";
@@ -110,7 +110,7 @@ test "getElementById only finds elements in document" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.node);
 
     const TEST_ID = "test4-should-not-exist";
 
@@ -121,7 +121,7 @@ test "getElementById only finds elements in document" {
     try std.testing.expectEqual(@as(?*Element, null), doc.getElementById(TEST_ID));
 
     // After appending, should be found
-    _ = try root.node.appendChild(&e.node);
+    _ = try root.prototype.appendChild(&e.node);
     try std.testing.expect(doc.getElementById(TEST_ID) == e);
 }
 
@@ -132,7 +132,7 @@ test "getElementById returns first element in tree order" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.node);
 
     const TEST_ID = "test5";
 
@@ -140,7 +140,7 @@ test "getElementById returns first element in tree order" {
     const target = try doc.createElement("div");
     try target.setAttribute("id", TEST_ID);
     try target.setAttribute("data-name", "1st");
-    _ = try root.node.appendChild(&target.node);
+    _ = try root.prototype.appendChild(&target.node);
 
     const result = doc.getElementById(TEST_ID);
     try std.testing.expect(result != null);
@@ -152,7 +152,7 @@ test "getElementById returns first element in tree order" {
     const element4 = try doc.createElement("div");
     try element4.setAttribute("id", TEST_ID);
     try element4.setAttribute("data-name", "4th");
-    _ = try root.node.appendChild(&element4.node);
+    _ = try root.prototype.appendChild(&element4.node);
 
     const target2 = doc.getElementById(TEST_ID);
     try std.testing.expect(target2 != null);
@@ -161,8 +161,8 @@ test "getElementById returns first element in tree order" {
     try std.testing.expectEqualStrings("1st", data_name2.?);
 
     // Remove first element
-    _ = try root.node.removeChild(&target.node);
-    target.node.release();
+    _ = try root.prototype.removeChild(&target.node);
+    target.prototype.release();
     const target3 = doc.getElementById(TEST_ID);
     try std.testing.expect(target3 != null);
     const data_name3 = target3.?.getAttribute("data-name");
@@ -181,8 +181,8 @@ test "getElementById with element not in document tree" {
 
     // Append to another element, not to document
     const parent = try doc.createElement("div");
-    defer parent.node.release(); // parent owns s, will release it
-    _ = try parent.node.appendChild(&s.node);
+    defer parent.prototype.release(); // parent owns s, will release it
+    _ = try parent.prototype.appendChild(&s.node);
 
     try std.testing.expectEqual(@as(?*Element, null), doc.getElementById(TEST_ID));
 }
@@ -193,7 +193,7 @@ test "getElementById returns null for non-existent id" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.node);
 
     const result = doc.getElementById("does-not-exist");
     try std.testing.expectEqual(@as(?*Element, null), result);
@@ -205,19 +205,19 @@ test "getElementById with multiple nested elements" {
     defer doc.release();
 
     const root = try doc.createElement("root");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.node);
 
     const outer = try doc.createElement("outer");
     try outer.setAttribute("id", "outer");
-    _ = try root.node.appendChild(&outer.node);
+    _ = try root.prototype.appendChild(&outer.node);
 
     const middle = try doc.createElement("middle");
     try middle.setAttribute("id", "middle");
-    _ = try outer.node.appendChild(&middle.node);
+    _ = try outer.prototype.appendChild(&middle.node);
 
     const inner = try doc.createElement("inner");
     try inner.setAttribute("id", "inner");
-    _ = try middle.node.appendChild(&inner.node);
+    _ = try middle.prototype.appendChild(&inner.node);
 
     try std.testing.expect(doc.getElementById("outer") == outer);
     try std.testing.expect(doc.getElementById("middle") == middle);

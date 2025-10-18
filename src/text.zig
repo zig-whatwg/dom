@@ -26,10 +26,10 @@
 //! Text nodes store mutable string content that can be modified:
 //! ```zig
 //! const text = try Text.create(allocator, "Hello, World!");
-//! defer text.node.release();
+//! defer text.prototype.release();
 //!
 //! // Access via node.nodeValue
-//! const content = text.node.nodeValue(); // "Hello, World!"
+//! const content = text.prototype.nodeValue(); // "Hello, World!"
 //!
 //! // Or via data field
 //! const data = text.data; // "Hello, World!"
@@ -39,7 +39,7 @@
 //! Text provides methods for substring operations, insertion, deletion:
 //! ```zig
 //! const text = try Text.create(allocator, "Hello World");
-//! defer text.node.release();
+//! defer text.prototype.release();
 //!
 //! // Get substring
 //! const sub = try text.substringData(0, 5); // "Hello"
@@ -54,10 +54,10 @@
 //! Split text nodes at a specific offset for editing operations:
 //! ```zig
 //! const parent = try Element.create(allocator, "p");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
 //! const text = try Text.create(allocator, "Hello World");
-//! _ = try parent.node.appendChild(&text.node);
+//! _ = try parent.prototype.appendChild(&text.prototype);
 //!
 //! // Split at offset 6 (after "Hello ")
 //! const second_half = try text.splitText(6);
@@ -80,11 +80,11 @@
 //! Text nodes use reference counting through Node interface:
 //! ```zig
 //! const text = try Text.create(allocator, "Example");
-//! defer text.node.release(); // Decrements ref_count, frees if 0
+//! defer text.prototype.release(); // Decrements ref_count, frees if 0
 //!
 //! // When sharing ownership:
-//! text.node.acquire(); // Increment ref_count
-//! other_structure.text_node = &text.node;
+//! text.prototype.acquire(); // Increment ref_count
+//! other_structure.text_node = &text.prototype;
 //! // Both owners must call release()
 //! ```
 //!
@@ -101,32 +101,32 @@
 //!
 //! // Direct creation (simple, for tests)
 //! const text1 = try Text.create(allocator, "Hello");
-//! defer text1.node.release();
+//! defer text1.prototype.release();
 //!
 //! // Via Document factory (RECOMMENDED - with string interning)
 //! const doc = try Document.init(allocator);
 //! defer doc.release();
 //! const text2 = try doc.createTextNode("World");
-//! defer text2.node.release();
+//! defer text2.prototype.release();
 //! ```
 //!
 //! ### Building Text Content
 //! ```zig
 //! const paragraph = try Element.create(allocator, "p");
-//! defer paragraph.node.release();
+//! defer paragraph.prototype.release();
 //!
 //! // Add text content
 //! const text = try Text.create(allocator, "This is a ");
-//! _ = try paragraph.node.appendChild(&text.node);
+//! _ = try paragraph.prototype.appendChild(&text.prototype);
 //!
 //! const emphasis = try Element.create(allocator, "em");
-//! _ = try paragraph.node.appendChild(&emphasis.node);
+//! _ = try paragraph.prototype.appendChild(&emphasis.prototype);
 //!
 //! const emphText = try Text.create(allocator, "very");
-//! _ = try emphasis.node.appendChild(&emphText.node);
+//! _ = try emphasis.prototype.appendChild(&emphText.prototype);
 //!
 //! const moreText = try Text.create(allocator, " important message.");
-//! _ = try paragraph.node.appendChild(&moreText.node);
+//! _ = try paragraph.prototype.appendChild(&moreText.prototype);
 //!
 //! // Result: <p>This is a <em>very</em> important message.</p>
 //! ```
@@ -134,7 +134,7 @@
 //! ### Manipulating Text Data
 //! ```zig
 //! const text = try Text.create(allocator, "Initial");
-//! defer text.node.release();
+//! defer text.prototype.release();
 //!
 //! // Append text
 //! try text.appendData(" content");
@@ -158,7 +158,7 @@
 //! ### Whitespace Normalization
 //! ```zig
 //! fn normalizeWhitespace(text: *Text) !void {
-//!     const allocator = text.node.allocator;
+//!     const allocator = text.prototype.allocator;
 //!     var normalized = std.ArrayList(u8).init(allocator);
 //!     defer normalized.deinit();
 //!
@@ -300,7 +300,7 @@ const NodeVTable = node_mod.NodeVTable;
 /// - Text content can be modified via nodeValue or data accessors
 pub const Text = struct {
     /// Base Node (MUST be first field for @fieldParentPtr to work)
-    node: Node,
+    prototype: Node,
 
     /// Text content (owned string, 16 bytes)
     /// Allocated and freed by this Text node
@@ -319,7 +319,7 @@ pub const Text = struct {
     /// Creates a new Text node with the specified content.
     ///
     /// ## Memory Management
-    /// Returns Text with ref_count=1. Caller MUST call `text.node.release()`.
+    /// Returns Text with ref_count=1. Caller MUST call `text.prototype.release()`.
     /// Text content is duplicated and owned by the Text node.
     ///
     /// ## Parameters
@@ -335,7 +335,7 @@ pub const Text = struct {
     /// ## Example
     /// ```zig
     /// const text = try Text.create(allocator, "Hello World");
-    /// defer text.node.release();
+    /// defer text.prototype.release();
     /// ```
     pub fn create(allocator: Allocator, content: []const u8) !*Text {
         const text = try allocator.create(Text);
@@ -346,7 +346,7 @@ pub const Text = struct {
         errdefer allocator.free(data);
 
         // Initialize base Node
-        text.node = .{
+        text.prototype = .{
             .vtable = &vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .text,
@@ -414,14 +414,14 @@ pub const Text = struct {
     /// - `error.OutOfMemory`: Failed to allocate new string
     pub fn appendData(self: *Text, text_to_append: []const u8) !void {
         const new_data = try std.mem.concat(
-            self.node.allocator,
+            self.prototype.allocator,
             u8,
             &[_][]const u8{ self.data, text_to_append },
         );
 
-        self.node.allocator.free(self.data);
+        self.prototype.allocator.free(self.data);
         self.data = new_data;
-        self.node.generation += 1;
+        self.prototype.generation += 1;
     }
 
     /// Inserts text at the specified offset.
@@ -439,14 +439,14 @@ pub const Text = struct {
         }
 
         const new_data = try std.mem.concat(
-            self.node.allocator,
+            self.prototype.allocator,
             u8,
             &[_][]const u8{ self.data[0..offset], text_to_insert, self.data[offset..] },
         );
 
-        self.node.allocator.free(self.data);
+        self.prototype.allocator.free(self.data);
         self.data = new_data;
-        self.node.generation += 1;
+        self.prototype.generation += 1;
     }
 
     /// Deletes text at the specified offset.
@@ -466,14 +466,14 @@ pub const Text = struct {
         const end = @min(offset + count, self.data.len);
 
         const new_data = try std.mem.concat(
-            self.node.allocator,
+            self.prototype.allocator,
             u8,
             &[_][]const u8{ self.data[0..offset], self.data[end..] },
         );
 
-        self.node.allocator.free(self.data);
+        self.prototype.allocator.free(self.data);
         self.data = new_data;
-        self.node.generation += 1;
+        self.prototype.generation += 1;
     }
 
     /// Replaces text at the specified offset.
@@ -499,14 +499,14 @@ pub const Text = struct {
         const end = @min(offset + count, self.data.len);
 
         const new_data = try std.mem.concat(
-            self.node.allocator,
+            self.prototype.allocator,
             u8,
             &[_][]const u8{ self.data[0..offset], replacement, self.data[end..] },
         );
 
-        self.node.allocator.free(self.data);
+        self.prototype.allocator.free(self.data);
         self.data = new_data;
-        self.node.generation += 1;
+        self.prototype.generation += 1;
     }
 
     /// Splits this text node at the specified offset.
@@ -544,7 +544,7 @@ pub const Text = struct {
     /// ## Example
     /// ```zig
     /// const text = try doc.createTextNode("Hello World");
-    /// _ = try parent.node.appendChild(&text.node);
+    /// _ = try parent.prototype.appendChild(&text.prototype);
     ///
     /// const second = try text.splitText(6);
     /// // text.data = "Hello "
@@ -563,25 +563,25 @@ pub const Text = struct {
 
         // Step 2: Create new text node with text after offset
         // Text.create will dupe the content, so just pass the slice
-        const new_text = try Text.create(self.node.allocator, self.data[offset..]);
-        errdefer new_text.node.release();
+        const new_text = try Text.create(self.prototype.allocator, self.data[offset..]);
+        errdefer new_text.prototype.release();
 
         // Set owner document from the original text node's document
         // (following the same pattern as cloneNode)
-        new_text.node.owner_document = self.node.owner_document;
+        new_text.prototype.owner_document = self.prototype.owner_document;
 
         // Step 3: Truncate this node's data to before offset
-        const truncated = try self.node.allocator.dupe(u8, self.data[0..offset]);
-        self.node.allocator.free(self.data);
+        const truncated = try self.prototype.allocator.dupe(u8, self.data[0..offset]);
+        self.prototype.allocator.free(self.data);
         self.data = truncated;
 
         // Step 4: If this node has a parent, insert new node after this one
-        if (self.node.parent_node) |parent| {
+        if (self.prototype.parent_node) |parent| {
             // Insert new_text after self
-            _ = try parent.insertBefore(&new_text.node, self.node.next_sibling);
+            _ = try parent.insertBefore(&new_text.prototype, self.prototype.next_sibling);
         }
 
-        self.node.generation += 1;
+        self.prototype.generation += 1;
         return new_text;
     }
 
@@ -615,18 +615,18 @@ pub const Text = struct {
     /// ```zig
     /// const parent = try doc.createElement("parent");
     /// const elem = try doc.createElement("child");
-    /// _ = try parent.node.appendChild(&elem.node);
+    /// _ = try parent.prototype.appendChild(&elem.prototype);
     /// const text = try doc.createTextNode("text");
-    /// _ = try parent.node.appendChild(&text.node);
+    /// _ = try parent.prototype.appendChild(&text.prototype);
     ///
     /// // text.previousElementSibling() returns elem
     /// try std.testing.expect(text.previousElementSibling() == elem);
     /// ```
     pub fn previousElementSibling(self: *const Text) ?*@import("element.zig").Element {
-        var current = self.node.previous_sibling;
+        var current = self.prototype.previous_sibling;
         while (current) |sibling| {
             if (sibling.node_type == .element) {
-                return @fieldParentPtr("node", sibling);
+                return @fieldParentPtr("prototype", sibling);
             }
             current = sibling.previous_sibling;
         }
@@ -659,18 +659,18 @@ pub const Text = struct {
     /// ```zig
     /// const parent = try doc.createElement("parent");
     /// const text = try doc.createTextNode("text");
-    /// _ = try parent.node.appendChild(&text.node);
+    /// _ = try parent.prototype.appendChild(&text.prototype);
     /// const elem = try doc.createElement("child");
-    /// _ = try parent.node.appendChild(&elem.node);
+    /// _ = try parent.prototype.appendChild(&elem.prototype);
     ///
     /// // text.nextElementSibling() returns elem
     /// try std.testing.expect(text.nextElementSibling() == elem);
     /// ```
     pub fn nextElementSibling(self: *const Text) ?*@import("element.zig").Element {
-        var current = self.node.next_sibling;
+        var current = self.prototype.next_sibling;
         while (current) |sibling| {
             if (sibling.node_type == .element) {
-                return @fieldParentPtr("node", sibling);
+                return @fieldParentPtr("prototype", sibling);
             }
             current = sibling.next_sibling;
         }
@@ -707,7 +707,7 @@ pub const Text = struct {
         const Element = @import("element.zig").Element;
 
         // Check if rare data exists
-        const rare_data = self.node.rare_data orelse return null;
+        const rare_data = self.prototype.rare_data orelse return null;
 
         // Check if assigned slot exists
         const slot_ptr = rare_data.assigned_slot orelse return null;
@@ -727,14 +727,14 @@ pub const Text = struct {
     pub fn setAssignedSlot(self: *Text, slot: ?*@import("element.zig").Element) !void {
         if (slot == null) {
             // Clear assigned slot
-            if (self.node.rare_data) |rare_data| {
+            if (self.prototype.rare_data) |rare_data| {
                 rare_data.assigned_slot = null;
             }
             return;
         }
 
         // Ensure rare data exists
-        const rare_data = try self.node.ensureRareData();
+        const rare_data = try self.prototype.ensureRareData();
 
         // Set assigned slot (WEAK reference)
         rare_data.assigned_slot = @ptrCast(slot.?);
@@ -771,8 +771,8 @@ pub const Text = struct {
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-remove
     /// - WebIDL: dom.idl:148
     pub fn remove(self: *Text) !void {
-        if (self.node.parent_node) |parent| {
-            _ = try parent.removeChild(&self.node);
+        if (self.prototype.parent_node) |parent| {
+            _ = try parent.removeChild(&self.prototype);
         }
     }
 
@@ -792,15 +792,15 @@ pub const Text = struct {
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-before
     /// - WebIDL: dom.idl:145
     pub fn before(self: *Text, nodes: []const NodeOrString) !void {
-        const parent = self.node.parent_node orelse return;
+        const parent = self.prototype.parent_node orelse return;
 
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
         if (result == null) return;
 
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try parent.insertBefore(node_to_insert, &self.node);
+        const returned_node = try parent.insertBefore(node_to_insert, &self.prototype);
 
         if (should_release) {
             returned_node.release();
@@ -823,15 +823,15 @@ pub const Text = struct {
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-after
     /// - WebIDL: dom.idl:146
     pub fn after(self: *Text, nodes: []const NodeOrString) !void {
-        const parent = self.node.parent_node orelse return;
+        const parent = self.prototype.parent_node orelse return;
 
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
         if (result == null) return;
 
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try parent.insertBefore(node_to_insert, self.node.next_sibling);
+        const returned_node = try parent.insertBefore(node_to_insert, self.prototype.next_sibling);
 
         if (should_release) {
             returned_node.release();
@@ -854,17 +854,17 @@ pub const Text = struct {
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-replacewith
     /// - WebIDL: dom.idl:147
     pub fn replaceWith(self: *Text, nodes: []const NodeOrString) !void {
-        const parent = self.node.parent_node orelse return;
+        const parent = self.prototype.parent_node orelse return;
 
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
 
         if (result) |r| {
-            _ = try parent.replaceChild(r.node, &self.node);
+            _ = try parent.replaceChild(r.node, &self.prototype);
             if (r.should_release_after_insert) {
-                r.node.release();
+                r.prototype.release();
             }
         } else {
-            _ = try parent.removeChild(&self.node);
+            _ = try parent.removeChild(&self.prototype);
         }
     }
 
@@ -886,7 +886,7 @@ pub const Text = struct {
         if (owner_doc.node_type != .document) {
             return error.InvalidStateError;
         }
-        const doc: *Document = @fieldParentPtr("node", owner_doc);
+        const doc: *Document = @fieldParentPtr("prototype", owner_doc);
 
         if (items.len == 1) {
             switch (items[0]) {
@@ -899,7 +899,7 @@ pub const Text = struct {
                 .string => |s| {
                     const text = try doc.createTextNode(s);
                     return ConvertResult{
-                        .node = &text.node,
+                        .node = &text.prototype,
                         .should_release_after_insert = false,
                     };
                 },
@@ -907,22 +907,22 @@ pub const Text = struct {
         }
 
         const fragment = try doc.createDocumentFragment();
-        errdefer fragment.node.release();
+        errdefer fragment.prototype.release();
 
         for (items) |item| {
             switch (item) {
                 .node => |n| {
-                    _ = try fragment.node.appendChild(n);
+                    _ = try fragment.prototype.appendChild(n);
                 },
                 .string => |s| {
                     const text = try doc.createTextNode(s);
-                    _ = try fragment.node.appendChild(&text.node);
+                    _ = try fragment.prototype.appendChild(&text.prototype);
                 },
             }
         }
 
         return ConvertResult{
-            .node = &fragment.node,
+            .node = &fragment.prototype,
             .should_release_after_insert = true,
         };
     }
@@ -938,23 +938,23 @@ pub const Text = struct {
 
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {
-        const text: *Text = @fieldParentPtr("node", node);
+        const text: *Text = @fieldParentPtr("prototype", node);
 
         // Release document reference if owned by a document
-        if (text.node.owner_document) |owner_doc| {
+        if (text.prototype.owner_document) |owner_doc| {
             if (owner_doc.node_type == .document) {
                 // Get Document from its node field (node is first field)
                 const Document = @import("document.zig").Document;
-                const doc: *Document = @fieldParentPtr("node", owner_doc);
+                const doc: *Document = @fieldParentPtr("prototype", owner_doc);
                 doc.releaseNodeRef();
             }
         }
 
         // Clean up rare data if allocated
-        text.node.deinitRareData();
+        text.prototype.deinitRareData();
 
-        text.node.allocator.free(text.data);
-        text.node.allocator.destroy(text);
+        text.prototype.allocator.free(text.data);
+        text.prototype.allocator.destroy(text);
     }
 
     /// Vtable implementation: node name (always "#text")
@@ -964,13 +964,13 @@ pub const Text = struct {
 
     /// Vtable implementation: node value (returns text content)
     fn nodeValueImpl(node: *const Node) ?[]const u8 {
-        const text: *const Text = @fieldParentPtr("node", node);
+        const text: *const Text = @fieldParentPtr("prototype", node);
         return text.data;
     }
 
     /// Vtable implementation: set node value (updates text content)
     fn setNodeValueImpl(node: *Node, value: []const u8) !void {
-        const text: *Text = @fieldParentPtr("node", node);
+        const text: *Text = @fieldParentPtr("prototype", node);
 
         // Allocate new content
         const new_data = try node.allocator.dupe(u8, value);
@@ -983,7 +983,7 @@ pub const Text = struct {
 
     /// Vtable implementation: clone node
     fn cloneNodeImpl(node: *const Node, deep: bool) !*Node {
-        const text: *const Text = @fieldParentPtr("node", node);
+        const text: *const Text = @fieldParentPtr("prototype", node);
 
         // Text nodes have no children, so deep is ignored
         _ = deep;
@@ -992,9 +992,9 @@ pub const Text = struct {
         const cloned = try Text.create(node.allocator, text.data);
 
         // Preserve owner document (WHATWG DOM §4.5.1 Clone algorithm)
-        cloned.node.owner_document = text.node.owner_document;
+        cloned.prototype.owner_document = text.prototype.owner_document;
 
-        return &cloned.node;
+        return &cloned.prototype;
     }
 };
 
@@ -1006,24 +1006,24 @@ test "Text - creation and cleanup" {
     const allocator = std.testing.allocator;
 
     const text = try Text.create(allocator, "Hello World");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Verify node properties
-    try std.testing.expectEqual(NodeType.text, text.node.node_type);
-    try std.testing.expectEqual(@as(u32, 1), text.node.getRefCount());
+    try std.testing.expectEqual(NodeType.text, text.prototype.node_type);
+    try std.testing.expectEqual(@as(u32, 1), text.prototype.getRefCount());
     try std.testing.expectEqualStrings("Hello World", text.data);
     try std.testing.expectEqual(@as(usize, 11), text.length());
 
     // Verify vtable dispatch
-    try std.testing.expectEqualStrings("#text", text.node.nodeName());
-    try std.testing.expectEqualStrings("Hello World", text.node.nodeValue().?);
+    try std.testing.expectEqualStrings("#text", text.prototype.nodeName());
+    try std.testing.expectEqualStrings("Hello World", text.prototype.nodeValue().?);
 }
 
 test "Text - empty content" {
     const allocator = std.testing.allocator;
 
     const text = try Text.create(allocator, "");
-    defer text.node.release();
+    defer text.prototype.release();
 
     try std.testing.expectEqual(@as(usize, 0), text.length());
     try std.testing.expectEqualStrings("", text.data);
@@ -1033,23 +1033,23 @@ test "Text - set node value" {
     const allocator = std.testing.allocator;
 
     const text = try Text.create(allocator, "original");
-    defer text.node.release();
+    defer text.prototype.release();
 
     try std.testing.expectEqualStrings("original", text.data);
 
     // Change via nodeValue setter
-    try text.node.setNodeValue("updated");
+    try text.prototype.setNodeValue("updated");
     try std.testing.expectEqualStrings("updated", text.data);
 
     // Verify generation incremented
-    try std.testing.expect(text.node.generation > 0);
+    try std.testing.expect(text.prototype.generation > 0);
 }
 
 test "Text - substringData" {
     const allocator = std.testing.allocator;
 
     const text = try Text.create(allocator, "Hello World");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Substring with count
     {
@@ -1080,7 +1080,7 @@ test "Text - appendData" {
     const allocator = std.testing.allocator;
 
     const text = try Text.create(allocator, "Hello");
-    defer text.node.release();
+    defer text.prototype.release();
 
     try text.appendData(" World");
     try std.testing.expectEqualStrings("Hello World", text.data);
@@ -1093,7 +1093,7 @@ test "Text - insertData" {
     const allocator = std.testing.allocator;
 
     const text = try Text.create(allocator, "Hello World");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Insert in middle
     try text.insertData(5, " Beautiful");
@@ -1115,7 +1115,7 @@ test "Text - deleteData" {
     const allocator = std.testing.allocator;
 
     const text = try Text.create(allocator, "Hello Beautiful World");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Delete from middle
     try text.deleteData(5, 10); // Remove " Beautiful"
@@ -1137,7 +1137,7 @@ test "Text - replaceData" {
     const allocator = std.testing.allocator;
 
     const text = try Text.create(allocator, "Hello World");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Replace in middle
     try text.replaceData(6, 5, "Zig");
@@ -1159,17 +1159,17 @@ test "Text - cloneNode" {
     const allocator = std.testing.allocator;
 
     const text = try Text.create(allocator, "Hello World");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Clone
-    const cloned_node = try text.node.cloneNode(false);
+    const cloned_node = try text.prototype.cloneNode(false);
     defer cloned_node.release();
 
-    const cloned: *Text = @fieldParentPtr("node", cloned_node);
+    const cloned: *Text = @fieldParentPtr("prototype", cloned_node);
 
     // Verify clone properties
     try std.testing.expectEqualStrings("Hello World", cloned.data);
-    try std.testing.expectEqual(@as(u32, 1), cloned.node.getRefCount());
+    try std.testing.expectEqual(@as(u32, 1), cloned.prototype.getRefCount());
 
     // Verify independence
     try text.appendData("!");
@@ -1183,37 +1183,37 @@ test "Text - memory leak test" {
     // Test 1: Simple creation
     {
         const text = try Text.create(allocator, "test");
-        defer text.node.release();
+        defer text.prototype.release();
     }
 
     // Test 2: Modifications
     {
         const text = try Text.create(allocator, "test");
-        defer text.node.release();
+        defer text.prototype.release();
 
         try text.appendData(" more");
         try text.insertData(0, "prefix ");
         try text.deleteData(0, 7);
         try text.replaceData(0, 4, "TEST");
-        try text.node.setNodeValue("final");
+        try text.prototype.setNodeValue("final");
     }
 
     // Test 3: Clone
     {
         const text = try Text.create(allocator, "original");
-        defer text.node.release();
+        defer text.prototype.release();
 
-        const cloned = try text.node.cloneNode(false);
+        const cloned = try text.prototype.cloneNode(false);
         defer cloned.release();
     }
 
     // Test 4: Multiple acquire/release
     {
         const text = try Text.create(allocator, "test");
-        defer text.node.release();
+        defer text.prototype.release();
 
-        text.node.acquire();
-        defer text.node.release();
+        text.prototype.acquire();
+        defer text.prototype.release();
     }
 
     // If we reach here without leaks, std.testing.allocator validates success
@@ -1223,25 +1223,25 @@ test "Text - ref counting" {
     const allocator = std.testing.allocator;
 
     const text = try Text.create(allocator, "test");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Initial ref count
-    try std.testing.expectEqual(@as(u32, 1), text.node.getRefCount());
+    try std.testing.expectEqual(@as(u32, 1), text.prototype.getRefCount());
 
     // Acquire
-    text.node.acquire();
-    try std.testing.expectEqual(@as(u32, 2), text.node.getRefCount());
+    text.prototype.acquire();
+    try std.testing.expectEqual(@as(u32, 2), text.prototype.getRefCount());
 
     // Release
-    text.node.release();
-    try std.testing.expectEqual(@as(u32, 1), text.node.getRefCount());
+    text.prototype.release();
+    try std.testing.expectEqual(@as(u32, 1), text.prototype.getRefCount());
 }
 
 // test "Text - wholeText with single text node" {
 //     const allocator = std.testing.allocator;
 //
 //     const text = try Text.create(allocator, "Hello World");
-//     defer text.node.release();
+//     defer text.prototype.release();
 //
 //     const whole = try text.wholeText(allocator);
 //     defer allocator.free(whole);
@@ -1257,15 +1257,15 @@ test "Text - ref counting" {
 //     defer doc.release();
 //
 //     const parent = try doc.createElement("div");
-//     defer parent.node.release();
+//     defer parent.prototype.release();
 //
 //     const text1 = try doc.createTextNode("Hello ");
 //     const text2 = try doc.createTextNode("beautiful ");
 //     const text3 = try doc.createTextNode("world!");
 //
-//     _ = try parent.node.appendChild(&text1.node);
-//     _ = try parent.node.appendChild(&text2.node);
-//     _ = try parent.node.appendChild(&text3.node);
+//     _ = try parent.prototype.appendChild(&text1.prototype);
+//     _ = try parent.prototype.appendChild(&text2.prototype);
+//     _ = try parent.prototype.appendChild(&text3.prototype);
 //
 //     // wholeText from middle node should concatenate all three
 //     const whole = try text2.wholeText(allocator);
@@ -1282,15 +1282,15 @@ test "Text - ref counting" {
 //     defer doc.release();
 //
 //     const parent = try doc.createElement("div");
-//     defer parent.node.release();
+//     defer parent.prototype.release();
 //
 //     const text1 = try doc.createTextNode("Hello");
 //     const elem = try doc.createElement("span");
 //     const text2 = try doc.createTextNode("World");
 //
-//     _ = try parent.node.appendChild(&text1.node);
-//     _ = try parent.node.appendChild(&elem.node);
-//     _ = try parent.node.appendChild(&text2.node);
+//     _ = try parent.prototype.appendChild(&text1.prototype);
+//     _ = try parent.prototype.appendChild(&elem.prototype);
+//     _ = try parent.prototype.appendChild(&text2.prototype);
 //
 //     // wholeText from text1 should only include text1 (element breaks contiguity)
 //     const whole1 = try text1.wholeText(allocator);
@@ -1311,15 +1311,15 @@ test "Text - ref counting" {
 //     defer doc.release();
 //
 //     const parent = try doc.createElement("div");
-//     defer parent.node.release();
+//     defer parent.prototype.release();
 //
 //     const text1 = try doc.createTextNode("");
 //     const text2 = try doc.createTextNode("Content");
 //     const text3 = try doc.createTextNode("");
 //
-//     _ = try parent.node.appendChild(&text1.node);
-//     _ = try parent.node.appendChild(&text2.node);
-//     _ = try parent.node.appendChild(&text3.node);
+//     _ = try parent.prototype.appendChild(&text1.prototype);
+//     _ = try parent.prototype.appendChild(&text2.prototype);
+//     _ = try parent.prototype.appendChild(&text3.prototype);
 //
 //     // wholeText should include empty strings too
 //     const whole = try text2.wholeText(allocator);
@@ -1336,10 +1336,10 @@ test "Text.splitText - basic split" {
     defer doc.release();
 
     const parent = try doc.createElement("container");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const text = try doc.createTextNode("Hello World");
-    _ = try parent.node.appendChild(&text.node);
+    _ = try parent.prototype.appendChild(&text.prototype);
 
     // Split at offset 6 (after "Hello ")
     const second = try text.splitText(6);
@@ -1351,10 +1351,10 @@ test "Text.splitText - basic split" {
     try std.testing.expectEqualStrings("World", second.data);
 
     // Both should be children of parent
-    try std.testing.expectEqual(@as(usize, 2), parent.node.childNodes().length());
+    try std.testing.expectEqual(@as(usize, 2), parent.prototype.childNodes().length());
 
     // Second should be next sibling of first
-    try std.testing.expect(text.node.next_sibling == &second.node);
+    try std.testing.expect(text.prototype.next_sibling == &second.prototype);
 }
 
 test "Text.splitText - split at boundaries" {
@@ -1365,21 +1365,21 @@ test "Text.splitText - split at boundaries" {
     defer doc.release();
 
     const text1 = try doc.createTextNode("Test");
-    defer text1.node.release();
+    defer text1.prototype.release();
 
     // Split at 0 - first part empty
     const second1 = try text1.splitText(0);
-    defer second1.node.release();
+    defer second1.prototype.release();
 
     try std.testing.expectEqualStrings("", text1.data);
     try std.testing.expectEqualStrings("Test", second1.data);
 
     const text2 = try doc.createTextNode("Test");
-    defer text2.node.release();
+    defer text2.prototype.release();
 
     // Split at length - second part empty
     const second2 = try text2.splitText(4);
-    defer second2.node.release();
+    defer second2.prototype.release();
 
     try std.testing.expectEqualStrings("Test", text2.data);
     try std.testing.expectEqualStrings("", second2.data);
@@ -1393,22 +1393,22 @@ test "Text.splitText - orphaned node" {
     defer doc.release();
 
     const text = try doc.createTextNode("Orphan Text");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Split orphaned node (no parent)
     const second = try text.splitText(7);
-    defer second.node.release();
+    defer second.prototype.release();
 
     try std.testing.expectEqualStrings("Orphan ", text.data);
     try std.testing.expectEqualStrings("Text", second.data);
 
     // Neither should have a parent
-    try std.testing.expect(text.node.parent_node == null);
-    try std.testing.expect(second.node.parent_node == null);
+    try std.testing.expect(text.prototype.parent_node == null);
+    try std.testing.expect(second.prototype.parent_node == null);
 
     // Should not be siblings
-    try std.testing.expect(text.node.next_sibling == null);
-    try std.testing.expect(second.node.previous_sibling == null);
+    try std.testing.expect(text.prototype.next_sibling == null);
+    try std.testing.expect(second.prototype.previous_sibling == null);
 }
 
 test "Text.splitText - invalid offset" {
@@ -1419,7 +1419,7 @@ test "Text.splitText - invalid offset" {
     defer doc.release();
 
     const text = try doc.createTextNode("Test");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Offset greater than length
     try std.testing.expectError(

@@ -19,46 +19,46 @@ fn testCreateComment(doc: *Document, value: []const u8, desc: []const u8) !void 
     const allocator = std.testing.allocator;
 
     const comment = try doc.createComment(value);
-    defer comment.node.release();
+    defer comment.prototype.release();
 
     // Check type
-    try std.testing.expect(comment.node.node_type == .comment);
+    try std.testing.expect(comment.prototype.node_type == .comment);
 
     // Check owner document
-    try std.testing.expect(comment.node.getOwnerDocument() == doc);
+    try std.testing.expect(comment.prototype.getOwnerDocument() == doc);
 
     // Check data
     try std.testing.expectEqualStrings(value, comment.data);
 
     // Check nodeValue
-    const node_value = comment.node.nodeValue();
+    const node_value = comment.prototype.nodeValue();
     try std.testing.expect(node_value != null);
     try std.testing.expectEqualStrings(value, node_value.?);
 
     // Check textContent
-    const text_content = try comment.node.textContent(allocator);
+    const text_content = try comment.prototype.textContent(allocator);
     defer if (text_content) |tc| allocator.free(tc);
     try std.testing.expect(text_content != null);
     try std.testing.expectEqualStrings(value, text_content.?);
 
     // Check nodeType
-    try std.testing.expectEqual(@as(u8, 8), comment.node.node_type.value());
+    try std.testing.expectEqual(@as(u8, 8), comment.prototype.node_type.value());
 
     // Check nodeName
-    try std.testing.expectEqualStrings("#comment", comment.node.nodeName());
+    try std.testing.expectEqualStrings("#comment", comment.prototype.nodeName());
 
     // Check hasChildNodes
-    try std.testing.expectEqual(false, comment.node.hasChildNodes());
+    try std.testing.expectEqual(false, comment.prototype.hasChildNodes());
 
     // Check childNodes
-    const child_nodes = comment.node.childNodes();
+    const child_nodes = comment.prototype.childNodes();
     try std.testing.expectEqual(@as(usize, 0), child_nodes.length());
 
     // Check firstChild
-    try std.testing.expectEqual(@as(?*Node, null), comment.node.first_child);
+    try std.testing.expectEqual(@as(?*Node, null), comment.prototype.first_child);
 
     // Check lastChild
-    try std.testing.expectEqual(@as(?*Node, null), comment.node.last_child);
+    try std.testing.expectEqual(@as(?*Node, null), comment.prototype.last_child);
 
     _ = desc; // Used for test description
 }

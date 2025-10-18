@@ -315,7 +315,7 @@ pub const NodeRareData = struct {
         if (self.shadow_root) |shadow_ptr| {
             const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
             const shadow: *ShadowRoot = @ptrCast(@alignCast(shadow_ptr));
-            shadow.node.release();
+            shadow.prototype.release();
         }
 
         // Note: custom_element_data and animation_data are opaque pointers

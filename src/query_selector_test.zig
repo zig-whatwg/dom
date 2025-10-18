@@ -15,7 +15,7 @@ test "querySelector - simple type selector" {
     defer doc.release();
 
     const div = try doc.createElement("div");
-    _ = try doc.node.appendChild(&div.node);
+    _ = try doc.prototype.appendChild(&div.prototype);
 
     const result = try div.querySelector(allocator, "div");
     try testing.expect(result == null); // div is not a descendant of itself
@@ -28,10 +28,10 @@ test "querySelector - finds child element" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child = try doc.createElement("p");
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     const result = try parent.querySelector(allocator, "p");
     try testing.expect(result != null);
@@ -45,14 +45,14 @@ test "querySelector - class selector" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child1 = try doc.createElement("p");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
 
     const child2 = try doc.createElement("span");
     try child2.setAttribute("class", "highlight");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
     const result = try parent.querySelector(allocator, ".highlight");
     try testing.expect(result != null);
@@ -66,14 +66,14 @@ test "querySelector - ID selector" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child1 = try doc.createElement("p");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
 
     const child2 = try doc.createElement("div");
     try child2.setAttribute("id", "main");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
     const result = try parent.querySelector(allocator, "#main");
     try testing.expect(result != null);
@@ -87,15 +87,15 @@ test "querySelector - compound selector" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child1 = try doc.createElement("p");
     try child1.setAttribute("class", "text");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
 
     const child2 = try doc.createElement("p");
     try child2.setAttribute("class", "text highlight");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
     const result = try parent.querySelector(allocator, "p.highlight");
     try testing.expect(result != null);
@@ -109,14 +109,14 @@ test "querySelector - child combinator" {
     defer doc.release();
 
     const root = try doc.createElement("div");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const parent = try doc.createElement("div");
     try parent.setAttribute("class", "parent");
-    _ = try root.node.appendChild(&parent.node);
+    _ = try root.prototype.appendChild(&parent.prototype);
 
     const child = try doc.createElement("p");
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     const result = try root.querySelector(allocator, "div.parent > p");
     try testing.expect(result != null);
@@ -130,10 +130,10 @@ test "querySelector - returns null when no match" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child = try doc.createElement("p");
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     const result = try parent.querySelector(allocator, "span");
     try testing.expect(result == null);
@@ -146,16 +146,16 @@ test "querySelectorAll - finds multiple elements" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child1 = try doc.createElement("p");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
 
     const child2 = try doc.createElement("p");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
     const child3 = try doc.createElement("span");
-    _ = try parent.node.appendChild(&child3.node);
+    _ = try parent.prototype.appendChild(&child3.prototype);
 
     const results = try parent.querySelectorAll(allocator, "p");
     defer allocator.free(results);
@@ -172,10 +172,10 @@ test "querySelectorAll - returns empty array when no match" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child = try doc.createElement("p");
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     const results = try parent.querySelectorAll(allocator, "span");
     defer allocator.free(results);
@@ -190,18 +190,18 @@ test "querySelectorAll - with class selector" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child1 = try doc.createElement("p");
     try child1.setAttribute("class", "text");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
 
     const child2 = try doc.createElement("div");
     try child2.setAttribute("class", "text");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
     const child3 = try doc.createElement("span");
-    _ = try parent.node.appendChild(&child3.node);
+    _ = try parent.prototype.appendChild(&child3.prototype);
 
     const results = try parent.querySelectorAll(allocator, ".text");
     defer allocator.free(results);
@@ -218,19 +218,19 @@ test "querySelectorAll - finds nested elements" {
     defer doc.release();
 
     const root = try doc.createElement("div");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const child1 = try doc.createElement("p");
-    _ = try root.node.appendChild(&child1.node);
+    _ = try root.prototype.appendChild(&child1.prototype);
 
     const grandchild1 = try doc.createElement("span");
-    _ = try child1.node.appendChild(&grandchild1.node);
+    _ = try child1.prototype.appendChild(&grandchild1.prototype);
 
     const child2 = try doc.createElement("div");
-    _ = try root.node.appendChild(&child2.node);
+    _ = try root.prototype.appendChild(&child2.prototype);
 
     const grandchild2 = try doc.createElement("span");
-    _ = try child2.node.appendChild(&grandchild2.node);
+    _ = try child2.prototype.appendChild(&grandchild2.prototype);
 
     const results = try root.querySelectorAll(allocator, "span");
     defer allocator.free(results);
@@ -247,14 +247,14 @@ test "Document.querySelector" {
     defer doc.release();
 
     const html = try doc.createElement("html");
-    _ = try doc.node.appendChild(&html.node);
+    _ = try doc.prototype.appendChild(&html.prototype);
 
     const body = try doc.createElement("body");
-    _ = try html.node.appendChild(&body.node);
+    _ = try html.prototype.appendChild(&body.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("class", "btn");
-    _ = try body.node.appendChild(&button.node);
+    _ = try body.prototype.appendChild(&button.prototype);
 
     const result = try doc.querySelector(".btn");
     try testing.expect(result != null);
@@ -268,16 +268,16 @@ test "Document.querySelectorAll" {
     defer doc.release();
 
     const html = try doc.createElement("html");
-    _ = try doc.node.appendChild(&html.node);
+    _ = try doc.prototype.appendChild(&html.prototype);
 
     const body = try doc.createElement("body");
-    _ = try html.node.appendChild(&body.node);
+    _ = try html.prototype.appendChild(&body.prototype);
 
     const btn1 = try doc.createElement("button");
-    _ = try body.node.appendChild(&btn1.node);
+    _ = try body.prototype.appendChild(&btn1.prototype);
 
     const btn2 = try doc.createElement("button");
-    _ = try body.node.appendChild(&btn2.node);
+    _ = try body.prototype.appendChild(&btn2.prototype);
 
     const results = try doc.querySelectorAll("button");
     defer allocator.free(results);
@@ -291,14 +291,14 @@ test "DocumentFragment.querySelector" {
     const allocator = testing.allocator;
 
     const fragment = try DocumentFragment.create(allocator);
-    defer fragment.node.release();
+    defer fragment.prototype.release();
 
     const child1 = try Element.create(allocator, "p");
-    _ = try fragment.node.appendChild(&child1.node);
+    _ = try fragment.prototype.appendChild(&child1.prototype);
 
     const child2 = try Element.create(allocator, "div");
     try child2.setAttribute("class", "target");
-    _ = try fragment.node.appendChild(&child2.node);
+    _ = try fragment.prototype.appendChild(&child2.prototype);
 
     const result = try fragment.querySelector(allocator, ".target");
     try testing.expect(result != null);
@@ -309,13 +309,13 @@ test "DocumentFragment.querySelectorAll" {
     const allocator = testing.allocator;
 
     const fragment = try DocumentFragment.create(allocator);
-    defer fragment.node.release();
+    defer fragment.prototype.release();
 
     const child1 = try Element.create(allocator, "p");
-    _ = try fragment.node.appendChild(&child1.node);
+    _ = try fragment.prototype.appendChild(&child1.prototype);
 
     const child2 = try Element.create(allocator, "p");
-    _ = try fragment.node.appendChild(&child2.node);
+    _ = try fragment.prototype.appendChild(&child2.prototype);
 
     const results = try fragment.querySelectorAll(allocator, "p");
     defer allocator.free(results);
@@ -332,15 +332,15 @@ test "querySelector - attribute selector" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child1 = try doc.createElement("input");
     try child1.setAttribute("type", "text");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
 
     const child2 = try doc.createElement("input");
     try child2.setAttribute("type", "submit");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
     const result = try parent.querySelector(allocator, "input[type='submit']");
     try testing.expect(result != null);
@@ -354,13 +354,13 @@ test "querySelector - :first-child pseudo-class" {
     defer doc.release();
 
     const parent = try doc.createElement("ul");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child1 = try doc.createElement("li");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
 
     const child2 = try doc.createElement("li");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
     const result = try parent.querySelector(allocator, "li:first-child");
     try testing.expect(result != null);
@@ -374,16 +374,16 @@ test "querySelectorAll - universal selector" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child1 = try doc.createElement("p");
-    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
 
     const child2 = try doc.createElement("span");
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
     const child3 = try doc.createElement("div");
-    _ = try parent.node.appendChild(&child3.node);
+    _ = try parent.prototype.appendChild(&child3.prototype);
 
     const results = try parent.querySelectorAll(allocator, "*");
     defer allocator.free(results);
@@ -399,7 +399,7 @@ test "Element.matches - type selector" {
     const allocator = testing.allocator;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     try testing.expect(try elem.matches(allocator, "div"));
     try testing.expect(!try elem.matches(allocator, "span"));
@@ -409,7 +409,7 @@ test "Element.matches - class selector" {
     const allocator = testing.allocator;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
     try elem.setAttribute("class", "container active");
 
     try testing.expect(try elem.matches(allocator, ".container"));
@@ -421,7 +421,7 @@ test "Element.matches - ID selector" {
     const allocator = testing.allocator;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
     try elem.setAttribute("id", "main");
 
     try testing.expect(try elem.matches(allocator, "#main"));
@@ -432,7 +432,7 @@ test "Element.matches - compound selector" {
     const allocator = testing.allocator;
 
     const elem = try Element.create(allocator, "button");
-    defer elem.node.release();
+    defer elem.prototype.release();
     try elem.setAttribute("class", "btn primary");
     try elem.setAttribute("type", "submit");
 
@@ -446,7 +446,7 @@ test "Element.matches - attribute selector" {
     const allocator = testing.allocator;
 
     const elem = try Element.create(allocator, "input");
-    defer elem.node.release();
+    defer elem.prototype.release();
     try elem.setAttribute("type", "text");
     try elem.setAttribute("required", "");
 
@@ -459,7 +459,7 @@ test "Element.matches - universal selector" {
     const allocator = testing.allocator;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     try testing.expect(try elem.matches(allocator, "*"));
 }
@@ -472,7 +472,7 @@ test "Element.closest - matches self" {
     const allocator = testing.allocator;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
     try elem.setAttribute("class", "container");
 
     const result = try elem.closest(allocator, ".container");
@@ -484,11 +484,11 @@ test "Element.closest - finds parent" {
     const allocator = testing.allocator;
 
     const parent = try Element.create(allocator, "form");
-    defer parent.node.release();
+    defer parent.prototype.release();
     try parent.setAttribute("class", "login-form");
 
     const child = try Element.create(allocator, "button");
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     const result = try child.closest(allocator, "form");
     try testing.expect(result != null);
@@ -499,14 +499,14 @@ test "Element.closest - finds ancestor" {
     const allocator = testing.allocator;
 
     const grandparent = try Element.create(allocator, "article");
-    defer grandparent.node.release();
+    defer grandparent.prototype.release();
     try grandparent.setAttribute("class", "post");
 
     const parent = try Element.create(allocator, "div");
-    _ = try grandparent.node.appendChild(&parent.node);
+    _ = try grandparent.prototype.appendChild(&parent.prototype);
 
     const child = try Element.create(allocator, "span");
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     const result = try child.closest(allocator, "article.post");
     try testing.expect(result != null);
@@ -517,10 +517,10 @@ test "Element.closest - returns null when no match" {
     const allocator = testing.allocator;
 
     const parent = try Element.create(allocator, "div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try Element.create(allocator, "span");
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     const result = try child.closest(allocator, "form");
     try testing.expect(result == null);
@@ -533,7 +533,7 @@ test "Element.closest - stops at document" {
     defer doc.release();
 
     const div = try doc.createElement("div");
-    _ = try doc.node.appendChild(&div.node);
+    _ = try doc.prototype.appendChild(&div.prototype);
 
     // Should not find Document (not an Element)
     const result = try div.closest(allocator, "*");
@@ -550,13 +550,13 @@ test "Element.closest - with complex selector" {
     const form = try doc.createElement("form");
     try form.setAttribute("class", "login");
     try form.setAttribute("method", "POST");
-    _ = try doc.node.appendChild(&form.node);
+    _ = try doc.prototype.appendChild(&form.prototype);
 
     const fieldset = try doc.createElement("fieldset");
-    _ = try form.node.appendChild(&fieldset.node);
+    _ = try form.prototype.appendChild(&fieldset.prototype);
 
     const input = try doc.createElement("input");
-    _ = try fieldset.node.appendChild(&input.node);
+    _ = try fieldset.prototype.appendChild(&input.prototype);
 
     const result = try input.closest(allocator, "form.login[method='POST']");
     try testing.expect(result != null);
@@ -571,14 +571,14 @@ test "Element.matches and Element.closest - event delegation pattern" {
 
     const list = try doc.createElement("ul");
     try list.setAttribute("class", "menu");
-    _ = try doc.node.appendChild(&list.node);
+    _ = try doc.prototype.appendChild(&list.prototype);
 
     const item = try doc.createElement("li");
-    _ = try list.node.appendChild(&item.node);
+    _ = try list.prototype.appendChild(&item.prototype);
 
     const link = try doc.createElement("a");
     try link.setAttribute("class", "menu-link");
-    _ = try item.node.appendChild(&link.node);
+    _ = try item.prototype.appendChild(&link.prototype);
 
     // Simulate click on link - check if it matches ".menu a"
     // This should match because link is an "a" element with ancestor ".menu"
@@ -606,16 +606,16 @@ test "querySelector - descendant combinator (space)" {
     defer doc.release();
 
     const article = try doc.createElement("article");
-    _ = try doc.node.appendChild(&article.node);
+    _ = try doc.prototype.appendChild(&article.prototype);
 
     const header = try doc.createElement("header");
-    _ = try article.node.appendChild(&header.node);
+    _ = try article.prototype.appendChild(&header.prototype);
 
     const h1 = try doc.createElement("h1");
-    _ = try header.node.appendChild(&h1.node);
+    _ = try header.prototype.appendChild(&h1.prototype);
 
     const paragraph = try doc.createElement("p");
-    _ = try article.node.appendChild(&paragraph.node);
+    _ = try article.prototype.appendChild(&paragraph.prototype);
 
     // "article h1" should match h1 (descendant, not direct child)
     const result = try article.querySelector(allocator, "article h1");
@@ -635,16 +635,16 @@ test "querySelector - next sibling combinator (+)" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const h1 = try doc.createElement("h1");
-    _ = try container.node.appendChild(&h1.node);
+    _ = try container.prototype.appendChild(&h1.prototype);
 
     const p = try doc.createElement("p");
-    _ = try container.node.appendChild(&p.node);
+    _ = try container.prototype.appendChild(&p.prototype);
 
     const span = try doc.createElement("span");
-    _ = try container.node.appendChild(&span.node);
+    _ = try container.prototype.appendChild(&span.prototype);
 
     // "h1 + p" should match p (immediately follows h1)
     const result = try container.querySelector(allocator, "h1 + p");
@@ -668,19 +668,19 @@ test "querySelector - subsequent sibling combinator (~)" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const h1 = try doc.createElement("h1");
-    _ = try container.node.appendChild(&h1.node);
+    _ = try container.prototype.appendChild(&h1.prototype);
 
     const p = try doc.createElement("p");
-    _ = try container.node.appendChild(&p.node);
+    _ = try container.prototype.appendChild(&p.prototype);
 
     const span = try doc.createElement("span");
-    _ = try container.node.appendChild(&span.node);
+    _ = try container.prototype.appendChild(&span.prototype);
 
     const div = try doc.createElement("div");
-    _ = try container.node.appendChild(&div.node);
+    _ = try container.prototype.appendChild(&div.prototype);
 
     // "h1 ~ span" should match span (follows h1, not immediately)
     const result = try container.querySelector(allocator, "h1 ~ span");
@@ -709,16 +709,16 @@ test "querySelector - :last-child pseudo-class" {
     defer doc.release();
 
     const list = try doc.createElement("ul");
-    _ = try doc.node.appendChild(&list.node);
+    _ = try doc.prototype.appendChild(&list.prototype);
 
     const item1 = try doc.createElement("li");
-    _ = try list.node.appendChild(&item1.node);
+    _ = try list.prototype.appendChild(&item1.prototype);
 
     const item2 = try doc.createElement("li");
-    _ = try list.node.appendChild(&item2.node);
+    _ = try list.prototype.appendChild(&item2.prototype);
 
     const item3 = try doc.createElement("li");
-    _ = try list.node.appendChild(&item3.node);
+    _ = try list.prototype.appendChild(&item3.prototype);
 
     // "li:last-child" should match item3
     const result = try list.querySelector(allocator, "li:last-child");
@@ -733,22 +733,22 @@ test "querySelector - :only-child pseudo-class" {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const container1 = try doc.createElement("div");
-    _ = try root.node.appendChild(&container1.node);
+    _ = try root.prototype.appendChild(&container1.prototype);
 
     const only = try doc.createElement("p");
-    _ = try container1.node.appendChild(&only.node);
+    _ = try container1.prototype.appendChild(&only.prototype);
 
     const container2 = try doc.createElement("div");
-    _ = try root.node.appendChild(&container2.node);
+    _ = try root.prototype.appendChild(&container2.prototype);
 
     const p1 = try doc.createElement("p");
-    _ = try container2.node.appendChild(&p1.node);
+    _ = try container2.prototype.appendChild(&p1.prototype);
 
     const p2 = try doc.createElement("p");
-    _ = try container2.node.appendChild(&p2.node);
+    _ = try container2.prototype.appendChild(&p2.prototype);
 
     // "p:only-child" should match only
     const result = try doc.querySelector("p:only-child");
@@ -763,19 +763,19 @@ test "querySelector - :nth-child(2n) pseudo-class" {
     defer doc.release();
 
     const list = try doc.createElement("ul");
-    _ = try doc.node.appendChild(&list.node);
+    _ = try doc.prototype.appendChild(&list.prototype);
 
     const item1 = try doc.createElement("li");
-    _ = try list.node.appendChild(&item1.node);
+    _ = try list.prototype.appendChild(&item1.prototype);
 
     const item2 = try doc.createElement("li");
-    _ = try list.node.appendChild(&item2.node);
+    _ = try list.prototype.appendChild(&item2.prototype);
 
     const item3 = try doc.createElement("li");
-    _ = try list.node.appendChild(&item3.node);
+    _ = try list.prototype.appendChild(&item3.prototype);
 
     const item4 = try doc.createElement("li");
-    _ = try list.node.appendChild(&item4.node);
+    _ = try list.prototype.appendChild(&item4.prototype);
 
     // "li:nth-child(2n)" should match even children (item2, item4)
     const result = try list.querySelector(allocator, "li:nth-child(2n)");
@@ -795,16 +795,16 @@ test "querySelector - :nth-child(3) pseudo-class" {
     defer doc.release();
 
     const list = try doc.createElement("ul");
-    _ = try doc.node.appendChild(&list.node);
+    _ = try doc.prototype.appendChild(&list.prototype);
 
     const item1 = try doc.createElement("li");
-    _ = try list.node.appendChild(&item1.node);
+    _ = try list.prototype.appendChild(&item1.prototype);
 
     const item2 = try doc.createElement("li");
-    _ = try list.node.appendChild(&item2.node);
+    _ = try list.prototype.appendChild(&item2.prototype);
 
     const item3 = try doc.createElement("li");
-    _ = try list.node.appendChild(&item3.node);
+    _ = try list.prototype.appendChild(&item3.prototype);
 
     // "li:nth-child(3)" should match third child
     const result = try list.querySelector(allocator, "li:nth-child(3)");
@@ -819,18 +819,18 @@ test "querySelector - :not() pseudo-class" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const p1 = try doc.createElement("p");
     try p1.setAttribute("class", "intro");
-    _ = try container.node.appendChild(&p1.node);
+    _ = try container.prototype.appendChild(&p1.prototype);
 
     const p2 = try doc.createElement("p");
-    _ = try container.node.appendChild(&p2.node);
+    _ = try container.prototype.appendChild(&p2.prototype);
 
     const p3 = try doc.createElement("p");
     try p3.setAttribute("class", "intro");
-    _ = try container.node.appendChild(&p3.node);
+    _ = try container.prototype.appendChild(&p3.prototype);
 
     // "p:not(.intro)" should match p2
     const result = try container.querySelector(allocator, "p:not(.intro)");
@@ -845,15 +845,15 @@ test "querySelector - :empty pseudo-class" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const empty = try doc.createElement("p");
-    _ = try container.node.appendChild(&empty.node);
+    _ = try container.prototype.appendChild(&empty.prototype);
 
     const not_empty = try doc.createElement("p");
     const text = try doc.createTextNode("content");
-    _ = try not_empty.node.appendChild(&text.node);
-    _ = try container.node.appendChild(&not_empty.node);
+    _ = try not_empty.prototype.appendChild(&text.prototype);
+    _ = try container.prototype.appendChild(&not_empty.prototype);
 
     // "p:empty" should match empty
     const result = try container.querySelector(allocator, "p:empty");
@@ -872,19 +872,19 @@ test "querySelector - attribute prefix selector [attr^=value]" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const link1 = try doc.createElement("a");
     try link1.setAttribute("href", "https://example.com");
-    _ = try container.node.appendChild(&link1.node);
+    _ = try container.prototype.appendChild(&link1.prototype);
 
     const link2 = try doc.createElement("a");
     try link2.setAttribute("href", "http://example.com");
-    _ = try container.node.appendChild(&link2.node);
+    _ = try container.prototype.appendChild(&link2.prototype);
 
     const link3 = try doc.createElement("a");
     try link3.setAttribute("href", "/local/path");
-    _ = try container.node.appendChild(&link3.node);
+    _ = try container.prototype.appendChild(&link3.prototype);
 
     // "a[href^='https']" should match link1
     const result = try container.querySelector(allocator, "a[href^='https']");
@@ -904,19 +904,19 @@ test "querySelector - attribute suffix selector [attr$=value]" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const img1 = try doc.createElement("img");
     try img1.setAttribute("src", "photo.jpg");
-    _ = try container.node.appendChild(&img1.node);
+    _ = try container.prototype.appendChild(&img1.prototype);
 
     const img2 = try doc.createElement("img");
     try img2.setAttribute("src", "icon.png");
-    _ = try container.node.appendChild(&img2.node);
+    _ = try container.prototype.appendChild(&img2.prototype);
 
     const img3 = try doc.createElement("img");
     try img3.setAttribute("src", "logo.svg");
-    _ = try container.node.appendChild(&img3.node);
+    _ = try container.prototype.appendChild(&img3.prototype);
 
     // "img[src$='.png']" should match img2
     const result = try container.querySelector(allocator, "img[src$='.png']");
@@ -931,15 +931,15 @@ test "querySelector - attribute contains selector [attr*=value]" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const div1 = try doc.createElement("div");
     try div1.setAttribute("class", "btn btn-primary active");
-    _ = try container.node.appendChild(&div1.node);
+    _ = try container.prototype.appendChild(&div1.prototype);
 
     const div2 = try doc.createElement("div");
     try div2.setAttribute("class", "button");
-    _ = try container.node.appendChild(&div2.node);
+    _ = try container.prototype.appendChild(&div2.prototype);
 
     // "[class*='primary']" should match div1
     const result = try container.querySelector(allocator, "[class*='primary']");
@@ -958,16 +958,16 @@ test "querySelector - :is() pseudo-class" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const h1 = try doc.createElement("h1");
-    _ = try container.node.appendChild(&h1.node);
+    _ = try container.prototype.appendChild(&h1.prototype);
 
     const h2 = try doc.createElement("h2");
-    _ = try container.node.appendChild(&h2.node);
+    _ = try container.prototype.appendChild(&h2.prototype);
 
     const p = try doc.createElement("p");
-    _ = try container.node.appendChild(&p.node);
+    _ = try container.prototype.appendChild(&p.prototype);
 
     // ":is(h1, h2)" should match h1 (first heading)
     const result = try container.querySelector(allocator, ":is(h1, h2)");
@@ -982,15 +982,15 @@ test "querySelector - :where() pseudo-class" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const p1 = try doc.createElement("p");
     try p1.setAttribute("class", "intro");
-    _ = try container.node.appendChild(&p1.node);
+    _ = try container.prototype.appendChild(&p1.prototype);
 
     const div1 = try doc.createElement("div");
     try div1.setAttribute("class", "intro");
-    _ = try container.node.appendChild(&div1.node);
+    _ = try container.prototype.appendChild(&div1.prototype);
 
     // ":where(p, div).intro" should match p1
     const result = try container.querySelector(allocator, ":where(p, div).intro");
@@ -1005,19 +1005,19 @@ test "querySelector - :has() relational pseudo-class" {
     defer doc.release();
 
     const container = try doc.createElement("div");
-    _ = try doc.node.appendChild(&container.node);
+    _ = try doc.prototype.appendChild(&container.prototype);
 
     const section1 = try doc.createElement("section");
-    _ = try container.node.appendChild(&section1.node);
+    _ = try container.prototype.appendChild(&section1.prototype);
 
     const h2 = try doc.createElement("h2");
-    _ = try section1.node.appendChild(&h2.node);
+    _ = try section1.prototype.appendChild(&h2.prototype);
 
     const section2 = try doc.createElement("section");
-    _ = try container.node.appendChild(&section2.node);
+    _ = try container.prototype.appendChild(&section2.prototype);
 
     const p = try doc.createElement("p");
-    _ = try section2.node.appendChild(&p.node);
+    _ = try section2.prototype.appendChild(&p.prototype);
 
     // "section:has(h2)" should match section1
     const result = try container.querySelector(allocator, "section:has(h2)");

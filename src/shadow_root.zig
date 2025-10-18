@@ -30,7 +30,7 @@
 //!
 //! // Shadow tree is separate from main document tree
 //! const content = try doc.createElement("content");
-//! _ = try shadow_root.node.appendChild(&content.node);
+//! _ = try shadow_root.prototype.appendChild(&content.prototype);
 //! ```
 //!
 //! ### Open vs Closed Mode
@@ -74,7 +74,7 @@
 //! ```zig
 //! // Element owns ShadowRoot through RareData
 //! const elem = try doc.createElement("container");
-//! defer elem.node.release(); // Frees ShadowRoot automatically
+//! defer elem.prototype.release(); // Frees ShadowRoot automatically
 //!
 //! const shadow = try elem.attachShadow(.{ .mode = .open });
 //! // shadow.host points back to elem (non-owning)
@@ -85,14 +85,14 @@
 //! ```zig
 //! // 1. Create host element
 //! const elem = try doc.createElement("widget");
-//! defer elem.node.release();
+//! defer elem.prototype.release();
 //!
 //! // 2. Attach shadow root (stored in elem's RareData)
 //! const shadow = try elem.attachShadow(.{ .mode = .open });
 //!
 //! // 3. Add content to shadow tree
 //! const content = try doc.createElement("content");
-//! _ = try shadow.node.appendChild(&content.node);
+//! _ = try shadow.prototype.appendChild(&content.prototype);
 //!
 //! // 4. When elem is released, RareData cleanup:
 //! //    - ShadowRoot.deinit() called
@@ -111,7 +111,7 @@
 //! defer doc.release();
 //!
 //! const container = try doc.createElement("container");
-//! defer container.node.release();
+//! defer container.prototype.release();
 //!
 //! // Attach shadow root
 //! const shadow = try container.attachShadow(.{
@@ -132,9 +132,9 @@
 //! const heading = try doc.createElement("heading");
 //! const text = try doc.createTextNode("Shadow Content");
 //!
-//! _ = try heading.node.appendChild(&text.node);
-//! _ = try wrapper.node.appendChild(&heading.node);
-//! _ = try shadow.node.appendChild(&wrapper.node);
+//! _ = try heading.prototype.appendChild(&text.prototype);
+//! _ = try wrapper.prototype.appendChild(&heading.prototype);
+//! _ = try shadow.prototype.appendChild(&wrapper.prototype);
 //!
 //! // Shadow tree is separate from main document tree
 //! ```
@@ -167,9 +167,9 @@
 //!     const content = try doc.createElement("content");
 //!     const text = try doc.createTextNode("Component Content");
 //!
-//!     _ = try content.node.appendChild(&text.node);
-//!     _ = try container.node.appendChild(&content.node);
-//!     _ = try shadow.node.appendChild(&container.node);
+//!     _ = try content.prototype.appendChild(&text.prototype);
+//!     _ = try container.prototype.appendChild(&content.prototype);
+//!     _ = try shadow.prototype.appendChild(&container.prototype);
 //!
 //!     return shadow;
 //! }
@@ -182,7 +182,7 @@
 //! // Add content
 //! const button = try doc.createElement("button");
 //! try button.setAttribute("class", "primary");
-//! _ = try shadow.node.appendChild(&button.node);
+//! _ = try shadow.prototype.appendChild(&button.prototype);
 //!
 //! // Query shadow tree (inherits from DocumentFragment)
 //! const found = try shadow.querySelector(allocator, ".primary");
@@ -298,7 +298,7 @@ pub const ShadowRootInit = struct {
 /// - Supports slot-based content distribution
 pub const ShadowRoot = struct {
     /// Base Node (MUST be first field for @fieldParentPtr)
-    node: Node,
+    prototype: Node,
 
     /// Shadow mode (open or closed)
     mode: ShadowRootMode,
@@ -339,7 +339,7 @@ pub const ShadowRoot = struct {
     /// - **§4.8 Attach a shadow root**: https://dom.spec.whatwg.org/#concept-attach-a-shadow-root
     ///
     /// ## Memory Management
-    /// Returns ShadowRoot with ref_count=1. Caller MUST call `shadow.node.release()`.
+    /// Returns ShadowRoot with ref_count=1. Caller MUST call `shadow.prototype.release()`.
     /// Typically called via Element.attachShadow() which stores ShadowRoot in RareData.
     ///
     /// ## Parameters
@@ -359,14 +359,14 @@ pub const ShadowRoot = struct {
     ///     .mode = .open,
     ///     .delegates_focus = false,
     /// });
-    /// defer shadow.node.release();
+    /// defer shadow.prototype.release();
     /// ```
     pub fn create(allocator: Allocator, host_elem: *Element, init: ShadowRootInit) !*ShadowRoot {
         const shadow = try allocator.create(ShadowRoot);
         errdefer allocator.destroy(shadow);
 
         // Initialize base Node with shadow_root type
-        shadow.node = .{
+        shadow.prototype = .{
             .vtable = &vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .shadow_root,
@@ -379,7 +379,7 @@ pub const ShadowRoot = struct {
             .first_child = null,
             .last_child = null,
             .next_sibling = null,
-            .owner_document = host_elem.node.owner_document,
+            .owner_document = host_elem.prototype.owner_document,
             .rare_data = null,
         };
 
@@ -453,10 +453,10 @@ pub const ShadowRoot = struct {
         const matcher = Matcher.init(allocator);
 
         // Traverse children in tree order
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |node| {
             if (node.node_type == .element) {
-                const elem: *Element = @fieldParentPtr("node", node);
+                const elem: *Element = @fieldParentPtr("prototype", node);
 
                 // Check if element matches
                 if (try matcher.matches(elem, &selector_list)) {
@@ -507,10 +507,10 @@ pub const ShadowRoot = struct {
         defer results.deinit(allocator);
 
         // Traverse children in tree order
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |node| {
             if (node.node_type == .element) {
-                const elem: *Element = @fieldParentPtr("node", node);
+                const elem: *Element = @fieldParentPtr("prototype", node);
 
                 // Check if element matches
                 if (try matcher.matches(elem, &selector_list)) {
@@ -533,7 +533,7 @@ pub const ShadowRoot = struct {
     /// [SameObject] readonly attribute HTMLCollection children;
     /// ```
     pub fn children(self: *ShadowRoot) @import("html_collection.zig").HTMLCollection {
-        return @import("html_collection.zig").HTMLCollection.initChildren(&self.node);
+        return @import("html_collection.zig").HTMLCollection.initChildren(&self.prototype);
     }
 
     /// Returns the first child that is an element.
@@ -543,10 +543,10 @@ pub const ShadowRoot = struct {
     /// readonly attribute Element? firstElementChild;
     /// ```
     pub fn firstElementChild(self: *const ShadowRoot) ?*Element {
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |child| {
             if (child.node_type == .element) {
-                return @fieldParentPtr("node", child);
+                return @fieldParentPtr("prototype", child);
             }
             current = child.next_sibling;
         }
@@ -560,10 +560,10 @@ pub const ShadowRoot = struct {
     /// readonly attribute Element? lastElementChild;
     /// ```
     pub fn lastElementChild(self: *const ShadowRoot) ?*Element {
-        var current = self.node.last_child;
+        var current = self.prototype.last_child;
         while (current) |child| {
             if (child.node_type == .element) {
-                return @fieldParentPtr("node", child);
+                return @fieldParentPtr("prototype", child);
             }
             current = child.previous_sibling;
         }
@@ -578,7 +578,7 @@ pub const ShadowRoot = struct {
     /// ```
     pub fn childElementCount(self: *const ShadowRoot) u32 {
         var count: u32 = 0;
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |child| {
             if (child.node_type == .element) {
                 count += 1;
@@ -599,22 +599,22 @@ pub const ShadowRoot = struct {
 
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {
-        const shadow: *ShadowRoot = @fieldParentPtr("node", node);
+        const shadow: *ShadowRoot = @fieldParentPtr("prototype", node);
 
         // Release document reference if owned by a document
-        if (shadow.node.owner_document) |owner_doc| {
+        if (shadow.prototype.owner_document) |owner_doc| {
             if (owner_doc.node_type == .document) {
                 const Document = @import("document.zig").Document;
-                const doc: *Document = @fieldParentPtr("node", owner_doc);
+                const doc: *Document = @fieldParentPtr("prototype", owner_doc);
                 doc.releaseNodeRef();
             }
         }
 
         // Clean up rare data if allocated
-        shadow.node.deinitRareData();
+        shadow.prototype.deinitRareData();
 
         // Free all children
-        var current = shadow.node.first_child;
+        var current = shadow.prototype.first_child;
         while (current) |child| {
             const next = child.next_sibling;
             child.parent_node = null;
@@ -623,7 +623,7 @@ pub const ShadowRoot = struct {
             current = next;
         }
 
-        shadow.node.allocator.destroy(shadow);
+        shadow.prototype.allocator.destroy(shadow);
     }
 
     /// Vtable implementation: node name (always "#shadow-root")
@@ -643,7 +643,7 @@ pub const ShadowRoot = struct {
 
     /// Vtable implementation: clone node
     fn cloneNodeImpl(node: *const Node, deep: bool) !*Node {
-        const shadow: *const ShadowRoot = @fieldParentPtr("node", node);
+        const shadow: *const ShadowRoot = @fieldParentPtr("prototype", node);
 
         // Only clonable shadow roots can be cloned
         if (!shadow.clonable) {
@@ -670,13 +670,13 @@ pub const ShadowRoot = struct {
                 const cloned_child = try child.cloneNode(deep);
                 errdefer cloned_child.release();
 
-                _ = try new_shadow.node.appendChild(cloned_child);
+                _ = try new_shadow.prototype.appendChild(cloned_child);
 
                 current = child.next_sibling;
             }
         }
 
-        return &new_shadow.node;
+        return &new_shadow.prototype;
     }
 };
 
@@ -690,17 +690,17 @@ test "ShadowRoot - creation and basic properties" {
     defer doc.release();
 
     const elem = try doc.createElement("container");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const shadow = try ShadowRoot.create(allocator, elem, .{
         .mode = .open,
         .delegates_focus = false,
     });
-    defer shadow.node.release();
+    defer shadow.prototype.release();
 
-    try std.testing.expect(shadow.node.node_type == .shadow_root);
-    try std.testing.expectEqualStrings("#shadow-root", shadow.node.nodeName());
-    try std.testing.expect(shadow.node.nodeValue() == null);
+    try std.testing.expect(shadow.prototype.node_type == .shadow_root);
+    try std.testing.expectEqualStrings("#shadow-root", shadow.prototype.nodeName());
+    try std.testing.expect(shadow.prototype.nodeValue() == null);
     try std.testing.expect(shadow.mode == .open);
     try std.testing.expect(!shadow.delegates_focus);
     try std.testing.expect(shadow.host() == elem);
@@ -714,13 +714,13 @@ test "ShadowRoot - closed mode" {
     defer doc.release();
 
     const elem = try doc.createElement("widget");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const shadow = try ShadowRoot.create(allocator, elem, .{
         .mode = .closed,
         .delegates_focus = false,
     });
-    defer shadow.node.release();
+    defer shadow.prototype.release();
 
     try std.testing.expect(shadow.mode == .closed);
     try std.testing.expect(shadow.host() == elem);
@@ -734,22 +734,22 @@ test "ShadowRoot - can hold children" {
     defer doc.release();
 
     const elem = try doc.createElement("container");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const shadow = try ShadowRoot.create(allocator, elem, .{
         .mode = .open,
         .delegates_focus = false,
     });
-    defer shadow.node.release();
+    defer shadow.prototype.release();
 
     const child1 = try doc.createElement("content");
     const child2 = try doc.createElement("wrapper");
 
-    _ = try shadow.node.appendChild(&child1.node);
-    _ = try shadow.node.appendChild(&child2.node);
+    _ = try shadow.prototype.appendChild(&child1.prototype);
+    _ = try shadow.prototype.appendChild(&child2.prototype);
 
-    try std.testing.expect(shadow.node.hasChildNodes());
-    try std.testing.expectEqual(@as(usize, 2), shadow.node.childNodes().length());
+    try std.testing.expect(shadow.prototype.hasChildNodes());
+    try std.testing.expectEqual(@as(usize, 2), shadow.prototype.childNodes().length());
 }
 
 test "ShadowRoot - delegates_focus flag" {
@@ -760,13 +760,13 @@ test "ShadowRoot - delegates_focus flag" {
     defer doc.release();
 
     const elem = try doc.createElement("focusable");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const shadow = try ShadowRoot.create(allocator, elem, .{
         .mode = .open,
         .delegates_focus = true,
     });
-    defer shadow.node.release();
+    defer shadow.prototype.release();
 
     try std.testing.expect(shadow.delegates_focus);
 }
@@ -779,26 +779,26 @@ test "ShadowRoot - slot_assignment mode" {
     defer doc.release();
 
     const elem = try doc.createElement("slotted");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Named slot assignment (default)
     const shadow1 = try ShadowRoot.create(allocator, elem, .{
         .mode = .open,
         .slot_assignment = .named,
     });
-    defer shadow1.node.release();
+    defer shadow1.prototype.release();
 
     try std.testing.expect(shadow1.slot_assignment == .named);
 
     // Manual slot assignment
     const elem2 = try doc.createElement("manual");
-    defer elem2.node.release();
+    defer elem2.prototype.release();
 
     const shadow2 = try ShadowRoot.create(allocator, elem2, .{
         .mode = .open,
         .slot_assignment = .manual,
     });
-    defer shadow2.node.release();
+    defer shadow2.prototype.release();
 
     try std.testing.expect(shadow2.slot_assignment == .manual);
 }
@@ -811,18 +811,18 @@ test "ShadowRoot - clonable flag" {
     defer doc.release();
 
     const elem = try doc.createElement("clonable");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const shadow = try ShadowRoot.create(allocator, elem, .{
         .mode = .open,
         .clonable = true,
     });
-    defer shadow.node.release();
+    defer shadow.prototype.release();
 
     try std.testing.expect(shadow.clonable);
 
     // Clone should succeed
-    const clone = try shadow.node.cloneNode(false);
+    const clone = try shadow.prototype.cloneNode(false);
     defer clone.release();
 
     try std.testing.expect(clone.node_type == .shadow_root);
@@ -836,18 +836,18 @@ test "ShadowRoot - non-clonable cannot be cloned" {
     defer doc.release();
 
     const elem = try doc.createElement("not-clonable");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const shadow = try ShadowRoot.create(allocator, elem, .{
         .mode = .open,
         .clonable = false,
     });
-    defer shadow.node.release();
+    defer shadow.prototype.release();
 
     try std.testing.expect(!shadow.clonable);
 
     // Clone should fail
-    const result = shadow.node.cloneNode(false);
+    const result = shadow.prototype.cloneNode(false);
     try std.testing.expectError(error.NotSupportedError, result);
 }
 
@@ -859,13 +859,13 @@ test "ShadowRoot - serializable flag" {
     defer doc.release();
 
     const elem = try doc.createElement("serializable");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const shadow = try ShadowRoot.create(allocator, elem, .{
         .mode = .open,
         .serializable = true,
     });
-    defer shadow.node.release();
+    defer shadow.prototype.release();
 
     try std.testing.expect(shadow.serializable);
 }
@@ -878,22 +878,22 @@ test "ShadowRoot - ParentNode mixin methods" {
     defer doc.release();
 
     const elem = try doc.createElement("parent");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const shadow = try ShadowRoot.create(allocator, elem, .{
         .mode = .open,
         .delegates_focus = false,
     });
-    defer shadow.node.release();
+    defer shadow.prototype.release();
 
     // Add element children
     const child1 = try doc.createElement("child1");
     const child2 = try doc.createElement("child2");
     const text = try doc.createTextNode("text");
 
-    _ = try shadow.node.appendChild(&child1.node);
-    _ = try shadow.node.appendChild(&text.node);
-    _ = try shadow.node.appendChild(&child2.node);
+    _ = try shadow.prototype.appendChild(&child1.prototype);
+    _ = try shadow.prototype.appendChild(&text.prototype);
+    _ = try shadow.prototype.appendChild(&child2.prototype);
 
     // Test firstElementChild (skips text node)
     const first = shadow.firstElementChild();
@@ -923,13 +923,13 @@ test "ShadowRoot - memory leak test" {
         defer doc.release();
 
         const elem = try doc.createElement("test");
-        defer elem.node.release();
+        defer elem.prototype.release();
 
         const shadow = try ShadowRoot.create(allocator, elem, .{
             .mode = .open,
             .delegates_focus = false,
         });
-        defer shadow.node.release();
+        defer shadow.prototype.release();
     }
 
     // Test 2: With children
@@ -938,16 +938,16 @@ test "ShadowRoot - memory leak test" {
         defer doc.release();
 
         const elem = try doc.createElement("test");
-        defer elem.node.release();
+        defer elem.prototype.release();
 
         const shadow = try ShadowRoot.create(allocator, elem, .{
             .mode = .open,
             .delegates_focus = false,
         });
-        defer shadow.node.release();
+        defer shadow.prototype.release();
 
         const child = try doc.createElement("child");
-        _ = try shadow.node.appendChild(&child.node);
+        _ = try shadow.prototype.appendChild(&child.prototype);
     }
 
     // Test 3: All flags enabled
@@ -956,7 +956,7 @@ test "ShadowRoot - memory leak test" {
         defer doc.release();
 
         const elem = try doc.createElement("test");
-        defer elem.node.release();
+        defer elem.prototype.release();
 
         const shadow = try ShadowRoot.create(allocator, elem, .{
             .mode = .closed,
@@ -965,7 +965,7 @@ test "ShadowRoot - memory leak test" {
             .clonable = true,
             .serializable = true,
         });
-        defer shadow.node.release();
+        defer shadow.prototype.release();
     }
 }
 
@@ -977,7 +977,7 @@ test "Element.attachShadow() - basic functionality" {
     defer doc.release();
 
     const elem = try doc.createElement("container");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Attach shadow root
     const shadow = try elem.attachShadow(.{
@@ -986,7 +986,7 @@ test "Element.attachShadow() - basic functionality" {
     });
 
     // Verify shadow root properties
-    try std.testing.expect(shadow.node.node_type == .shadow_root);
+    try std.testing.expect(shadow.prototype.node_type == .shadow_root);
     try std.testing.expect(shadow.mode == .open);
     try std.testing.expect(!shadow.delegates_focus);
     try std.testing.expect(shadow.host() == elem);
@@ -1004,7 +1004,7 @@ test "Element.attachShadow() - open mode access" {
     defer doc.release();
 
     const elem = try doc.createElement("widget");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Attach open shadow root
     const shadow = try elem.attachShadow(.{
@@ -1026,7 +1026,7 @@ test "Element.attachShadow() - closed mode access" {
     defer doc.release();
 
     const elem = try doc.createElement("widget");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Attach closed shadow root
     const shadow = try elem.attachShadow(.{
@@ -1035,7 +1035,7 @@ test "Element.attachShadow() - closed mode access" {
     });
 
     // Shadow root exists
-    try std.testing.expect(shadow.node.node_type == .shadow_root);
+    try std.testing.expect(shadow.prototype.node_type == .shadow_root);
     try std.testing.expect(shadow.mode == .closed);
 
     // Closed mode: shadowRoot() returns null (hidden from JavaScript)
@@ -1054,7 +1054,7 @@ test "Element.attachShadow() - cannot attach twice" {
     defer doc.release();
 
     const elem = try doc.createElement("container");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // First attach succeeds
     _ = try elem.attachShadow(.{
@@ -1079,7 +1079,7 @@ test "Element.attachShadow() - with children" {
     defer doc.release();
 
     const elem = try doc.createElement("container");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Attach shadow root
     const shadow = try elem.attachShadow(.{
@@ -1091,12 +1091,12 @@ test "Element.attachShadow() - with children" {
     const content = try doc.createElement("content");
     const wrapper = try doc.createElement("wrapper");
 
-    _ = try shadow.node.appendChild(&content.node);
-    _ = try shadow.node.appendChild(&wrapper.node);
+    _ = try shadow.prototype.appendChild(&content.prototype);
+    _ = try shadow.prototype.appendChild(&wrapper.prototype);
 
     // Verify children
-    try std.testing.expect(shadow.node.hasChildNodes());
-    try std.testing.expectEqual(@as(usize, 2), shadow.node.childNodes().length());
+    try std.testing.expect(shadow.prototype.hasChildNodes());
+    try std.testing.expectEqual(@as(usize, 2), shadow.prototype.childNodes().length());
 }
 
 test "Element.attachShadow() - with delegates_focus" {
@@ -1107,7 +1107,7 @@ test "Element.attachShadow() - with delegates_focus" {
     defer doc.release();
 
     const elem = try doc.createElement("focusable");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Attach shadow root with delegates_focus
     const shadow = try elem.attachShadow(.{
@@ -1126,7 +1126,7 @@ test "Element.attachShadow() - manual slot assignment" {
     defer doc.release();
 
     const elem = try doc.createElement("slotted");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Attach shadow root with manual slot assignment
     const shadow = try elem.attachShadow(.{
@@ -1145,7 +1145,7 @@ test "Element.attachShadow() - clonable shadow root" {
     defer doc.release();
 
     const elem = try doc.createElement("clonable");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Attach clonable shadow root
     const shadow = try elem.attachShadow(.{
@@ -1156,7 +1156,7 @@ test "Element.attachShadow() - clonable shadow root" {
     try std.testing.expect(shadow.clonable);
 
     // Clone should succeed
-    const clone = try shadow.node.cloneNode(false);
+    const clone = try shadow.prototype.cloneNode(false);
     defer clone.release();
 
     try std.testing.expect(clone.node_type == .shadow_root);
@@ -1170,7 +1170,7 @@ test "Element.attachShadow() - serializable shadow root" {
     defer doc.release();
 
     const elem = try doc.createElement("serializable");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Attach serializable shadow root
     const shadow = try elem.attachShadow(.{
@@ -1198,10 +1198,10 @@ test "Element.attachShadow() - shadow root freed with element" {
 
     // Add children to shadow tree
     const child = try doc.createElement("child");
-    _ = try shadow.node.appendChild(&child.node);
+    _ = try shadow.prototype.appendChild(&child.prototype);
 
     // Release element (should free shadow root via RareData.deinit)
-    elem.node.release();
+    elem.prototype.release();
 
     // If we reach here with no leaks, shadow root was freed correctly
 }
@@ -1214,7 +1214,7 @@ test "Element.shadowRoot() - null when no shadow" {
     defer doc.release();
 
     const elem = try doc.createElement("no-shadow");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // No shadow root attached
     const shadow = elem.shadowRoot();
@@ -1229,7 +1229,7 @@ test "ShadowRoot - query selector in shadow tree" {
     defer doc.release();
 
     const elem = try doc.createElement("container");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Attach shadow root
     const shadow = try elem.attachShadow(.{
@@ -1240,7 +1240,7 @@ test "ShadowRoot - query selector in shadow tree" {
     // Add button to shadow tree
     const button = try doc.createElement("button");
     try button.setAttribute("class", "primary");
-    _ = try shadow.node.appendChild(&button.node);
+    _ = try shadow.prototype.appendChild(&button.prototype);
 
     // Query shadow tree
     const found = try shadow.querySelector(allocator, ".primary");
@@ -1256,7 +1256,7 @@ test "ShadowRoot - host relationship" {
     defer doc.release();
 
     const elem = try doc.createElement("host-elem");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Attach shadow root
     const shadow = try elem.attachShadow(.{
@@ -1277,14 +1277,14 @@ test "Node.getRootNode() - without shadow root (composed=false)" {
     defer doc.release();
 
     const elem = try doc.createElement("container");
-    _ = try doc.node.appendChild(&elem.node);
+    _ = try doc.prototype.appendChild(&elem.prototype);
 
     const child = try doc.createElement("child");
-    _ = try elem.node.appendChild(&child.node);
+    _ = try elem.prototype.appendChild(&child.prototype);
 
     // getRootNode without shadow roots returns document
-    const root = child.node.getRootNode(false);
-    try std.testing.expect(root == &doc.node);
+    const root = child.prototype.getRootNode(false);
+    try std.testing.expect(root == &doc.prototype);
 }
 
 test "Node.getRootNode() - shadow tree (composed=false)" {
@@ -1295,7 +1295,7 @@ test "Node.getRootNode() - shadow tree (composed=false)" {
     defer doc.release();
 
     const host = try doc.createElement("host");
-    defer host.node.release();
+    defer host.prototype.release();
 
     // Attach shadow root
     const shadow = try host.attachShadow(.{
@@ -1305,11 +1305,11 @@ test "Node.getRootNode() - shadow tree (composed=false)" {
 
     // Add child to shadow tree
     const shadow_child = try doc.createElement("shadow-child");
-    _ = try shadow.node.appendChild(&shadow_child.node);
+    _ = try shadow.prototype.appendChild(&shadow_child.prototype);
 
     // composed=false: stops at shadow boundary
-    const root = shadow_child.node.getRootNode(false);
-    try std.testing.expect(root == &shadow.node);
+    const root = shadow_child.prototype.getRootNode(false);
+    try std.testing.expect(root == &shadow.prototype);
     try std.testing.expect(root.node_type == .shadow_root);
 }
 
@@ -1321,7 +1321,7 @@ test "Node.getRootNode() - shadow tree (composed=true)" {
     defer doc.release();
 
     const host = try doc.createElement("host");
-    _ = try doc.node.appendChild(&host.node);
+    _ = try doc.prototype.appendChild(&host.prototype);
 
     // Attach shadow root
     const shadow = try host.attachShadow(.{
@@ -1331,11 +1331,11 @@ test "Node.getRootNode() - shadow tree (composed=true)" {
 
     // Add child to shadow tree
     const shadow_child = try doc.createElement("shadow-child");
-    _ = try shadow.node.appendChild(&shadow_child.node);
+    _ = try shadow.prototype.appendChild(&shadow_child.prototype);
 
     // composed=true: pierces shadow boundary
-    const root = shadow_child.node.getRootNode(true);
-    try std.testing.expect(root == &doc.node);
+    const root = shadow_child.prototype.getRootNode(true);
+    try std.testing.expect(root == &doc.prototype);
     try std.testing.expect(root.node_type == .document);
 }
 
@@ -1348,7 +1348,7 @@ test "Node.getRootNode() - nested shadow roots (composed=false)" {
 
     // Create outer host with shadow root
     const outer_host = try doc.createElement("outer-host");
-    _ = try doc.node.appendChild(&outer_host.node);
+    _ = try doc.prototype.appendChild(&outer_host.prototype);
 
     const outer_shadow = try outer_host.attachShadow(.{
         .mode = .open,
@@ -1357,7 +1357,7 @@ test "Node.getRootNode() - nested shadow roots (composed=false)" {
 
     // Create inner host inside outer shadow
     const inner_host = try doc.createElement("inner-host");
-    _ = try outer_shadow.node.appendChild(&inner_host.node);
+    _ = try outer_shadow.prototype.appendChild(&inner_host.prototype);
 
     const inner_shadow = try inner_host.attachShadow(.{
         .mode = .open,
@@ -1366,11 +1366,11 @@ test "Node.getRootNode() - nested shadow roots (composed=false)" {
 
     // Add child to inner shadow tree
     const inner_child = try doc.createElement("inner-child");
-    _ = try inner_shadow.node.appendChild(&inner_child.node);
+    _ = try inner_shadow.prototype.appendChild(&inner_child.prototype);
 
     // composed=false: stops at inner shadow root
-    const root = inner_child.node.getRootNode(false);
-    try std.testing.expect(root == &inner_shadow.node);
+    const root = inner_child.prototype.getRootNode(false);
+    try std.testing.expect(root == &inner_shadow.prototype);
     try std.testing.expect(root.node_type == .shadow_root);
 }
 
@@ -1383,7 +1383,7 @@ test "Node.getRootNode() - nested shadow roots (composed=true)" {
 
     // Create outer host with shadow root
     const outer_host = try doc.createElement("outer-host");
-    _ = try doc.node.appendChild(&outer_host.node);
+    _ = try doc.prototype.appendChild(&outer_host.prototype);
 
     const outer_shadow = try outer_host.attachShadow(.{
         .mode = .open,
@@ -1392,7 +1392,7 @@ test "Node.getRootNode() - nested shadow roots (composed=true)" {
 
     // Create inner host inside outer shadow
     const inner_host = try doc.createElement("inner-host");
-    _ = try outer_shadow.node.appendChild(&inner_host.node);
+    _ = try outer_shadow.prototype.appendChild(&inner_host.prototype);
 
     const inner_shadow = try inner_host.attachShadow(.{
         .mode = .open,
@@ -1401,11 +1401,11 @@ test "Node.getRootNode() - nested shadow roots (composed=true)" {
 
     // Add child to inner shadow tree
     const inner_child = try doc.createElement("inner-child");
-    _ = try inner_shadow.node.appendChild(&inner_child.node);
+    _ = try inner_shadow.prototype.appendChild(&inner_child.prototype);
 
     // composed=true: pierces both shadow boundaries to reach document
-    const root = inner_child.node.getRootNode(true);
-    try std.testing.expect(root == &doc.node);
+    const root = inner_child.prototype.getRootNode(true);
+    try std.testing.expect(root == &doc.prototype);
     try std.testing.expect(root.node_type == .document);
 }
 
@@ -1417,7 +1417,7 @@ test "Node.getRootNode() - host element in document (composed=false)" {
     defer doc.release();
 
     const host = try doc.createElement("host");
-    _ = try doc.node.appendChild(&host.node);
+    _ = try doc.prototype.appendChild(&host.prototype);
 
     _ = try host.attachShadow(.{
         .mode = .open,
@@ -1425,8 +1425,8 @@ test "Node.getRootNode() - host element in document (composed=false)" {
     });
 
     // Host element is in document tree
-    const root = host.node.getRootNode(false);
-    try std.testing.expect(root == &doc.node);
+    const root = host.prototype.getRootNode(false);
+    try std.testing.expect(root == &doc.prototype);
 }
 
 test "Node.getRootNode() - shadow root itself (composed=false)" {
@@ -1437,7 +1437,7 @@ test "Node.getRootNode() - shadow root itself (composed=false)" {
     defer doc.release();
 
     const host = try doc.createElement("host");
-    defer host.node.release();
+    defer host.prototype.release();
 
     const shadow = try host.attachShadow(.{
         .mode = .open,
@@ -1445,8 +1445,8 @@ test "Node.getRootNode() - shadow root itself (composed=false)" {
     });
 
     // getRootNode on shadow root itself
-    const root = shadow.node.getRootNode(false);
-    try std.testing.expect(root == &shadow.node);
+    const root = shadow.prototype.getRootNode(false);
+    try std.testing.expect(root == &shadow.prototype);
 }
 
 test "Node.getRootNode() - shadow root itself (composed=true)" {
@@ -1457,7 +1457,7 @@ test "Node.getRootNode() - shadow root itself (composed=true)" {
     defer doc.release();
 
     const host = try doc.createElement("host");
-    _ = try doc.node.appendChild(&host.node);
+    _ = try doc.prototype.appendChild(&host.prototype);
 
     const shadow = try host.attachShadow(.{
         .mode = .open,
@@ -1465,8 +1465,8 @@ test "Node.getRootNode() - shadow root itself (composed=true)" {
     });
 
     // composed=true on shadow root traverses to document
-    const root = shadow.node.getRootNode(true);
-    try std.testing.expect(root == &doc.node);
+    const root = shadow.prototype.getRootNode(true);
+    try std.testing.expect(root == &doc.prototype);
 }
 
 test "Node.getRootNode() - disconnected host (composed=true)" {
@@ -1478,7 +1478,7 @@ test "Node.getRootNode() - disconnected host (composed=true)" {
 
     // Host not connected to document
     const host = try doc.createElement("host");
-    defer host.node.release();
+    defer host.prototype.release();
 
     const shadow = try host.attachShadow(.{
         .mode = .open,
@@ -1486,11 +1486,11 @@ test "Node.getRootNode() - disconnected host (composed=true)" {
     });
 
     const child = try doc.createElement("child");
-    _ = try shadow.node.appendChild(&child.node);
+    _ = try shadow.prototype.appendChild(&child.prototype);
 
     // composed=true traverses to disconnected host
-    const root = child.node.getRootNode(true);
-    try std.testing.expect(root == &host.node);
+    const root = child.prototype.getRootNode(true);
+    try std.testing.expect(root == &host.prototype);
 }
 
 test "Node.isConnected - shadow tree child (host connected)" {
@@ -1502,7 +1502,7 @@ test "Node.isConnected - shadow tree child (host connected)" {
 
     // Host connected to document
     const host = try doc.createElement("host");
-    _ = try doc.node.appendChild(&host.node);
+    _ = try doc.prototype.appendChild(&host.prototype);
 
     // Attach shadow root
     const shadow = try host.attachShadow(.{
@@ -1511,13 +1511,13 @@ test "Node.isConnected - shadow tree child (host connected)" {
     });
 
     // Shadow root should be connected (host is connected)
-    try std.testing.expect(shadow.node.isConnected());
+    try std.testing.expect(shadow.prototype.isConnected());
 
     // Child in shadow tree should be connected
     const child = try doc.createElement("child");
-    _ = try shadow.node.appendChild(&child.node);
+    _ = try shadow.prototype.appendChild(&child.prototype);
 
-    try std.testing.expect(child.node.isConnected());
+    try std.testing.expect(child.prototype.isConnected());
 }
 
 test "Node.isConnected - shadow tree child (host disconnected)" {
@@ -1529,7 +1529,7 @@ test "Node.isConnected - shadow tree child (host disconnected)" {
 
     // Host NOT connected to document
     const host = try doc.createElement("host");
-    defer host.node.release();
+    defer host.prototype.release();
 
     // Attach shadow root
     const shadow = try host.attachShadow(.{
@@ -1538,13 +1538,13 @@ test "Node.isConnected - shadow tree child (host disconnected)" {
     });
 
     // Shadow root should NOT be connected (host is disconnected)
-    try std.testing.expect(!shadow.node.isConnected());
+    try std.testing.expect(!shadow.prototype.isConnected());
 
     // Child in shadow tree should NOT be connected
     const child = try doc.createElement("child");
-    _ = try shadow.node.appendChild(&child.node);
+    _ = try shadow.prototype.appendChild(&child.prototype);
 
-    try std.testing.expect(!child.node.isConnected());
+    try std.testing.expect(!child.prototype.isConnected());
 }
 
 test "Node.isConnected - shadow tree becomes connected when host connected" {
@@ -1564,20 +1564,20 @@ test "Node.isConnected - shadow tree becomes connected when host connected" {
     });
 
     const child = try doc.createElement("child");
-    _ = try shadow.node.appendChild(&child.node);
+    _ = try shadow.prototype.appendChild(&child.prototype);
 
     // Initially disconnected
-    try std.testing.expect(!host.node.isConnected());
-    try std.testing.expect(!shadow.node.isConnected());
-    try std.testing.expect(!child.node.isConnected());
+    try std.testing.expect(!host.prototype.isConnected());
+    try std.testing.expect(!shadow.prototype.isConnected());
+    try std.testing.expect(!child.prototype.isConnected());
 
     // Connect host to document
-    _ = try doc.node.appendChild(&host.node);
+    _ = try doc.prototype.appendChild(&host.prototype);
 
     // Now everything should be connected
-    try std.testing.expect(host.node.isConnected());
-    try std.testing.expect(shadow.node.isConnected());
-    try std.testing.expect(child.node.isConnected());
+    try std.testing.expect(host.prototype.isConnected());
+    try std.testing.expect(shadow.prototype.isConnected());
+    try std.testing.expect(child.prototype.isConnected());
 }
 
 test "Node.isConnected - nested shadow roots" {
@@ -1589,7 +1589,7 @@ test "Node.isConnected - nested shadow roots" {
 
     // Outer host connected
     const outer_host = try doc.createElement("outer");
-    _ = try doc.node.appendChild(&outer_host.node);
+    _ = try doc.prototype.appendChild(&outer_host.prototype);
 
     const outer_shadow = try outer_host.attachShadow(.{
         .mode = .open,
@@ -1598,7 +1598,7 @@ test "Node.isConnected - nested shadow roots" {
 
     // Inner host in outer shadow
     const inner_host = try doc.createElement("inner");
-    _ = try outer_shadow.node.appendChild(&inner_host.node);
+    _ = try outer_shadow.prototype.appendChild(&inner_host.prototype);
 
     const inner_shadow = try inner_host.attachShadow(.{
         .mode = .open,
@@ -1607,14 +1607,14 @@ test "Node.isConnected - nested shadow roots" {
 
     // Child in inner shadow
     const child = try doc.createElement("child");
-    _ = try inner_shadow.node.appendChild(&child.node);
+    _ = try inner_shadow.prototype.appendChild(&child.prototype);
 
     // All should be connected
-    try std.testing.expect(outer_host.node.isConnected());
-    try std.testing.expect(outer_shadow.node.isConnected());
-    try std.testing.expect(inner_host.node.isConnected());
-    try std.testing.expect(inner_shadow.node.isConnected());
-    try std.testing.expect(child.node.isConnected());
+    try std.testing.expect(outer_host.prototype.isConnected());
+    try std.testing.expect(outer_shadow.prototype.isConnected());
+    try std.testing.expect(inner_host.prototype.isConnected());
+    try std.testing.expect(inner_shadow.prototype.isConnected());
+    try std.testing.expect(child.prototype.isConnected());
 }
 
 test "Node.isConnected - shadow root disconnection propagates" {
@@ -1626,7 +1626,7 @@ test "Node.isConnected - shadow root disconnection propagates" {
 
     // Host connected with shadow
     const host = try doc.createElement("host");
-    _ = try doc.node.appendChild(&host.node);
+    _ = try doc.prototype.appendChild(&host.prototype);
 
     const shadow = try host.attachShadow(.{
         .mode = .open,
@@ -1634,17 +1634,17 @@ test "Node.isConnected - shadow root disconnection propagates" {
     });
 
     const child = try doc.createElement("child");
-    _ = try shadow.node.appendChild(&child.node);
+    _ = try shadow.prototype.appendChild(&child.prototype);
 
     // Initially connected
-    try std.testing.expect(child.node.isConnected());
+    try std.testing.expect(child.prototype.isConnected());
 
     // Remove host from document
-    const removed = try doc.node.removeChild(&host.node);
+    const removed = try doc.prototype.removeChild(&host.prototype);
     defer removed.release();
 
     // Now disconnected
-    try std.testing.expect(!host.node.isConnected());
-    try std.testing.expect(!shadow.node.isConnected());
-    try std.testing.expect(!child.node.isConnected());
+    try std.testing.expect(!host.prototype.isConnected());
+    try std.testing.expect(!shadow.prototype.isConnected());
+    try std.testing.expect(!child.prototype.isConnected());
 }

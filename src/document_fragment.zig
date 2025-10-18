@@ -24,34 +24,34 @@
 //! DocumentFragment is a minimal node container with no special behavior:
 //! ```zig
 //! const fragment = try DocumentFragment.create(allocator);
-//! defer fragment.node.release();
+//! defer fragment.prototype.release();
 //!
 //! // Add children to fragment
 //! const div = try Element.create(allocator, "div");
-//! _ = try fragment.node.appendChild(&div.node);
+//! _ = try fragment.prototype.appendChild(&div.prototype);
 //!
 //! const text = try Text.create(allocator, "Content");
-//! _ = try div.node.appendChild(&text.node);
+//! _ = try div.prototype.appendChild(&text.prototype);
 //! ```
 //!
 //! ### Batch Insertion
 //! When inserted, fragment's children move to the target (fragment becomes empty):
 //! ```zig
 //! const parent = try Element.create(allocator, "ul");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
 //! const fragment = try DocumentFragment.create(allocator);
-//! defer fragment.node.release();
+//! defer fragment.prototype.release();
 //!
 //! // Build multiple list items in fragment
 //! for (0..3) |i| {
 //!     const li = try Element.create(allocator, "li");
-//!     _ = try fragment.node.appendChild(&li.node);
+//!     _ = try fragment.prototype.appendChild(&li.prototype);
 //! }
 //!
 //! // Insert all at once (single reflow)
-//! _ = try parent.node.appendChild(&fragment.node);
-//! // fragment.node.first_child is now null (children moved)
+//! _ = try parent.prototype.appendChild(&fragment.prototype);
+//! // fragment.prototype.first_child is now null (children moved)
 //! // parent now has 3 <li> children
 //! ```
 //!
@@ -59,12 +59,12 @@
 //! DocumentFragment supports ParentNode query methods:
 //! ```zig
 //! const fragment = try DocumentFragment.create(allocator);
-//! defer fragment.node.release();
+//! defer fragment.prototype.release();
 //!
 //! // Build structure
 //! const div = try Element.create(allocator, "div");
 //! try div.setAttribute("class", "container");
-//! _ = try fragment.node.appendChild(&div.node);
+//! _ = try fragment.prototype.appendChild(&div.prototype);
 //!
 //! // Query works on fragment
 //! const found = try fragment.querySelector(".container");
@@ -91,11 +91,11 @@
 //! DocumentFragment uses reference counting through Node interface:
 //! ```zig
 //! const fragment = try DocumentFragment.create(allocator);
-//! defer fragment.node.release(); // Decrements ref_count, frees if 0
+//! defer fragment.prototype.release(); // Decrements ref_count, frees if 0
 //!
 //! // When sharing ownership:
-//! fragment.node.acquire(); // Increment ref_count
-//! other_structure.fragment = &fragment.node;
+//! fragment.prototype.acquire(); // Increment ref_count
+//! other_structure.fragment = &fragment.prototype;
 //! // Both owners must call release()
 //! ```
 //!
@@ -110,22 +110,22 @@
 //! const allocator = std.heap.page_allocator;
 //!
 //! const container = try Element.create(allocator, "ul");
-//! defer container.node.release();
+//! defer container.prototype.release();
 //!
 //! // Build items off-document for better performance
 //! const fragment = try DocumentFragment.create(allocator);
-//! defer fragment.node.release();
+//! defer fragment.prototype.release();
 //!
 //! const items = [_][]const u8{ "Apple", "Banana", "Cherry" };
 //! for (items) |name| {
 //!     const li = try Element.create(allocator, "li");
 //!     const text = try Text.create(allocator, name);
-//!     _ = try li.node.appendChild(&text.node);
-//!     _ = try fragment.node.appendChild(&li.node);
+//!     _ = try li.prototype.appendChild(&text.prototype);
+//!     _ = try fragment.prototype.appendChild(&li.prototype);
 //! }
 //!
 //! // Single insertion (triggers one reflow, not three)
-//! _ = try container.node.appendChild(&fragment.node);
+//! _ = try container.prototype.appendChild(&fragment.prototype);
 //! ```
 //!
 //! ### Template Cloning
@@ -134,10 +134,10 @@
 //!     const fragment = try DocumentFragment.create(allocator);
 //!
 //!     // Clone all template children into fragment
-//!     var current = template.node.first_child;
+//!     var current = template.prototype.first_child;
 //!     while (current) |child| : (current = child.next_sibling) {
 //!         const clone = try child.cloneNode(true); // Deep clone
-//!         _ = try fragment.node.appendChild(clone);
+//!         _ = try fragment.prototype.appendChild(clone);
 //!     }
 //!
 //!     return fragment;
@@ -150,7 +150,7 @@
 //! defer doc.release();
 //!
 //! const fragment = try doc.createDocumentFragment();
-//! defer fragment.node.release();
+//! defer fragment.prototype.release();
 //!
 //! // Build article structure
 //! const article = try doc.createElement("article");
@@ -158,13 +158,13 @@
 //! const h1 = try doc.createElement("h1");
 //! const title = try doc.createTextNode("Article Title");
 //!
-//! _ = try h1.node.appendChild(&title.node);
-//! _ = try header.node.appendChild(&h1.node);
-//! _ = try article.node.appendChild(&header.node);
-//! _ = try fragment.node.appendChild(&article.node);
+//! _ = try h1.prototype.appendChild(&title.prototype);
+//! _ = try header.prototype.appendChild(&h1.prototype);
+//! _ = try article.prototype.appendChild(&header.prototype);
+//! _ = try fragment.prototype.appendChild(&article.prototype);
 //!
 //! // Insert complete structure
-//! _ = try doc.body.?.node.appendChild(&fragment.node);
+//! _ = try doc.body.?.prototype.appendChild(&fragment.prototype);
 //! ```
 //!
 //! ## Common Patterns
@@ -173,15 +173,15 @@
 //! ```zig
 //! fn insertMultiple(parent: *Node, nodes: []*Node) !void {
 //!     const fragment = try DocumentFragment.create(parent.allocator);
-//!     defer fragment.node.release();
+//!     defer fragment.prototype.release();
 //!
 //!     // Gather all nodes in fragment first
 //!     for (nodes) |node| {
-//!         _ = try fragment.node.appendChild(node);
+//!         _ = try fragment.prototype.appendChild(node);
 //!     }
 //!
 //!     // Single insertion
-//!     _ = try parent.appendChild(&fragment.node);
+//!     _ = try parent.appendChild(&fragment.prototype);
 //! }
 //! ```
 //!
@@ -189,15 +189,15 @@
 //! ```zig
 //! fn createListFragment(items: []const []const u8, allocator: Allocator) !*DocumentFragment {
 //!     const fragment = try DocumentFragment.create(allocator);
-//!     errdefer fragment.node.release();
+//!     errdefer fragment.prototype.release();
 //!
 //!     for (items) |item| {
 //!         const li = try Element.create(allocator, "li");
-//!         errdefer li.node.release();
+//!         errdefer li.prototype.release();
 //!
 //!         const text = try Text.create(allocator, item);
-//!         _ = try li.node.appendChild(&text.node);
-//!         _ = try fragment.node.appendChild(&li.node);
+//!         _ = try li.prototype.appendChild(&text.prototype);
+//!         _ = try fragment.prototype.appendChild(&li.prototype);
 //!     }
 //!
 //!     return fragment;
@@ -313,7 +313,7 @@ const NodeVTable = node_mod.NodeVTable;
 /// - When inserted, its children are moved (not the fragment itself)
 pub const DocumentFragment = struct {
     /// Base Node (MUST be first field for @fieldParentPtr)
-    node: Node,
+    prototype: Node,
 
     /// Vtable for DocumentFragment nodes.
     const vtable = NodeVTable{
@@ -328,7 +328,7 @@ pub const DocumentFragment = struct {
     /// Creates a new DocumentFragment node.
     ///
     /// ## Memory Management
-    /// Returns DocumentFragment with ref_count=1. Caller MUST call `fragment.node.release()`.
+    /// Returns DocumentFragment with ref_count=1. Caller MUST call `fragment.prototype.release()`.
     ///
     /// ## Parameters
     /// - `allocator`: Memory allocator for node creation
@@ -342,14 +342,14 @@ pub const DocumentFragment = struct {
     /// ## Example
     /// ```zig
     /// const fragment = try DocumentFragment.create(allocator);
-    /// defer fragment.node.release();
+    /// defer fragment.prototype.release();
     /// ```
     pub fn create(allocator: Allocator) !*DocumentFragment {
         const fragment = try allocator.create(DocumentFragment);
         errdefer allocator.destroy(fragment);
 
         // Initialize base Node
-        fragment.node = .{
+        fragment.prototype = .{
             .vtable = &vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .document_fragment,
@@ -389,11 +389,11 @@ pub const DocumentFragment = struct {
     /// ## Usage
     /// ```zig
     /// const fragment = try DocumentFragment.create(allocator);
-    /// defer fragment.node.release();
+    /// defer fragment.prototype.release();
     ///
     /// const button = try Element.create(allocator, "button");
     /// try button.setAttribute("class", "btn");
-    /// _ = try fragment.node.appendChild(&button.node);
+    /// _ = try fragment.prototype.appendChild(&button.prototype);
     ///
     /// // Find button in fragment
     /// const result = try fragment.querySelector(allocator, ".btn");
@@ -425,10 +425,10 @@ pub const DocumentFragment = struct {
         const matcher = Matcher.init(allocator);
 
         // Traverse children in tree order
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |node| {
             if (node.node_type == .element) {
-                const elem: *Element = @fieldParentPtr("node", node);
+                const elem: *Element = @fieldParentPtr("prototype", node);
 
                 // Check if element matches
                 if (try matcher.matches(elem, &selector_list)) {
@@ -462,7 +462,7 @@ pub const DocumentFragment = struct {
     /// ## Usage
     /// ```zig
     /// const fragment = try DocumentFragment.create(allocator);
-    /// defer fragment.node.release();
+    /// defer fragment.prototype.release();
     ///
     /// // Add elements...
     ///
@@ -500,10 +500,10 @@ pub const DocumentFragment = struct {
         defer results.deinit(allocator);
 
         // Traverse children in tree order
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |node| {
             if (node.node_type == .element) {
-                const elem: *Element = @fieldParentPtr("node", node);
+                const elem: *Element = @fieldParentPtr("prototype", node);
 
                 // Check if element matches
                 if (try matcher.matches(elem, &selector_list)) {
@@ -535,7 +535,7 @@ pub const DocumentFragment = struct {
     /// ## Returns
     /// Live ElementCollection of element children
     pub fn children(self: *DocumentFragment) @import("html_collection.zig").HTMLCollection {
-        return @import("html_collection.zig").HTMLCollection.initChildren(&self.node);
+        return @import("html_collection.zig").HTMLCollection.initChildren(&self.prototype);
     }
 
     /// Returns the first child that is an element.
@@ -560,10 +560,10 @@ pub const DocumentFragment = struct {
     /// ## Returns
     /// First element child or null
     pub fn firstElementChild(self: *const DocumentFragment) ?*@import("element.zig").Element {
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |child| {
             if (child.node_type == .element) {
-                return @fieldParentPtr("node", child);
+                return @fieldParentPtr("prototype", child);
             }
             current = child.next_sibling;
         }
@@ -592,10 +592,10 @@ pub const DocumentFragment = struct {
     /// ## Returns
     /// Last element child or null
     pub fn lastElementChild(self: *const DocumentFragment) ?*@import("element.zig").Element {
-        var current = self.node.last_child;
+        var current = self.prototype.last_child;
         while (current) |child| {
             if (child.node_type == .element) {
-                return @fieldParentPtr("node", child);
+                return @fieldParentPtr("prototype", child);
             }
             current = child.previous_sibling;
         }
@@ -625,7 +625,7 @@ pub const DocumentFragment = struct {
     /// Count of element children (0 if none)
     pub fn childElementCount(self: *const DocumentFragment) u32 {
         var count: u32 = 0;
-        var current = self.node.first_child;
+        var current = self.prototype.first_child;
         while (current) |child| {
             if (child.node_type == .element) {
                 count += 1;
@@ -663,13 +663,13 @@ pub const DocumentFragment = struct {
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-prepend
     /// - WebIDL: dom.idl:124
     pub fn prepend(self: *DocumentFragment, nodes: []const NodeOrString) !void {
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
         if (result == null) return;
 
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try self.node.insertBefore(node_to_insert, self.node.first_child);
+        const returned_node = try self.prototype.insertBefore(node_to_insert, self.prototype.first_child);
 
         if (should_release) {
             returned_node.release();
@@ -696,13 +696,13 @@ pub const DocumentFragment = struct {
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-append
     /// - WebIDL: dom.idl:125
     pub fn append(self: *DocumentFragment, nodes: []const NodeOrString) !void {
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
         if (result == null) return;
 
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try self.node.appendChild(node_to_insert);
+        const returned_node = try self.prototype.appendChild(node_to_insert);
 
         if (should_release) {
             returned_node.release();
@@ -730,15 +730,15 @@ pub const DocumentFragment = struct {
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
     /// - WebIDL: dom.idl:126
     pub fn replaceChildren(self: *DocumentFragment, nodes: []const NodeOrString) !void {
-        const result = try convertNodesToNode(&self.node, nodes);
+        const result = try convertNodesToNode(&self.prototype, nodes);
 
-        while (self.node.first_child) |child| {
-            const removed = try self.node.removeChild(child);
+        while (self.prototype.first_child) |child| {
+            const removed = try self.prototype.removeChild(child);
             removed.release();
         }
 
         if (result) |r| {
-            const returned_node = try self.node.appendChild(r.node);
+            const returned_node = try self.prototype.appendChild(r.node);
             if (r.should_release_after_insert) {
                 returned_node.release();
             }
@@ -765,7 +765,7 @@ pub const DocumentFragment = struct {
         if (owner_doc.node_type != .document) {
             return error.InvalidStateError;
         }
-        const doc: *Document = @fieldParentPtr("node", owner_doc);
+        const doc: *Document = @fieldParentPtr("prototype", owner_doc);
 
         if (items.len == 1) {
             switch (items[0]) {
@@ -778,7 +778,7 @@ pub const DocumentFragment = struct {
                 .string => |s| {
                     const text = try doc.createTextNode(s);
                     return ConvertResult{
-                        .node = &text.node,
+                        .node = &text.prototype,
                         .should_release_after_insert = false,
                     };
                 },
@@ -786,22 +786,22 @@ pub const DocumentFragment = struct {
         }
 
         const fragment = try doc.createDocumentFragment();
-        errdefer fragment.node.release();
+        errdefer fragment.prototype.release();
 
         for (items) |item| {
             switch (item) {
                 .node => |n| {
-                    _ = try fragment.node.appendChild(n);
+                    _ = try fragment.prototype.appendChild(n);
                 },
                 .string => |s| {
                     const text = try doc.createTextNode(s);
-                    _ = try fragment.node.appendChild(&text.node);
+                    _ = try fragment.prototype.appendChild(&text.prototype);
                 },
             }
         }
 
         return ConvertResult{
-            .node = &fragment.node,
+            .node = &fragment.prototype,
             .should_release_after_insert = true,
         };
     }
@@ -815,22 +815,22 @@ pub const DocumentFragment = struct {
 
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {
-        const fragment: *DocumentFragment = @fieldParentPtr("node", node);
+        const fragment: *DocumentFragment = @fieldParentPtr("prototype", node);
 
         // Release document reference if owned by a document
-        if (fragment.node.owner_document) |owner_doc| {
+        if (fragment.prototype.owner_document) |owner_doc| {
             if (owner_doc.node_type == .document) {
                 const Document = @import("document.zig").Document;
-                const doc: *Document = @fieldParentPtr("node", owner_doc);
+                const doc: *Document = @fieldParentPtr("prototype", owner_doc);
                 doc.releaseNodeRef();
             }
         }
 
         // Clean up rare data if allocated
-        fragment.node.deinitRareData();
+        fragment.prototype.deinitRareData();
 
         // Free all children
-        var current = fragment.node.first_child;
+        var current = fragment.prototype.first_child;
         while (current) |child| {
             const next = child.next_sibling;
             child.parent_node = null;
@@ -839,7 +839,7 @@ pub const DocumentFragment = struct {
             current = next;
         }
 
-        fragment.node.allocator.destroy(fragment);
+        fragment.prototype.allocator.destroy(fragment);
     }
 
     /// Vtable implementation: node name (always "#document-fragment")
@@ -859,7 +859,7 @@ pub const DocumentFragment = struct {
 
     /// Vtable implementation: clone node
     fn cloneNodeImpl(node: *const Node, deep: bool) !*Node {
-        const fragment: *const DocumentFragment = @fieldParentPtr("node", node);
+        const fragment: *const DocumentFragment = @fieldParentPtr("prototype", node);
         _ = fragment;
 
         // Create new fragment
@@ -872,13 +872,13 @@ pub const DocumentFragment = struct {
                 const cloned_child = try child.cloneNode(deep);
                 errdefer cloned_child.release();
 
-                _ = try new_fragment.node.appendChild(cloned_child);
+                _ = try new_fragment.prototype.appendChild(cloned_child);
 
                 current = child.next_sibling;
             }
         }
 
-        return &new_fragment.node;
+        return &new_fragment.prototype;
     }
 };
 
@@ -888,11 +888,11 @@ test "DocumentFragment - creation and cleanup" {
     const allocator = std.testing.allocator;
 
     const fragment = try DocumentFragment.create(allocator);
-    defer fragment.node.release();
+    defer fragment.prototype.release();
 
-    try std.testing.expect(fragment.node.node_type == .document_fragment);
-    try std.testing.expectEqualStrings("#document-fragment", fragment.node.nodeName());
-    try std.testing.expect(fragment.node.nodeValue() == null);
+    try std.testing.expect(fragment.prototype.node_type == .document_fragment);
+    try std.testing.expectEqualStrings("#document-fragment", fragment.prototype.nodeName());
+    try std.testing.expect(fragment.prototype.nodeValue() == null);
 }
 
 test "DocumentFragment - can hold children" {
@@ -903,16 +903,16 @@ test "DocumentFragment - can hold children" {
     defer doc.release();
 
     const fragment = try DocumentFragment.create(allocator);
-    defer fragment.node.release();
+    defer fragment.prototype.release();
 
     const elem1 = try doc.createElement("div");
     const elem2 = try doc.createElement("span");
 
-    _ = try fragment.node.appendChild(&elem1.node);
-    _ = try fragment.node.appendChild(&elem2.node);
+    _ = try fragment.prototype.appendChild(&elem1.prototype);
+    _ = try fragment.prototype.appendChild(&elem2.prototype);
 
-    try std.testing.expect(fragment.node.hasChildNodes());
-    try std.testing.expectEqual(@as(usize, 2), fragment.node.childNodes().length());
+    try std.testing.expect(fragment.prototype.hasChildNodes());
+    try std.testing.expectEqual(@as(usize, 2), fragment.prototype.childNodes().length());
 }
 
 test "DocumentFragment - clone shallow" {
@@ -923,13 +923,13 @@ test "DocumentFragment - clone shallow" {
     defer doc.release();
 
     const fragment = try doc.createDocumentFragment();
-    defer fragment.node.release();
+    defer fragment.prototype.release();
 
     const elem = try doc.createElement("div");
-    _ = try fragment.node.appendChild(&elem.node);
+    _ = try fragment.prototype.appendChild(&elem.prototype);
 
     // Shallow clone
-    const clone = try fragment.node.cloneNode(false);
+    const clone = try fragment.prototype.cloneNode(false);
     defer clone.release();
 
     try std.testing.expect(clone.node_type == .document_fragment);
@@ -944,13 +944,13 @@ test "DocumentFragment - clone deep" {
     defer doc.release();
 
     const fragment = try doc.createDocumentFragment();
-    defer fragment.node.release();
+    defer fragment.prototype.release();
 
     const elem = try doc.createElement("div");
-    _ = try fragment.node.appendChild(&elem.node);
+    _ = try fragment.prototype.appendChild(&elem.prototype);
 
     // Deep clone
-    const clone = try fragment.node.cloneNode(true);
+    const clone = try fragment.prototype.cloneNode(true);
     defer clone.release();
 
     try std.testing.expect(clone.node_type == .document_fragment);

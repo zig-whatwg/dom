@@ -14,7 +14,7 @@ test "createElement with simple tag name" {
     defer doc.release();
 
     const elem = try doc.createElement("foo");
-    defer elem.node.release(); // Must release orphaned nodes
+    defer elem.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(std.mem.eql(u8, elem.tag_name, "foo"));
 }
 
@@ -24,11 +24,11 @@ test "createElement with tag containing numbers" {
     defer doc.release();
 
     const elem1 = try doc.createElement("f1oo");
-    defer elem1.node.release(); // Must release orphaned nodes
+    defer elem1.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(std.mem.eql(u8, elem1.tag_name, "f1oo"));
 
     const elem2 = try doc.createElement("foo1");
-    defer elem2.node.release(); // Must release orphaned nodes
+    defer elem2.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(std.mem.eql(u8, elem2.tag_name, "foo1"));
 }
 
@@ -38,15 +38,15 @@ test "createElement with colon in name" {
     defer doc.release();
 
     const elem1 = try doc.createElement("f:oo");
-    defer elem1.node.release(); // Must release orphaned nodes
+    defer elem1.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(std.mem.eql(u8, elem1.tag_name, "f:oo"));
 
     const elem2 = try doc.createElement("foo:");
-    defer elem2.node.release(); // Must release orphaned nodes
+    defer elem2.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(std.mem.eql(u8, elem2.tag_name, "foo:"));
 
     const elem3 = try doc.createElement(":foo");
-    defer elem3.node.release(); // Must release orphaned nodes
+    defer elem3.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(std.mem.eql(u8, elem3.tag_name, ":foo"));
 }
 
@@ -56,15 +56,15 @@ test "createElement with standard HTML elements" {
     defer doc.release();
 
     const div = try doc.createElement("div");
-    defer div.node.release(); // Must release orphaned nodes
+    defer div.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(std.mem.eql(u8, div.tag_name, "div"));
 
     const span = try doc.createElement("span");
-    defer span.node.release(); // Must release orphaned nodes
+    defer span.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(std.mem.eql(u8, span.tag_name, "span"));
 
     const p = try doc.createElement("p");
-    defer p.node.release(); // Must release orphaned nodes
+    defer p.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(std.mem.eql(u8, p.tag_name, "p"));
 }
 
@@ -74,8 +74,8 @@ test "createElement returns Element node type" {
     defer doc.release();
 
     const elem = try doc.createElement("test");
-    defer elem.node.release(); // Must release orphaned nodes
-    try std.testing.expectEqual(elem.node.node_type, .element);
+    defer elem.prototype.release(); // Must release orphaned nodes
+    try std.testing.expectEqual(elem.prototype.node_type, .element);
 }
 
 test "createElement sets owner document" {
@@ -84,8 +84,8 @@ test "createElement sets owner document" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release(); // Must release orphaned nodes
-    try std.testing.expect(elem.node.getOwnerDocument() == doc);
+    defer elem.prototype.release(); // Must release orphaned nodes
+    try std.testing.expect(elem.prototype.getOwnerDocument() == doc);
 }
 
 test "createElement element has no children initially" {
@@ -94,10 +94,10 @@ test "createElement element has no children initially" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release(); // Must release orphaned nodes
-    try std.testing.expect(!elem.node.hasChildNodes());
-    try std.testing.expect(elem.node.first_child == null);
-    try std.testing.expect(elem.node.last_child == null);
+    defer elem.prototype.release(); // Must release orphaned nodes
+    try std.testing.expect(!elem.prototype.hasChildNodes());
+    try std.testing.expect(elem.prototype.first_child == null);
+    try std.testing.expect(elem.prototype.last_child == null);
 }
 
 test "createElement element has no attributes initially" {
@@ -106,7 +106,7 @@ test "createElement element has no attributes initially" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release(); // Must release orphaned nodes
+    defer elem.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(!elem.hasAttributes());
     try std.testing.expectEqual(@as(usize, 0), elem.attributeCount());
 }
@@ -117,8 +117,8 @@ test "createElement element is not connected initially" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release(); // Must release orphaned nodes
-    try std.testing.expect(!elem.node.isConnected());
+    defer elem.prototype.release(); // Must release orphaned nodes
+    try std.testing.expect(!elem.prototype.isConnected());
 }
 
 test "createElement preserves case in tag name" {
@@ -127,10 +127,10 @@ test "createElement preserves case in tag name" {
     defer doc.release();
 
     const elem1 = try doc.createElement("FOO");
-    defer elem1.node.release(); // Must release orphaned nodes
+    defer elem1.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(std.mem.eql(u8, elem1.tag_name, "FOO"));
 
     const elem2 = try doc.createElement("FoO");
-    defer elem2.node.release(); // Must release orphaned nodes
+    defer elem2.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(std.mem.eql(u8, elem2.tag_name, "FoO"));
 }

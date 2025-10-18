@@ -50,34 +50,48 @@
 //! // Returns true if any listener called preventDefault()
 //! ```
 //!
-//! ## EventTarget Mixin Architecture
+//! ## EventTarget Architecture
 //!
-//! This module provides a **generic mixin** that can be applied to any type, not just Node.
-//! The mixin uses Zig's comptime generics and `usingnamespace` to inject EventTarget methods
-//! with zero runtime overhead.
+//! EventTarget is now a **real struct** (not a mixin) that serves as the base type
+//! for all objects that can receive events. It uses vtable-based polymorphism to
+//! access parent's allocator and rare_data without storing them directly (saves memory).
 //!
-//! **Requirements for types using EventTargetMixin:**
-//! - Must have `rare_data: ?*RareDataType` field
-//! - Must implement `ensureRareData() !*RareDataType` method
-//! - RareDataType must have event listener storage
+//! **Memory Layout:**
+//! - EventTarget: 8 bytes (vtable pointer only)
+//! - Node: EventTarget (8 bytes) + Node fields (88 bytes) = 96 bytes total
+//! - AbortSignal: EventTarget (8 bytes) + AbortSignal fields = small struct
 //!
-//! **Example mixin usage:**
+//! **Prototype Chain (following JavaScript prototype semantics):**
+//! ```zig
+//! EventTarget (root - 8 bytes)
+//!   ├─ Node : EventTarget (96 bytes total)
+//!   │    ├─ Element : Node
+//!   │    ├─ Text : Node
+//!   │    ├─ Document : Node
+//!   │    └─ ShadowRoot : DocumentFragment : Node
+//!   └─ AbortSignal : EventTarget
+//! ```
+//!
+//! **Extension Pattern:**
 //! ```zig
 //! pub const Node = struct {
-//!     rare_data: ?*NodeRareData,
-//!     pub usingnamespace EventTargetMixin(@This());
+//!     prototype: EventTarget,  // First field (8 bytes)
+//!     // ... rest of Node fields ...
 //!
-//!     pub fn ensureRareData(self: *Node) !*NodeRareData {
-//!         if (self.rare_data == null) {
-//!             self.rare_data = try NodeRareData.init(self.allocator);
-//!         }
-//!         return self.rare_data.?;
-//!     }
+//!     pub const vtable = EventTargetVTable{
+//!         .deinit = deinitImpl,
+//!         .get_allocator = getAllocatorImpl,
+//!         .ensure_rare_data = ensureRareDataImpl,
+//!     };
 //! };
 //! ```
 //!
 //! This enables EventTarget for both DOM nodes (Element, Document) and non-DOM objects
 //! (AbortSignal, XMLHttpRequest, WebSocket).
+//!
+//! **Legacy Mixin (deprecated, will be removed):**
+//! The `EventTargetMixin` comptime function is still available for backward compatibility
+//! but will be removed once all types migrate to extending EventTarget directly.
 //!
 //! ## Event Flow Algorithm
 //!
@@ -127,14 +141,14 @@
 //!
 //! const allocator = std.heap.page_allocator;
 //! const button = try Element.create(allocator, "button");
-//! defer button.node.release();
+//! defer button.prototype.release();
 //!
 //! var state = MyState{ .counter = 0 };
-//! try button.node.addEventListener("click", handleClick, &state, .{});
+//! try button.prototype.addEventListener("click", handleClick, &state, .{});
 //!
 //! // Dispatch event
 //! var event = Event.init("click", .{ .bubbles = true, .cancelable = true, .composed = false });
-//! _ = try button.node.dispatchEvent(&event);
+//! _ = try button.prototype.dispatchEvent(&event);
 //! ```
 //!
 //! ### Capture Phase Listeners
@@ -307,6 +321,392 @@
 const std = @import("std");
 const Event = @import("event.zig").Event;
 const Allocator = std.mem.Allocator;
+
+/// EventTarget virtual table for polymorphic behavior.
+///
+/// Enables EventTarget to access parent's allocator and rare_data
+/// without storing them directly (saves memory).
+///
+/// ## Methods
+/// - `deinit`: Cleanup function (releases resources)
+/// - `get_allocator`: Returns allocator from parent struct
+/// - `ensure_rare_data`: Returns rare_data from parent struct (allocates if needed)
+///
+/// ## Memory Layout
+/// EventTarget = 8 bytes (vtable pointer only)
+/// Parent struct provides allocator + rare_data via vtable indirection
+pub const EventTargetVTable = struct {
+    /// Cleanup function (called when EventTarget is destroyed)
+    ///
+    /// ## Parameters
+    /// - `self`: EventTarget pointer
+    deinit: *const fn (self: *EventTarget) void,
+
+    /// Returns allocator from parent struct
+    ///
+    /// ## Parameters
+    /// - `self`: EventTarget pointer
+    ///
+    /// ## Returns
+    /// Allocator from parent
+    get_allocator: *const fn (self: *const EventTarget) Allocator,
+
+    /// Ensures rare_data is allocated and returns it
+    ///
+    /// ## Parameters
+    /// - `self`: EventTarget pointer
+    ///
+    /// ## Returns
+    /// Opaque pointer to parent's rare_data (must be cast to correct type)
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate rare_data
+    ensure_rare_data: *const fn (self: *EventTarget) anyerror!*anyopaque,
+};
+
+/// EventTarget struct (base type for all event-capable objects).
+///
+/// Implements WHATWG DOM EventTarget interface per §2.7-§2.9.
+///
+/// ## WebIDL
+/// ```webidl
+/// [Exposed=*]
+/// interface EventTarget {
+///   constructor();
+///
+///   undefined addEventListener(DOMString type, EventListener? callback,
+///                              optional (AddEventListenerOptions or boolean) options = {});
+///   undefined removeEventListener(DOMString type, EventListener? callback,
+///                                  optional (EventListenerOptions or boolean) options = {});
+///   boolean dispatchEvent(Event event);
+/// };
+/// ```
+///
+/// ## Memory Layout
+/// - vtable: 8 bytes (pointer to EventTargetVTable)
+/// - Total: 8 bytes
+///
+/// Uses parent's allocator and rare_data via vtable indirection.
+///
+/// ## Prototype Chain
+/// ```
+/// EventTarget (root - 8 bytes)
+///   ├─ Node : EventTarget (96 bytes total)
+///   │    ├─ Element : Node
+///   │    ├─ Text : Node
+///   │    ├─ Document : Node
+///   │    └─ ShadowRoot : DocumentFragment : Node
+///   └─ AbortSignal : EventTarget (small struct)
+/// ```
+///
+/// ## Spec References
+/// - EventTarget: https://dom.spec.whatwg.org/#interface-eventtarget
+/// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:55-63
+pub const EventTarget = struct {
+    /// Virtual table for polymorphic dispatch (8 bytes)
+    vtable: *const EventTargetVTable,
+
+    // Size verification (8 bytes only!)
+    comptime {
+        const size = @sizeOf(EventTarget);
+        if (size != 8) {
+            const msg = std.fmt.comptimePrint("EventTarget size ({d} bytes) must be exactly 8 bytes!", .{size});
+            @compileError(msg);
+        }
+    }
+
+    /// Cleanup EventTarget (calls parent's deinit via vtable)
+    pub fn deinit(self: *EventTarget) void {
+        self.vtable.deinit(self);
+    }
+
+    /// Returns allocator from parent struct (via vtable)
+    pub fn getAllocator(self: *const EventTarget) Allocator {
+        return self.vtable.get_allocator(self);
+    }
+
+    /// Ensures rare_data is allocated (via vtable)
+    ///
+    /// ## Returns
+    /// Opaque pointer to parent's rare_data (caller must cast to correct type)
+    pub fn ensureRareData(self: *EventTarget) anyerror!*anyopaque {
+        return self.vtable.ensure_rare_data(self);
+    }
+
+    /// Registers an event listener.
+    ///
+    /// Implements WHATWG DOM EventTarget.addEventListener() per §2.7.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// undefined addEventListener(DOMString type, EventListener? callback,
+    ///                            optional (AddEventListenerOptions or boolean) options = {});
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §2.7.3)
+    /// 1. Let capture, passive, once, signal be options values
+    /// 2. If listener's signal is not null and is aborted, then return
+    /// 3. If callback is null, return
+    /// 4. Ensure event listener list exists
+    /// 5. Add listener to list (if not duplicate)
+    /// 6. If listener's signal is not null, then add abort steps to remove listener
+    ///
+    /// ## Parameters
+    /// - `self`: Target object
+    /// - `event_type`: Event type to listen for (e.g., "click", "abort")
+    /// - `callback`: Function to call when event dispatched
+    /// - `context`: User context passed to callback
+    /// - `capture`: Listen in capture phase (true) or bubble phase (false)
+    /// - `once`: Remove listener after first invocation
+    /// - `passive`: Listener won't call preventDefault()
+    /// - `signal`: Optional AbortSignal to auto-remove listener on abort
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate listener storage
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:57
+    pub fn addEventListener(
+        self: *EventTarget,
+        event_type: []const u8,
+        callback: EventCallback,
+        context: *anyopaque,
+        capture: bool,
+        once: bool,
+        passive: bool,
+        signal: ?*anyopaque,
+    ) !void {
+        // Step 2: Early return if signal already aborted
+        if (signal) |sig_ptr| {
+            const AbortSignal = @import("abort_signal.zig").AbortSignal;
+            const abort_signal = @as(*AbortSignal, @ptrCast(@alignCast(sig_ptr)));
+            if (abort_signal.isAborted()) {
+                return; // Don't add listener if already aborted
+            }
+        }
+
+        // Get rare_data from parent via vtable
+        const rare_data_ptr = try self.ensureRareData();
+        const NodeRareData = @import("rare_data.zig").NodeRareData;
+        const rare = @as(*NodeRareData, @ptrCast(@alignCast(rare_data_ptr)));
+
+        try rare.addEventListener(.{
+            .event_type = event_type,
+            .callback = callback,
+            .context = context,
+            .capture = capture,
+            .once = once,
+            .passive = passive,
+            .signal = signal,
+        });
+
+        // Step 6: Register abort algorithm if signal provided
+        if (signal) |sig_ptr| {
+            const AbortSignal = @import("abort_signal.zig").AbortSignal;
+            const abort_signal = @as(*AbortSignal, @ptrCast(@alignCast(sig_ptr)));
+
+            // Create removal context
+            const RemovalContext = struct {
+                target: *EventTarget,
+                event_type: []const u8,
+                callback: EventCallback,
+                capture: bool,
+            };
+
+            const allocator = self.getAllocator();
+            const removal_ctx = try allocator.create(RemovalContext);
+            removal_ctx.* = .{
+                .target = self,
+                .event_type = event_type,
+                .callback = callback,
+                .capture = capture,
+            };
+
+            // Create abort algorithm that removes the listener
+            const removal_callback = struct {
+                fn remove(sig: *AbortSignal, ctx: *anyopaque) void {
+                    const removal = @as(*RemovalContext, @ptrCast(@alignCast(ctx)));
+                    removal.target.removeEventListener(
+                        removal.event_type,
+                        removal.callback,
+                        removal.capture,
+                    );
+                    // Free the removal context
+                    sig.allocator.destroy(removal);
+                }
+            }.remove;
+
+            try abort_signal.addAlgorithm(.{
+                .callback = removal_callback,
+                .context = @ptrCast(removal_ctx),
+            });
+        }
+    }
+
+    /// Removes an event listener from the target.
+    ///
+    /// Implements WHATWG DOM EventTarget.removeEventListener() per §2.7.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// undefined removeEventListener(DOMString type, EventListener? callback,
+    ///                                optional (EventListenerOptions or boolean) options = {});
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §2.7)
+    /// 1. If callback is null, return
+    /// 2. Find listener in list matching (type, callback, capture)
+    /// 3. Remove listener if found
+    ///
+    /// ## Parameters
+    /// - `self`: Target object
+    /// - `event_type`: Event type to remove listener for
+    /// - `callback`: Callback function pointer to match
+    /// - `capture`: Capture phase to match
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:60
+    pub fn removeEventListener(
+        self: *EventTarget,
+        event_type: []const u8,
+        callback: EventCallback,
+        capture: bool,
+    ) void {
+        const rare_data_ptr = self.ensureRareData() catch return;
+        const NodeRareData = @import("rare_data.zig").NodeRareData;
+        const rare = @as(*NodeRareData, @ptrCast(@alignCast(rare_data_ptr)));
+        _ = rare.removeEventListener(event_type, callback, capture);
+    }
+
+    /// Dispatches an event to this target.
+    ///
+    /// Implements WHATWG DOM EventTarget.dispatchEvent() per §2.7, §2.9.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// boolean dispatchEvent(Event event);
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §2.9 - Simplified Phase 1)
+    /// 1. Validate event state (not already dispatching, initialized)
+    /// 2. Set isTrusted = false, dispatch_flag = true
+    /// 3. Set target, currentTarget, eventPhase = AT_TARGET
+    /// 4. Invoke listeners on target (no capture/bubble in Phase 1)
+    /// 5. Handle passive listeners, "once" listeners
+    /// 6. Stop on stopImmediatePropagation
+    /// 7. Cleanup: reset event_phase, currentTarget, dispatch_flag
+    /// 8. Return !canceled_flag
+    ///
+    /// ## Parameters
+    /// - `self`: Target object
+    /// - `event`: Event to dispatch
+    ///
+    /// ## Returns
+    /// - `true` if event was not canceled
+    /// - `false` if preventDefault() was called
+    ///
+    /// ## Errors
+    /// - `error.InvalidStateError`: Event is already being dispatched or not initialized
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:62
+    pub fn dispatchEvent(self: *EventTarget, event: *Event) !bool {
+        // Step 1: Validate event state
+        if (event.dispatch_flag) {
+            return error.InvalidStateError;
+        }
+        if (!event.initialized_flag) {
+            return error.InvalidStateError;
+        }
+
+        // Step 2: Set flags
+        event.is_trusted = false;
+
+        // Step 3: Dispatch (simplified for Phase 1)
+        event.dispatch_flag = true;
+        event.target = @ptrCast(self);
+        event.current_target = @ptrCast(self);
+        event.event_phase = .at_target;
+
+        // Step 4: Invoke listeners on target
+        const rare_data_ptr = self.ensureRareData() catch {
+            // No rare_data = no listeners
+            event.event_phase = .none;
+            event.current_target = null;
+            event.dispatch_flag = false;
+            return !event.canceled_flag;
+        };
+
+        const NodeRareData = @import("rare_data.zig").NodeRareData;
+        const rare = @as(*NodeRareData, @ptrCast(@alignCast(rare_data_ptr)));
+
+        if (rare.hasEventListeners(event.event_type)) {
+            const listeners = rare.getEventListeners(event.event_type);
+
+            for (listeners) |listener| {
+                // Skip if type doesn't match
+                if (!std.mem.eql(u8, listener.event_type, event.event_type)) {
+                    continue;
+                }
+
+                // Check stopImmediatePropagation
+                if (event.stop_immediate_propagation_flag) {
+                    break;
+                }
+
+                // Handle "once" listeners - remove before invoking
+                if (listener.once) {
+                    self.removeEventListener(
+                        listener.event_type,
+                        listener.callback,
+                        listener.capture,
+                    );
+                }
+
+                // Set passive listener flag
+                const prev_passive = event.in_passive_listener_flag;
+                if (listener.passive) {
+                    event.in_passive_listener_flag = true;
+                }
+
+                // Invoke callback
+                listener.callback(event, listener.context);
+
+                // Unset passive listener flag
+                event.in_passive_listener_flag = prev_passive;
+            }
+        }
+
+        // Step 5: Cleanup
+        event.event_phase = .none;
+        event.current_target = null;
+        event.dispatch_flag = false;
+
+        // Step 6: Return result
+        return !event.canceled_flag;
+    }
+
+    /// Checks if target has event listeners for the specified type.
+    pub fn hasEventListeners(self: *const EventTarget, event_type: []const u8) bool {
+        // Cast away const for ensureRareData (won't allocate on const access)
+        const rare_data_ptr = @constCast(self).ensureRareData() catch return false;
+        const NodeRareData = @import("rare_data.zig").NodeRareData;
+        const rare = @as(*const NodeRareData, @ptrCast(@alignCast(rare_data_ptr)));
+        return rare.hasEventListeners(event_type);
+    }
+
+    /// Returns all event listeners for a specific event type.
+    pub fn getEventListeners(self: *const EventTarget, event_type: []const u8) []const EventListener {
+        // Cast away const for ensureRareData (won't allocate on const access)
+        const rare_data_ptr = @constCast(self).ensureRareData() catch return &[_]EventListener{};
+        const NodeRareData = @import("rare_data.zig").NodeRareData;
+        const rare = @as(*const NodeRareData, @ptrCast(@alignCast(rare_data_ptr)));
+        return rare.getEventListeners(event_type);
+    }
+};
 
 /// EventCallback signature per WHATWG DOM §2.7.
 ///

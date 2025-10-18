@@ -16,7 +16,7 @@ test "Test with ordinary child nodes" {
 
     // Create body element to simulate document.body
     const body = try doc.createElement("body");
-    _ = try doc.node.appendChild(&body.node);
+    _ = try doc.prototype.appendChild(&body.node);
 
     // Create test nodes
     const nodes = [_]*Element{
@@ -29,23 +29,23 @@ test "Test with ordinary child nodes" {
     try checkNodes(&[_]*Element{}, &nodes);
 
     // Append nodes[0]
-    _ = try body.node.appendChild(&nodes[0].node);
+    _ = try body.prototype.appendChild(&nodes[0].node);
     try checkNodes(&[_]*Element{nodes[0]}, &[_]*Element{ nodes[1], nodes[2] });
 
     // Append nodes[1] and nodes[2] together
-    _ = try nodes[1].node.appendChild(&nodes[2].node);
+    _ = try nodes[1].prototype.appendChild(&nodes[2].node);
     try checkNodes(&[_]*Element{nodes[0]}, &[_]*Element{ nodes[1], nodes[2] });
 
-    _ = try nodes[0].node.appendChild(&nodes[1].node);
+    _ = try nodes[0].prototype.appendChild(&nodes[1].node);
     try checkNodes(&nodes, &[_]*Element{});
 
     // Remove nodes[2]
-    const removed2 = try nodes[1].node.removeChild(&nodes[2].node);
+    const removed2 = try nodes[1].prototype.removeChild(&nodes[2].node);
     removed2.release();
     try checkNodes(&[_]*Element{ nodes[0], nodes[1] }, &[_]*Element{nodes[2]});
 
     // Remove nodes[0] and nodes[1] together
-    const removed0 = try body.node.removeChild(&nodes[0].node);
+    const removed0 = try body.prototype.removeChild(&nodes[0].node);
     removed0.release();
     try checkNodes(&[_]*Element{}, &nodes);
 }
@@ -53,9 +53,9 @@ test "Test with ordinary child nodes" {
 // Helper function to check whether nodes should be connected
 fn checkNodes(connected_nodes: []const *Element, disconnected_nodes: []const *Element) !void {
     for (connected_nodes) |node| {
-        try std.testing.expect(node.node.isConnected());
+        try std.testing.expect(node.prototype.isConnected());
     }
     for (disconnected_nodes) |node| {
-        try std.testing.expect(!node.node.isConnected());
+        try std.testing.expect(!node.prototype.isConnected());
     }
 }

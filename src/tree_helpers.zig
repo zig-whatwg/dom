@@ -26,36 +26,36 @@
 //! Efficiently check tree relationships between nodes:
 //! ```zig
 //! const grandparent = try Element.create(allocator, "div");
-//! defer grandparent.node.release();
+//! defer grandparent.prototype.release();
 //!
 //! const parent = try Element.create(allocator, "div");
-//! _ = try grandparent.node.appendChild(&parent.node);
+//! _ = try grandparent.prototype.appendChild(&parent.prototype);
 //!
 //! const child = try Element.create(allocator, "span");
-//! _ = try parent.node.appendChild(&child.node);
+//! _ = try parent.prototype.appendChild(&child.prototype);
 //!
 //! // Check descendant relationship
-//! try std.testing.expect(isInclusiveDescendant(&child.node, &grandparent.node)); // true
-//! try std.testing.expect(isInclusiveDescendant(&parent.node, &grandparent.node)); // true
-//! try std.testing.expect(!isInclusiveDescendant(&grandparent.node, &child.node)); // false
+//! try std.testing.expect(isInclusiveDescendant(&child.prototype, &grandparent.prototype)); // true
+//! try std.testing.expect(isInclusiveDescendant(&parent.prototype, &grandparent.prototype)); // true
+//! try std.testing.expect(!isInclusiveDescendant(&grandparent.prototype, &child.prototype)); // false
 //! ```
 //!
 //! ### Text Content Extraction
 //! Collect all text from a subtree in document order:
 //! ```zig
 //! const div = try Element.create(allocator, "div");
-//! defer div.node.release();
+//! defer div.prototype.release();
 //!
 //! const text1 = try Text.create(allocator, "Hello ");
-//! _ = try div.node.appendChild(&text1.node);
+//! _ = try div.prototype.appendChild(&text1.prototype);
 //!
 //! const span = try Element.create(allocator, "span");
-//! _ = try div.node.appendChild(&span.node);
+//! _ = try div.prototype.appendChild(&span.prototype);
 //!
 //! const text2 = try Text.create(allocator, "World");
-//! _ = try span.node.appendChild(&text2.node);
+//! _ = try span.prototype.appendChild(&text2.prototype);
 //!
-//! const content = try getDescendantTextContent(&div.node, allocator);
+//! const content = try getDescendantTextContent(&div.prototype, allocator);
 //! defer allocator.free(content);
 //! // content = "Hello World"
 //! ```
@@ -64,13 +64,13 @@
 //! Track whether nodes are connected to a document:
 //! ```zig
 //! const element = try Element.create(allocator, "div");
-//! defer element.node.release();
-//! // element.node.is_connected = false (not in document)
+//! defer element.prototype.release();
+//! // element.prototype.is_connected = false (not in document)
 //!
 //! const doc = try Document.init(allocator);
 //! defer doc.release();
-//! _ = try doc.node.appendChild(&element.node);
-//! // element.node.is_connected = true (now connected)
+//! _ = try doc.prototype.appendChild(&element.prototype);
+//! // element.prototype.is_connected = true (now connected)
 //! ```
 //!
 //! ## Helper Functions
@@ -125,7 +125,7 @@
 //! const doc = try Document.init(allocator);
 //! defer doc.release();
 //! // ... build DOM tree ...
-//! const all_text = try extractAllText(&doc.node, allocator);
+//! const all_text = try extractAllText(&doc.prototype, allocator);
 //! defer allocator.free(all_text);
 //! ```
 //!
@@ -135,7 +135,7 @@
 //!     var index = std.StringHashMap(void).init(allocator);
 //!     errdefer index.deinit();
 //!
-//!     const text = try getDescendantTextContent(&element.node, allocator);
+//!     const text = try getDescendantTextContent(&element.prototype, allocator);
 //!     defer allocator.free(text);
 //!
 //!     // Tokenize and index
@@ -266,7 +266,7 @@ fn collectTextContent(node: *const Node, list: *std.ArrayList(u8), allocator: Al
 
         // If text node, append its data
         if (child.node_type == .text) {
-            const text: *const TextNode = @fieldParentPtr("node", child);
+            const text: *const TextNode = @fieldParentPtr("prototype", child);
             try list.appendSlice(allocator, text.data);
         }
 
@@ -288,19 +288,19 @@ pub fn setDescendantsConnected(node: *Node, connected: bool) void {
     // First, handle shadow root if this is an element with one
     if (node.node_type == .element) {
         const ElementType = @import("element.zig").Element;
-        const elem: *ElementType = @fieldParentPtr("node", node);
+        const elem: *ElementType = @fieldParentPtr("prototype", node);
 
         // Check if element has a shadow root
-        if (elem.node.rare_data) |rare_data| {
+        if (elem.prototype.rare_data) |rare_data| {
             if (rare_data.shadow_root) |shadow_ptr| {
                 const ShadowRootType = @import("shadow_root.zig").ShadowRoot;
                 const shadow: *ShadowRootType = @ptrCast(@alignCast(shadow_ptr));
 
                 // Set shadow root connected state
-                shadow.node.setConnected(connected);
+                shadow.prototype.setConnected(connected);
 
                 // Propagate to shadow tree descendants
-                setDescendantsConnected(&shadow.node, connected);
+                setDescendantsConnected(&shadow.prototype, connected);
             }
         }
     }
@@ -448,10 +448,10 @@ test "tree_helpers - isInclusiveDescendant with same node" {
     defer doc.release();
 
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Node is its own inclusive descendant
-    try std.testing.expect(isInclusiveDescendant(&elem.node, &elem.node));
+    try std.testing.expect(isInclusiveDescendant(&elem.prototype, &elem.prototype));
 }
 
 test "tree_helpers - isInclusiveDescendant with ancestor" {
@@ -461,22 +461,22 @@ test "tree_helpers - isInclusiveDescendant with ancestor" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("item");
-    defer child.node.release();
+    defer child.prototype.release();
 
     // Manually set up parent-child relationship
-    child.node.parent_node = &parent.node;
+    child.prototype.parent_node = &parent.prototype;
 
     // Child is inclusive descendant of parent
-    try std.testing.expect(isInclusiveDescendant(&child.node, &parent.node));
+    try std.testing.expect(isInclusiveDescendant(&child.prototype, &parent.prototype));
 
     // Parent is NOT descendant of child
-    try std.testing.expect(!isInclusiveDescendant(&parent.node, &child.node));
+    try std.testing.expect(!isInclusiveDescendant(&parent.prototype, &child.prototype));
 
     // Clean up
-    child.node.parent_node = null;
+    child.prototype.parent_node = null;
 }
 
 test "tree_helpers - getDescendantTextContent empty" {
@@ -486,10 +486,10 @@ test "tree_helpers - getDescendantTextContent empty" {
     defer doc.release();
 
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // No children - empty string
-    const content = try getDescendantTextContent(&elem.node, allocator);
+    const content = try getDescendantTextContent(&elem.prototype, allocator);
     defer allocator.free(content);
 
     try std.testing.expectEqualStrings("", content);
@@ -502,25 +502,25 @@ test "tree_helpers - getDescendantTextContent with text" {
     defer doc.release();
 
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const text = try doc.createTextNode("Hello");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Manually add text as child
-    elem.node.first_child = &text.node;
-    elem.node.last_child = &text.node;
-    text.node.parent_node = &elem.node;
+    elem.prototype.first_child = &text.prototype;
+    elem.prototype.last_child = &text.prototype;
+    text.prototype.parent_node = &elem.prototype;
 
-    const content = try getDescendantTextContent(&elem.node, allocator);
+    const content = try getDescendantTextContent(&elem.prototype, allocator);
     defer allocator.free(content);
 
     try std.testing.expectEqualStrings("Hello", content);
 
     // Clean up
-    elem.node.first_child = null;
-    elem.node.last_child = null;
-    text.node.parent_node = null;
+    elem.prototype.first_child = null;
+    elem.prototype.last_child = null;
+    text.prototype.parent_node = null;
 }
 
 test "tree_helpers - getDescendantTextContent nested" {
@@ -530,46 +530,46 @@ test "tree_helpers - getDescendantTextContent nested" {
     defer doc.release();
 
     const div = try doc.createElement("element");
-    defer div.node.release();
+    defer div.prototype.release();
 
     const span = try doc.createElement("item");
-    defer span.node.release();
+    defer span.prototype.release();
 
     const text1 = try doc.createTextNode("Hello");
-    defer text1.node.release();
+    defer text1.prototype.release();
 
     const text2 = try doc.createTextNode(" World");
-    defer text2.node.release();
+    defer text2.prototype.release();
 
     // Structure: <div><span>Hello</span> World</div>
-    div.node.first_child = &span.node;
-    div.node.last_child = &text2.node;
+    div.prototype.first_child = &span.prototype;
+    div.prototype.last_child = &text2.prototype;
 
-    span.node.parent_node = &div.node;
-    span.node.next_sibling = &text2.node;
-    span.node.first_child = &text1.node;
-    span.node.last_child = &text1.node;
+    span.prototype.parent_node = &div.prototype;
+    span.prototype.next_sibling = &text2.prototype;
+    span.prototype.first_child = &text1.prototype;
+    span.prototype.last_child = &text1.prototype;
 
-    text1.node.parent_node = &span.node;
+    text1.prototype.parent_node = &span.prototype;
 
-    text2.node.parent_node = &div.node;
-    text2.node.previous_sibling = &span.node;
+    text2.prototype.parent_node = &div.prototype;
+    text2.prototype.previous_sibling = &span.prototype;
 
-    const content = try getDescendantTextContent(&div.node, allocator);
+    const content = try getDescendantTextContent(&div.prototype, allocator);
     defer allocator.free(content);
 
     try std.testing.expectEqualStrings("Hello World", content);
 
     // Clean up
-    div.node.first_child = null;
-    div.node.last_child = null;
-    span.node.parent_node = null;
-    span.node.next_sibling = null;
-    span.node.first_child = null;
-    span.node.last_child = null;
-    text1.node.parent_node = null;
-    text2.node.parent_node = null;
-    text2.node.previous_sibling = null;
+    div.prototype.first_child = null;
+    div.prototype.last_child = null;
+    span.prototype.parent_node = null;
+    span.prototype.next_sibling = null;
+    span.prototype.first_child = null;
+    span.prototype.last_child = null;
+    text1.prototype.parent_node = null;
+    text2.prototype.parent_node = null;
+    text2.prototype.previous_sibling = null;
 }
 
 test "tree_helpers - setDescendantsConnected" {
@@ -579,31 +579,31 @@ test "tree_helpers - setDescendantsConnected" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("item");
-    defer child.node.release();
+    defer child.prototype.release();
 
     // Manually connect
-    parent.node.first_child = &child.node;
-    child.node.parent_node = &parent.node;
+    parent.prototype.first_child = &child.prototype;
+    child.prototype.parent_node = &parent.prototype;
 
     // Initially not connected
-    try std.testing.expect(!child.node.isConnected());
+    try std.testing.expect(!child.prototype.isConnected());
 
     // Set connected
-    child.node.setConnected(true);
-    setDescendantsConnected(&parent.node, true);
+    child.prototype.setConnected(true);
+    setDescendantsConnected(&parent.prototype, true);
 
-    try std.testing.expect(child.node.isConnected());
+    try std.testing.expect(child.prototype.isConnected());
 
     // Set disconnected
-    setDescendantsConnected(&parent.node, false);
-    try std.testing.expect(!child.node.isConnected());
+    setDescendantsConnected(&parent.prototype, false);
+    try std.testing.expect(!child.prototype.isConnected());
 
     // Clean up
-    parent.node.first_child = null;
-    child.node.parent_node = null;
+    parent.prototype.first_child = null;
+    child.prototype.parent_node = null;
 }
 
 test "tree_helpers - removeAllChildren" {
@@ -613,35 +613,35 @@ test "tree_helpers - removeAllChildren" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("item");
-    defer child1.node.release();
+    defer child1.prototype.release();
 
     const child2 = try doc.createElement("text-block");
-    defer child2.node.release();
+    defer child2.prototype.release();
 
     // Manually add children
-    parent.node.first_child = &child1.node;
-    parent.node.last_child = &child2.node;
+    parent.prototype.first_child = &child1.prototype;
+    parent.prototype.last_child = &child2.prototype;
 
-    child1.node.parent_node = &parent.node;
-    child1.node.next_sibling = &child2.node;
-    child1.node.setHasParent(true);
+    child1.prototype.parent_node = &parent.prototype;
+    child1.prototype.next_sibling = &child2.prototype;
+    child1.prototype.setHasParent(true);
 
-    child2.node.parent_node = &parent.node;
-    child2.node.previous_sibling = &child1.node;
-    child2.node.setHasParent(true);
+    child2.prototype.parent_node = &parent.prototype;
+    child2.prototype.previous_sibling = &child1.prototype;
+    child2.prototype.setHasParent(true);
 
     // Remove all
-    removeAllChildren(&parent.node);
+    removeAllChildren(&parent.prototype);
 
-    try std.testing.expect(parent.node.first_child == null);
-    try std.testing.expect(parent.node.last_child == null);
-    try std.testing.expect(child1.node.parent_node == null);
-    try std.testing.expect(child2.node.parent_node == null);
-    try std.testing.expect(!child1.node.hasParent());
-    try std.testing.expect(!child2.node.hasParent());
+    try std.testing.expect(parent.prototype.first_child == null);
+    try std.testing.expect(parent.prototype.last_child == null);
+    try std.testing.expect(child1.prototype.parent_node == null);
+    try std.testing.expect(child2.prototype.parent_node == null);
+    try std.testing.expect(!child1.prototype.hasParent());
+    try std.testing.expect(!child2.prototype.hasParent());
 }
 
 test "tree_helpers - hasElementChild" {
@@ -651,35 +651,35 @@ test "tree_helpers - hasElementChild" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const text = try doc.createTextNode("text");
-    defer text.node.release();
+    defer text.prototype.release();
 
     const elem = try doc.createElement("item");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Parent with only text child
-    parent.node.first_child = &text.node;
-    text.node.parent_node = &parent.node;
+    parent.prototype.first_child = &text.prototype;
+    text.prototype.parent_node = &parent.prototype;
 
-    try std.testing.expect(!hasElementChild(&parent.node));
+    try std.testing.expect(!hasElementChild(&parent.prototype));
 
     // Add element child
-    parent.node.last_child = &elem.node;
-    text.node.next_sibling = &elem.node;
-    elem.node.parent_node = &parent.node;
-    elem.node.previous_sibling = &text.node;
+    parent.prototype.last_child = &elem.prototype;
+    text.prototype.next_sibling = &elem.prototype;
+    elem.prototype.parent_node = &parent.prototype;
+    elem.prototype.previous_sibling = &text.prototype;
 
-    try std.testing.expect(hasElementChild(&parent.node));
+    try std.testing.expect(hasElementChild(&parent.prototype));
 
     // Clean up
-    parent.node.first_child = null;
-    parent.node.last_child = null;
-    text.node.parent_node = null;
-    text.node.next_sibling = null;
-    elem.node.parent_node = null;
-    elem.node.previous_sibling = null;
+    parent.prototype.first_child = null;
+    parent.prototype.last_child = null;
+    text.prototype.parent_node = null;
+    text.prototype.next_sibling = null;
+    elem.prototype.parent_node = null;
+    elem.prototype.previous_sibling = null;
 }
 
 test "tree_helpers - countElementChildren" {
@@ -689,43 +689,43 @@ test "tree_helpers - countElementChildren" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
-    try std.testing.expectEqual(@as(usize, 0), countElementChildren(&parent.node));
+    try std.testing.expectEqual(@as(usize, 0), countElementChildren(&parent.prototype));
 
     const elem1 = try doc.createElement("item");
-    defer elem1.node.release();
+    defer elem1.prototype.release();
 
     const text = try doc.createTextNode("text");
-    defer text.node.release();
+    defer text.prototype.release();
 
     const elem2 = try doc.createElement("text-block");
-    defer elem2.node.release();
+    defer elem2.prototype.release();
 
     // Structure: elem1, text, elem2
-    parent.node.first_child = &elem1.node;
-    parent.node.last_child = &elem2.node;
+    parent.prototype.first_child = &elem1.prototype;
+    parent.prototype.last_child = &elem2.prototype;
 
-    elem1.node.parent_node = &parent.node;
-    elem1.node.next_sibling = &text.node;
+    elem1.prototype.parent_node = &parent.prototype;
+    elem1.prototype.next_sibling = &text.prototype;
 
-    text.node.parent_node = &parent.node;
-    text.node.previous_sibling = &elem1.node;
-    text.node.next_sibling = &elem2.node;
+    text.prototype.parent_node = &parent.prototype;
+    text.prototype.previous_sibling = &elem1.prototype;
+    text.prototype.next_sibling = &elem2.prototype;
 
-    elem2.node.parent_node = &parent.node;
-    elem2.node.previous_sibling = &text.node;
+    elem2.prototype.parent_node = &parent.prototype;
+    elem2.prototype.previous_sibling = &text.prototype;
 
-    try std.testing.expectEqual(@as(usize, 2), countElementChildren(&parent.node));
+    try std.testing.expectEqual(@as(usize, 2), countElementChildren(&parent.prototype));
 
     // Clean up
-    parent.node.first_child = null;
-    parent.node.last_child = null;
-    elem1.node.parent_node = null;
-    elem1.node.next_sibling = null;
-    text.node.parent_node = null;
-    text.node.previous_sibling = null;
-    text.node.next_sibling = null;
-    elem2.node.parent_node = null;
-    elem2.node.previous_sibling = null;
+    parent.prototype.first_child = null;
+    parent.prototype.last_child = null;
+    elem1.prototype.parent_node = null;
+    elem1.prototype.next_sibling = null;
+    text.prototype.parent_node = null;
+    text.prototype.previous_sibling = null;
+    text.prototype.next_sibling = null;
+    elem2.prototype.parent_node = null;
+    elem2.prototype.previous_sibling = null;
 }

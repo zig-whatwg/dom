@@ -746,8 +746,8 @@ pub const Node = struct {
     ///
     /// ## Example
     /// ```zig
-    /// try elem.node.setTextContent("Hello, World!");
-    /// try elem.node.setTextContent(null); // Removes all children
+    /// try elem.prototype.setTextContent("Hello, World!");
+    /// try elem.prototype.setTextContent(null); // Removes all children
     /// ```
     pub fn setTextContent(self: *Node, value: ?[]const u8) !void {
         // Convert null to empty string
@@ -777,19 +777,19 @@ pub const Node = struct {
             if (owner_doc.node_type != .document) return error.InvalidStateError;
 
             const Document = @import("document.zig").Document;
-            const doc: *Document = @fieldParentPtr("node", owner_doc);
+            const doc: *Document = @fieldParentPtr("prototype", owner_doc);
 
             const text_node = try doc.createTextNode(string);
 
             // Insert the text node directly (bypass validation for efficiency)
-            text_node.node.parent_node = self;
-            text_node.node.setHasParent(true);
-            self.first_child = &text_node.node;
-            self.last_child = &text_node.node;
+            text_node.prototype.parent_node = self;
+            text_node.prototype.setHasParent(true);
+            self.first_child = &text_node.prototype;
+            self.last_child = &text_node.prototype;
 
             // Propagate connected state if parent is connected
             if (self.isConnected()) {
-                text_node.node.setConnected(true);
+                text_node.prototype.setConnected(true);
             }
         }
     }
@@ -910,9 +910,9 @@ pub const Node = struct {
 
             // Step 3: If composed and root is shadow root, continue to host
             if (composed and root.node_type == .shadow_root) {
-                const shadow: *ShadowRoot = @fieldParentPtr("node", root);
+                const shadow: *ShadowRoot = @fieldParentPtr("prototype", root);
                 const host_elem: *Element = shadow.host();
-                root = &host_elem.node;
+                root = &host_elem.prototype;
                 // Continue walking up from host
                 continue;
             }
@@ -954,11 +954,11 @@ pub const Node = struct {
     /// ```zig
     /// const parent = try doc.createElement("div");
     /// const child = try doc.createElement("span");
-    /// _ = try parent.node.appendChild(&child.node);
+    /// _ = try parent.prototype.appendChild(&child.prototype);
     ///
-    /// try std.testing.expect(parent.node.contains(&child.node));  // true
-    /// try std.testing.expect(!child.node.contains(&parent.node)); // false
-    /// try std.testing.expect(parent.node.contains(&parent.node)); // true (inclusive)
+    /// try std.testing.expect(parent.prototype.contains(&child.prototype));  // true
+    /// try std.testing.expect(!child.prototype.contains(&parent.prototype)); // false
+    /// try std.testing.expect(parent.prototype.contains(&parent.prototype)); // true (inclusive)
     /// ```
     pub fn contains(self: *const Node, other: ?*const Node) bool {
         // Per spec: if other is null, return false
@@ -1189,8 +1189,8 @@ pub const Node = struct {
     /// const elem2 = try doc.createElement("div");
     /// try elem2.setAttribute("id", "test");
     ///
-    /// try std.testing.expect(elem1.node.isEqualNode(&elem2.node)); // true (same structure)
-    /// try std.testing.expect(!elem1.node.isSameNode(&elem2.node)); // false (different instances)
+    /// try std.testing.expect(elem1.prototype.isEqualNode(&elem2.prototype)); // true (same structure)
+    /// try std.testing.expect(!elem1.prototype.isSameNode(&elem2.prototype)); // false (different instances)
     /// ```
     pub fn isEqualNode(self: *const Node, other: ?*const Node) bool {
         // If other is null, return false
@@ -1219,8 +1219,8 @@ pub const Node = struct {
         // For elements, check attributes
         if (self.node_type == .element) {
             const Element = @import("element.zig").Element;
-            const this_elem: *const Element = @fieldParentPtr("node", self);
-            const other_elem: *const Element = @fieldParentPtr("node", other_node);
+            const this_elem: *const Element = @fieldParentPtr("prototype", self);
+            const other_elem: *const Element = @fieldParentPtr("prototype", other_node);
 
             // Check attribute counts match
             if (this_elem.attributeCount() != other_elem.attributeCount()) return false;
@@ -1294,7 +1294,7 @@ pub const Node = struct {
     /// ```zig
     /// if (node.getOwnerDocument()) |doc| {
     ///     const elem = try doc.createElement("element");
-    ///     defer elem.node.release();
+    ///     defer elem.prototype.release();
     /// }
     /// ```
     pub fn getOwnerDocument(self: *const Node) ?*@import("document.zig").Document {
@@ -1305,7 +1305,7 @@ pub const Node = struct {
 
         if (self.owner_document) |owner| {
             if (owner.node_type == .document) {
-                return @fieldParentPtr("node", owner);
+                return @fieldParentPtr("prototype", owner);
             }
         }
         return null;
@@ -1367,7 +1367,7 @@ pub const Node = struct {
     pub fn parentElement(self: *const Node) ?*@import("element.zig").Element {
         if (self.parent_node) |parent| {
             if (parent.node_type == .element) {
-                return @fieldParentPtr("node", parent);
+                return @fieldParentPtr("prototype", parent);
             }
         }
         return null;
@@ -1409,16 +1409,16 @@ pub const Node = struct {
     /// ## Example
     /// ```zig
     /// const parent = try doc.createElement("element");
-    /// defer parent.node.release();
+    /// defer parent.prototype.release();
     ///
     /// const child1 = try doc.createElement("item");
-    /// defer child1.node.release();
+    /// defer child1.prototype.release();
     ///
     /// const child2 = try doc.createElement("text-block");
-    /// defer child2.node.release();
+    /// defer child2.prototype.release();
     ///
-    /// _ = try parent.node.appendChild(&child1.node);
-    /// _ = try parent.node.insertBefore(&child2.node, &child1.node);
+    /// _ = try parent.prototype.appendChild(&child1.prototype);
+    /// _ = try parent.prototype.insertBefore(&child2.prototype, &child1.prototype);
     /// // Order is now: child2, child1
     /// ```
     pub fn insertBefore(
@@ -1451,12 +1451,12 @@ pub const Node = struct {
     /// ## Example
     /// ```zig
     /// const parent = try doc.createElement("element");
-    /// defer parent.node.release();
+    /// defer parent.prototype.release();
     ///
     /// const child = try doc.createElement("item");
-    /// defer child.node.release();
+    /// defer child.prototype.release();
     ///
-    /// _ = try parent.node.appendChild(&child.node);
+    /// _ = try parent.prototype.appendChild(&child.prototype);
     /// ```
     pub fn appendChild(
         self: *Node,
@@ -1553,13 +1553,13 @@ pub const Node = struct {
     /// ## Example
     /// ```zig
     /// const parent = try doc.createElement("element");
-    /// defer parent.node.release();
+    /// defer parent.prototype.release();
     ///
     /// const child = try doc.createElement("item");
-    /// defer child.node.release();
+    /// defer child.prototype.release();
     ///
-    /// _ = try parent.node.appendChild(&child.node);
-    /// const removed = try parent.node.removeChild(&child.node);
+    /// _ = try parent.prototype.appendChild(&child.prototype);
+    /// const removed = try parent.prototype.removeChild(&child.prototype);
     /// // removed == child
     /// ```
     pub fn removeChild(
@@ -1591,16 +1591,16 @@ pub const Node = struct {
     /// ## Example
     /// ```zig
     /// const parent = try doc.createElement("element");
-    /// defer parent.node.release();
+    /// defer parent.prototype.release();
     ///
     /// const old_child = try doc.createElement("item");
-    /// defer old_child.node.release();
+    /// defer old_child.prototype.release();
     ///
     /// const new_child = try doc.createElement("text-block");
-    /// defer new_child.node.release();
+    /// defer new_child.prototype.release();
     ///
-    /// _ = try parent.node.appendChild(&old_child.node);
-    /// const removed = try parent.node.replaceChild(&new_child.node, &old_child.node);
+    /// _ = try parent.prototype.appendChild(&old_child.prototype);
+    /// const removed = try parent.prototype.replaceChild(&new_child.prototype, &old_child.prototype);
     /// // removed == old_child, new_child is now child of parent
     /// ```
     pub fn replaceChild(
@@ -1640,23 +1640,23 @@ pub const Node = struct {
     /// ## Example
     /// ```zig
     /// const parent = try doc.createElement("container");
-    /// defer parent.node.release();
+    /// defer parent.prototype.release();
     ///
     /// const text1 = try doc.createTextNode("Hello");
     /// const text2 = try doc.createTextNode(" ");
     /// const text3 = try doc.createTextNode("World");
     ///
-    /// _ = try parent.node.appendChild(&text1.node);
-    /// _ = try parent.node.appendChild(&text2.node);
-    /// _ = try parent.node.appendChild(&text3.node);
+    /// _ = try parent.prototype.appendChild(&text1.prototype);
+    /// _ = try parent.prototype.appendChild(&text2.prototype);
+    /// _ = try parent.prototype.appendChild(&text3.prototype);
     ///
     /// // Before: 3 text nodes
-    /// try std.testing.expectEqual(@as(u32, 3), parent.node.getChildCount());
+    /// try std.testing.expectEqual(@as(u32, 3), parent.prototype.getChildCount());
     ///
-    /// try parent.node.normalize();
+    /// try parent.prototype.normalize();
     ///
     /// // After: 1 text node with merged data "Hello World"
-    /// try std.testing.expectEqual(@as(u32, 1), parent.node.getChildCount());
+    /// try std.testing.expectEqual(@as(u32, 1), parent.prototype.getChildCount());
     /// ```
     ///
     /// ## Errors
@@ -1674,7 +1674,7 @@ pub const Node = struct {
             const next = node.next_sibling;
 
             if (node.node_type == .text) {
-                const text_node: *Text = @fieldParentPtr("node", node);
+                const text_node: *Text = @fieldParentPtr("prototype", node);
 
                 // Step 1: Remove empty text nodes
                 if (text_node.data.len == 0) {
@@ -1690,7 +1690,7 @@ pub const Node = struct {
                     // Stop if not a text node
                     if (adj_node.node_type != .text) break;
 
-                    const adj_text: *Text = @fieldParentPtr("node", adj_node);
+                    const adj_text: *Text = @fieldParentPtr("prototype", adj_node);
                     const adj_next = adj_node.next_sibling;
 
                     // Merge data: concatenate adj_text.data into text_node.data
@@ -1979,14 +1979,14 @@ pub fn adopt(node: *Node, document: *Node) !void {
         if (old_owner) |old_doc| {
             if (old_doc.node_type == .document) {
                 const Document = @import("document.zig").Document;
-                const old_doc_ptr: *Document = @fieldParentPtr("node", old_doc);
+                const old_doc_ptr: *Document = @fieldParentPtr("prototype", old_doc);
                 old_doc_ptr.releaseNodeRef();
             }
         }
 
         if (document.node_type == .document) {
             const Document = @import("document.zig").Document;
-            const new_doc: *Document = @fieldParentPtr("node", document);
+            const new_doc: *Document = @fieldParentPtr("prototype", document);
             new_doc.acquireNodeRef();
         }
 
@@ -2012,12 +2012,12 @@ pub fn adopt(node: *Node, document: *Node) !void {
 /// This matches browser behavior where maps are updated during tree mutations, not setAttribute.
 fn addNodeToDocumentMaps(node: *Node, owner_doc: *Node) !void {
     const Document = @import("document.zig").Document;
-    const doc: *Document = @fieldParentPtr("node", owner_doc);
+    const doc: *Document = @fieldParentPtr("prototype", owner_doc);
 
     // Handle this node if it's an element
     if (node.node_type == .element) {
         const Element = @import("element.zig").Element;
-        const elem: *Element = @fieldParentPtr("node", node);
+        const elem: *Element = @fieldParentPtr("prototype", node);
 
         // Add to id_map if element has an id (only if ID not already present - first wins)
         if (elem.getId()) |id| {
@@ -2034,7 +2034,7 @@ fn addNodeToDocumentMaps(node: *Node, owner_doc: *Node) !void {
         if (!result.found_existing) {
             result.value_ptr.* = .{};
         }
-        try result.value_ptr.append(doc.node.allocator, elem);
+        try result.value_ptr.append(doc.prototype.allocator, elem);
 
         // NOTE: We deliberately don't update class_map here
         // This will be removed in Phase 3 when we switch to tree traversal for classes
@@ -2052,12 +2052,12 @@ fn addNodeToDocumentMaps(node: *Node, owner_doc: *Node) !void {
 /// Called after a node tree is removed and disconnected.
 fn removeNodeFromDocumentMaps(node: *Node, owner_doc: *Node) void {
     const Document = @import("document.zig").Document;
-    const doc: *Document = @fieldParentPtr("node", owner_doc);
+    const doc: *Document = @fieldParentPtr("prototype", owner_doc);
 
     // Handle this node if it's an element
     if (node.node_type == .element) {
         const Element = @import("element.zig").Element;
-        const elem: *Element = @fieldParentPtr("node", node);
+        const elem: *Element = @fieldParentPtr("prototype", node);
 
         // Remove from id_map if element has an id and is the one in the map
         if (elem.getId()) |id| {
@@ -2069,7 +2069,7 @@ fn removeNodeFromDocumentMaps(node: *Node, owner_doc: *Node) void {
                     // Search for another element with the same ID to replace it
                     // This handles the case where duplicate IDs exist (spec violation but browsers handle it)
                     const ElementIterator = @import("element_iterator.zig").ElementIterator;
-                    var iter = ElementIterator.init(&doc.node);
+                    var iter = ElementIterator.init(&doc.prototype);
                     while (iter.next()) |other_elem| {
                         if (other_elem != elem) {
                             if (other_elem.getId()) |other_id| {
@@ -2859,26 +2859,26 @@ test "Node - parentElement" {
 
     // Create parent element
     const parent_elem = try Element.create(allocator, "div");
-    defer parent_elem.node.release();
+    defer parent_elem.prototype.release();
 
     // Create child text node
     const Text = @import("text.zig").Text;
     const child = try Text.create(allocator, "content");
-    defer child.node.release();
+    defer child.prototype.release();
 
     // Initially no parent
-    try std.testing.expect(child.node.parentElement() == null);
+    try std.testing.expect(child.prototype.parentElement() == null);
 
     // Manually set parent for testing (Phase 2 will do this via appendChild)
-    child.node.parent_node = &parent_elem.node;
+    child.prototype.parent_node = &parent_elem.prototype;
 
     // parentElement should return the element
-    const retrieved_parent = child.node.parentElement();
+    const retrieved_parent = child.prototype.parentElement();
     try std.testing.expect(retrieved_parent != null);
     try std.testing.expectEqual(parent_elem, retrieved_parent.?);
 
     // Clean up manual connection
-    child.node.parent_node = null;
+    child.prototype.parent_node = null;
 }
 
 test "Node - getOwnerDocument" {
@@ -2890,23 +2890,23 @@ test "Node - getOwnerDocument" {
     defer doc.release();
 
     // Document's ownerDocument should be null per spec
-    try std.testing.expect(doc.node.getOwnerDocument() == null);
+    try std.testing.expect(doc.prototype.getOwnerDocument() == null);
 
     // Create element via document
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Element's ownerDocument should be the document
-    const owner = elem.node.getOwnerDocument();
+    const owner = elem.prototype.getOwnerDocument();
     try std.testing.expect(owner != null);
     try std.testing.expectEqual(doc, owner.?);
 
     // Create text node via document
     const text = try doc.createTextNode("test");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Text's ownerDocument should also be the document
-    const text_owner = text.node.getOwnerDocument();
+    const text_owner = text.prototype.getOwnerDocument();
     try std.testing.expect(text_owner != null);
     try std.testing.expectEqual(doc, text_owner.?);
 }
@@ -2996,18 +2996,18 @@ test "Node.appendChild - adds child successfully" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("item");
     // NO defer - parent will own it
 
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     // Verify parent-child relationship
-    try std.testing.expectEqual(&parent.node, child.node.parent_node);
-    try std.testing.expectEqual(&child.node, parent.node.first_child);
-    try std.testing.expectEqual(&child.node, parent.node.last_child);
-    try std.testing.expect(child.node.hasParent());
+    try std.testing.expectEqual(&parent.prototype, child.prototype.parent_node);
+    try std.testing.expectEqual(&child.prototype, parent.prototype.first_child);
+    try std.testing.expectEqual(&child.prototype, parent.prototype.last_child);
+    try std.testing.expect(child.prototype.hasParent());
 }
 
 test "Node.appendChild - adds multiple children in order" {
@@ -3017,22 +3017,22 @@ test "Node.appendChild - adds multiple children in order" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("item");
     const child2 = try doc.createElement("text-block");
     const child3 = try doc.createElement("strong");
     // NO defers - parent owns them
 
-    _ = try parent.node.appendChild(&child1.node);
-    _ = try parent.node.appendChild(&child2.node);
-    _ = try parent.node.appendChild(&child3.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+    _ = try parent.prototype.appendChild(&child2.prototype);
+    _ = try parent.prototype.appendChild(&child3.prototype);
 
     // Verify order
-    try std.testing.expectEqual(&child1.node, parent.node.first_child);
-    try std.testing.expectEqual(&child3.node, parent.node.last_child);
-    try std.testing.expectEqual(&child2.node, child1.node.next_sibling);
-    try std.testing.expectEqual(&child3.node, child2.node.next_sibling);
+    try std.testing.expectEqual(&child1.prototype, parent.prototype.first_child);
+    try std.testing.expectEqual(&child3.prototype, parent.prototype.last_child);
+    try std.testing.expectEqual(&child2.prototype, child1.prototype.next_sibling);
+    try std.testing.expectEqual(&child3.prototype, child2.prototype.next_sibling);
 }
 
 test "Node.appendChild - moves node from old parent" {
@@ -3042,22 +3042,22 @@ test "Node.appendChild - moves node from old parent" {
     defer doc.release();
 
     const parent1 = try doc.createElement("element");
-    defer parent1.node.release();
+    defer parent1.prototype.release();
 
     const parent2 = try doc.createElement("section");
-    defer parent2.node.release();
+    defer parent2.prototype.release();
 
     const child = try doc.createElement("item");
     // NO defer - will be owned by one of the parents
 
     // Add to parent1
-    _ = try parent1.node.appendChild(&child.node);
-    try std.testing.expectEqual(&parent1.node, child.node.parent_node);
+    _ = try parent1.prototype.appendChild(&child.prototype);
+    try std.testing.expectEqual(&parent1.prototype, child.prototype.parent_node);
 
     // Move to parent2
-    _ = try parent2.node.appendChild(&child.node);
-    try std.testing.expectEqual(&parent2.node, child.node.parent_node);
-    try std.testing.expect(parent1.node.first_child == null);
+    _ = try parent2.prototype.appendChild(&child.prototype);
+    try std.testing.expectEqual(&parent2.prototype, child.prototype.parent_node);
+    try std.testing.expect(parent1.prototype.first_child == null);
 }
 
 test "Node.appendChild - rejects text node under document" {
@@ -3067,12 +3067,12 @@ test "Node.appendChild - rejects text node under document" {
     defer doc.release();
 
     const text = try doc.createTextNode("text");
-    defer text.node.release(); // NOT added to parent, so we own it
+    defer text.prototype.release(); // NOT added to parent, so we own it
 
     // Should fail - text cannot be child of document
     try std.testing.expectError(
         error.HierarchyRequestError,
-        doc.node.appendChild(&text.node),
+        doc.prototype.appendChild(&text.prototype),
     );
 }
 
@@ -3083,18 +3083,18 @@ test "Node.insertBefore - inserts at beginning" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("item");
     const child2 = try doc.createElement("text-block");
     // NO defers - parent owns them
 
-    _ = try parent.node.appendChild(&child1.node);
-    _ = try parent.node.insertBefore(&child2.node, &child1.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+    _ = try parent.prototype.insertBefore(&child2.prototype, &child1.prototype);
 
     // child2 should be first
-    try std.testing.expectEqual(&child2.node, parent.node.first_child);
-    try std.testing.expectEqual(&child1.node, child2.node.next_sibling);
+    try std.testing.expectEqual(&child2.prototype, parent.prototype.first_child);
+    try std.testing.expectEqual(&child1.prototype, child2.prototype.next_sibling);
 }
 
 test "Node.insertBefore - inserts in middle" {
@@ -3104,21 +3104,21 @@ test "Node.insertBefore - inserts in middle" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("item");
     const child2 = try doc.createElement("text-block");
     const child3 = try doc.createElement("strong");
     // NO defers - parent owns them
 
-    _ = try parent.node.appendChild(&child1.node);
-    _ = try parent.node.appendChild(&child3.node);
-    _ = try parent.node.insertBefore(&child2.node, &child3.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+    _ = try parent.prototype.appendChild(&child3.prototype);
+    _ = try parent.prototype.insertBefore(&child2.prototype, &child3.prototype);
 
     // Order should be: child1, child2, child3
-    try std.testing.expectEqual(&child1.node, parent.node.first_child);
-    try std.testing.expectEqual(&child2.node, child1.node.next_sibling);
-    try std.testing.expectEqual(&child3.node, child2.node.next_sibling);
+    try std.testing.expectEqual(&child1.prototype, parent.prototype.first_child);
+    try std.testing.expectEqual(&child2.prototype, child1.prototype.next_sibling);
+    try std.testing.expectEqual(&child3.prototype, child2.prototype.next_sibling);
 }
 
 test "Node.insertBefore - with null child appends" {
@@ -3128,17 +3128,17 @@ test "Node.insertBefore - with null child appends" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("item");
     const child2 = try doc.createElement("text-block");
     // NO defers - parent owns them
 
-    _ = try parent.node.appendChild(&child1.node);
-    _ = try parent.node.insertBefore(&child2.node, null);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+    _ = try parent.prototype.insertBefore(&child2.prototype, null);
 
     // child2 should be last
-    try std.testing.expectEqual(&child2.node, parent.node.last_child);
+    try std.testing.expectEqual(&child2.prototype, parent.prototype.last_child);
 }
 
 test "Node.insertBefore - rejects if child not in parent" {
@@ -3148,23 +3148,23 @@ test "Node.insertBefore - rejects if child not in parent" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const other = try doc.createElement("section");
-    defer other.node.release();
+    defer other.prototype.release();
 
     const child = try doc.createElement("item");
     // child will be owned by other, NOT parent
 
     const new_child = try doc.createElement("text-block");
-    defer new_child.node.release(); // Will NOT be added
+    defer new_child.prototype.release(); // Will NOT be added
 
-    _ = try other.node.appendChild(&child.node);
+    _ = try other.prototype.appendChild(&child.prototype);
 
     // Should fail - child is not a child of parent
     try std.testing.expectError(
         error.NotFoundError,
-        parent.node.insertBefore(&new_child.node, &child.node),
+        parent.prototype.insertBefore(&new_child.prototype, &child.prototype),
     );
 }
 
@@ -3175,17 +3175,17 @@ test "Node.removeChild - removes child successfully" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("item");
-    defer child.node.release(); // Released AFTER removal
+    defer child.prototype.release(); // Released AFTER removal
 
-    _ = try parent.node.appendChild(&child.node);
-    const removed = try parent.node.removeChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
+    const removed = try parent.prototype.removeChild(&child.prototype);
 
-    try std.testing.expectEqual(&child.node, removed);
-    try std.testing.expect(child.node.parent_node == null);
-    try std.testing.expect(!child.node.hasParent());
+    try std.testing.expectEqual(&child.prototype, removed);
+    try std.testing.expect(child.prototype.parent_node == null);
+    try std.testing.expect(!child.prototype.hasParent());
 }
 
 test "Node.removeChild - removes middle child" {
@@ -3195,23 +3195,23 @@ test "Node.removeChild - removes middle child" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("item");
     const child2 = try doc.createElement("text-block");
-    defer child2.node.release(); // Released AFTER removal
+    defer child2.prototype.release(); // Released AFTER removal
     const child3 = try doc.createElement("strong");
     // child1 and child3 owned by parent
 
-    _ = try parent.node.appendChild(&child1.node);
-    _ = try parent.node.appendChild(&child2.node);
-    _ = try parent.node.appendChild(&child3.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+    _ = try parent.prototype.appendChild(&child2.prototype);
+    _ = try parent.prototype.appendChild(&child3.prototype);
 
-    _ = try parent.node.removeChild(&child2.node);
+    _ = try parent.prototype.removeChild(&child2.prototype);
 
     // child1 and child3 should be linked
-    try std.testing.expectEqual(&child3.node, child1.node.next_sibling);
-    try std.testing.expect(child2.node.parent_node == null);
+    try std.testing.expectEqual(&child3.prototype, child1.prototype.next_sibling);
+    try std.testing.expect(child2.prototype.parent_node == null);
 }
 
 test "Node.removeChild - rejects if not parent" {
@@ -3221,20 +3221,20 @@ test "Node.removeChild - rejects if not parent" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const other = try doc.createElement("section");
-    defer other.node.release();
+    defer other.prototype.release();
 
     const child = try doc.createElement("item");
     // child owned by other
 
-    _ = try other.node.appendChild(&child.node);
+    _ = try other.prototype.appendChild(&child.prototype);
 
     // Should fail - child is not a child of parent
     try std.testing.expectError(
         error.NotFoundError,
-        parent.node.removeChild(&child.node),
+        parent.prototype.removeChild(&child.prototype),
     );
 }
 
@@ -3245,20 +3245,20 @@ test "Node.replaceChild - replaces child successfully" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const old_child = try doc.createElement("item");
-    defer old_child.node.release(); // Released AFTER removal
+    defer old_child.prototype.release(); // Released AFTER removal
 
     const new_child = try doc.createElement("text-block");
     // new_child owned by parent after replacement
 
-    _ = try parent.node.appendChild(&old_child.node);
-    const removed = try parent.node.replaceChild(&new_child.node, &old_child.node);
+    _ = try parent.prototype.appendChild(&old_child.prototype);
+    const removed = try parent.prototype.replaceChild(&new_child.prototype, &old_child.prototype);
 
-    try std.testing.expectEqual(&old_child.node, removed);
-    try std.testing.expectEqual(&new_child.node, parent.node.first_child);
-    try std.testing.expect(old_child.node.parent_node == null);
+    try std.testing.expectEqual(&old_child.prototype, removed);
+    try std.testing.expectEqual(&new_child.prototype, parent.prototype.first_child);
+    try std.testing.expect(old_child.prototype.parent_node == null);
 }
 
 test "Node.replaceChild - preserves sibling order" {
@@ -3268,25 +3268,25 @@ test "Node.replaceChild - preserves sibling order" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("item");
     const child2 = try doc.createElement("text-block");
-    defer child2.node.release(); // Released AFTER replacement
+    defer child2.prototype.release(); // Released AFTER replacement
     const child3 = try doc.createElement("strong");
     const new_child = try doc.createElement("em");
     // child1, new_child, child3 owned by parent
 
-    _ = try parent.node.appendChild(&child1.node);
-    _ = try parent.node.appendChild(&child2.node);
-    _ = try parent.node.appendChild(&child3.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+    _ = try parent.prototype.appendChild(&child2.prototype);
+    _ = try parent.prototype.appendChild(&child3.prototype);
 
-    _ = try parent.node.replaceChild(&new_child.node, &child2.node);
+    _ = try parent.prototype.replaceChild(&new_child.prototype, &child2.prototype);
 
     // Order should be: child1, new_child, child3
-    try std.testing.expectEqual(&child1.node, parent.node.first_child);
-    try std.testing.expectEqual(&new_child.node, child1.node.next_sibling);
-    try std.testing.expectEqual(&child3.node, new_child.node.next_sibling);
+    try std.testing.expectEqual(&child1.prototype, parent.prototype.first_child);
+    try std.testing.expectEqual(&new_child.prototype, child1.prototype.next_sibling);
+    try std.testing.expectEqual(&child3.prototype, new_child.prototype.next_sibling);
 }
 
 test "Node.replaceChild - rejects if child not in parent" {
@@ -3296,23 +3296,23 @@ test "Node.replaceChild - rejects if child not in parent" {
     defer doc.release();
 
     const parent = try doc.createElement("element");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const other = try doc.createElement("section");
-    defer other.node.release();
+    defer other.prototype.release();
 
     const child = try doc.createElement("item");
     // child owned by other
 
     const new_child = try doc.createElement("text-block");
-    defer new_child.node.release(); // NOT added
+    defer new_child.prototype.release(); // NOT added
 
-    _ = try other.node.appendChild(&child.node);
+    _ = try other.prototype.appendChild(&child.prototype);
 
     // Should fail - child is not a child of parent
     try std.testing.expectError(
         error.NotFoundError,
-        parent.node.replaceChild(&new_child.node, &child.node),
+        parent.prototype.replaceChild(&new_child.prototype, &child.prototype),
     );
 }
 
@@ -3330,16 +3330,16 @@ test "Node.appendChild - propagates connected state" {
     // child and grandchild owned by tree
 
     // Build tree
-    _ = try child.node.appendChild(&grandchild.node);
-    _ = try root.node.appendChild(&child.node);
+    _ = try child.prototype.appendChild(&grandchild.prototype);
+    _ = try root.prototype.appendChild(&child.prototype);
 
     // Connect root to document (document is always connected)
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Should propagate to child and grandchild
-    try std.testing.expect(root.node.isConnected());
-    try std.testing.expect(child.node.isConnected());
-    try std.testing.expect(grandchild.node.isConnected());
+    try std.testing.expect(root.prototype.isConnected());
+    try std.testing.expect(child.prototype.isConnected());
+    try std.testing.expect(grandchild.prototype.isConnected());
 }
 
 test "Node.removeChild - propagates disconnected state" {
@@ -3352,28 +3352,28 @@ test "Node.removeChild - propagates disconnected state" {
     // root owned by doc
 
     const child = try doc.createElement("container");
-    defer child.node.release(); // Released AFTER removal
+    defer child.prototype.release(); // Released AFTER removal
 
     const grandchild = try doc.createElement("element");
     // grandchild owned by child
 
     // Build connected tree
-    _ = try child.node.appendChild(&grandchild.node);
-    _ = try root.node.appendChild(&child.node);
-    _ = try doc.node.appendChild(&root.node);
+    _ = try child.prototype.appendChild(&grandchild.prototype);
+    _ = try root.prototype.appendChild(&child.prototype);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // All should be connected
-    try std.testing.expect(root.node.isConnected());
-    try std.testing.expect(child.node.isConnected());
-    try std.testing.expect(grandchild.node.isConnected());
+    try std.testing.expect(root.prototype.isConnected());
+    try std.testing.expect(child.prototype.isConnected());
+    try std.testing.expect(grandchild.prototype.isConnected());
 
     // Remove child
-    _ = try root.node.removeChild(&child.node);
+    _ = try root.prototype.removeChild(&child.prototype);
 
     // root still connected, child and grandchild disconnected
-    try std.testing.expect(root.node.isConnected());
-    try std.testing.expect(!child.node.isConnected());
-    try std.testing.expect(!grandchild.node.isConnected());
+    try std.testing.expect(root.prototype.isConnected());
+    try std.testing.expect(!child.prototype.isConnected());
+    try std.testing.expect(!grandchild.prototype.isConnected());
 }
 
 test "Node.textContent - getter returns null for Document" {
@@ -3382,7 +3382,7 @@ test "Node.textContent - getter returns null for Document" {
     const doc = try @import("document.zig").Document.init(allocator);
     defer doc.release();
 
-    const content = try doc.node.textContent(allocator);
+    const content = try doc.prototype.textContent(allocator);
     try std.testing.expect(content == null);
 }
 
@@ -3393,9 +3393,9 @@ test "Node.textContent - getter returns text node data" {
     defer doc.release();
 
     const text = try doc.createTextNode("Hello, World!");
-    defer text.node.release();
+    defer text.prototype.release();
 
-    const content = try text.node.textContent(allocator);
+    const content = try text.prototype.textContent(allocator);
     defer if (content) |c| allocator.free(c);
 
     try std.testing.expect(content != null);
@@ -3409,9 +3409,9 @@ test "Node.textContent - getter returns comment data" {
     defer doc.release();
 
     const comment = try doc.createComment("This is a comment");
-    defer comment.node.release();
+    defer comment.prototype.release();
 
-    const content = try comment.node.textContent(allocator);
+    const content = try comment.prototype.textContent(allocator);
     defer if (content) |c| allocator.free(c);
 
     try std.testing.expect(content != null);
@@ -3425,17 +3425,17 @@ test "Node.textContent - getter collects descendant text" {
     defer doc.release();
 
     const div = try doc.createElement("div");
-    defer div.node.release();
+    defer div.prototype.release();
 
     const text1 = try doc.createTextNode("Hello ");
     const text2 = try doc.createTextNode("World");
     const text3 = try doc.createTextNode("!");
 
-    _ = try div.node.appendChild(&text1.node);
-    _ = try div.node.appendChild(&text2.node);
-    _ = try div.node.appendChild(&text3.node);
+    _ = try div.prototype.appendChild(&text1.prototype);
+    _ = try div.prototype.appendChild(&text2.prototype);
+    _ = try div.prototype.appendChild(&text3.prototype);
 
-    const content = try div.node.textContent(allocator);
+    const content = try div.prototype.textContent(allocator);
     defer if (content) |c| allocator.free(c);
 
     try std.testing.expect(content != null);
@@ -3449,17 +3449,17 @@ test "Node.textContent - getter collects nested text" {
     defer doc.release();
 
     const div = try doc.createElement("div");
-    defer div.node.release();
+    defer div.prototype.release();
 
     const span = try doc.createElement("span");
     const text1 = try doc.createTextNode("Hello ");
     const text2 = try doc.createTextNode("World");
 
-    _ = try span.node.appendChild(&text1.node);
-    _ = try div.node.appendChild(&span.node);
-    _ = try div.node.appendChild(&text2.node);
+    _ = try span.prototype.appendChild(&text1.prototype);
+    _ = try div.prototype.appendChild(&span.prototype);
+    _ = try div.prototype.appendChild(&text2.prototype);
 
-    const content = try div.node.textContent(allocator);
+    const content = try div.prototype.textContent(allocator);
     defer if (content) |c| allocator.free(c);
 
     try std.testing.expect(content != null);
@@ -3473,9 +3473,9 @@ test "Node.textContent - getter returns null for empty element" {
     defer doc.release();
 
     const div = try doc.createElement("div");
-    defer div.node.release();
+    defer div.prototype.release();
 
-    const content = try div.node.textContent(allocator);
+    const content = try div.prototype.textContent(allocator);
     try std.testing.expect(content == null);
 }
 
@@ -3486,9 +3486,9 @@ test "Node.textContent - setter does nothing for Document" {
     defer doc.release();
 
     // Should not error, but does nothing
-    try doc.node.setTextContent("This should be ignored");
+    try doc.prototype.setTextContent("This should be ignored");
 
-    const content = try doc.node.textContent(allocator);
+    const content = try doc.prototype.textContent(allocator);
     try std.testing.expect(content == null);
 }
 
@@ -3499,11 +3499,11 @@ test "Node.textContent - setter replaces text node data" {
     defer doc.release();
 
     const text = try doc.createTextNode("Old text");
-    defer text.node.release();
+    defer text.prototype.release();
 
-    try text.node.setTextContent("New text");
+    try text.prototype.setTextContent("New text");
 
-    const content = try text.node.textContent(allocator);
+    const content = try text.prototype.textContent(allocator);
     defer if (content) |c| allocator.free(c);
 
     try std.testing.expectEqualStrings("New text", content.?);
@@ -3516,11 +3516,11 @@ test "Node.textContent - setter replaces comment data" {
     defer doc.release();
 
     const comment = try doc.createComment("Old comment");
-    defer comment.node.release();
+    defer comment.prototype.release();
 
-    try comment.node.setTextContent("New comment");
+    try comment.prototype.setTextContent("New comment");
 
-    const content = try comment.node.textContent(allocator);
+    const content = try comment.prototype.textContent(allocator);
     defer if (content) |c| allocator.free(c);
 
     try std.testing.expectEqualStrings("New comment", content.?);
@@ -3533,24 +3533,24 @@ test "Node.textContent - setter removes all children and inserts text" {
     defer doc.release();
 
     const div = try doc.createElement("div");
-    defer div.node.release();
+    defer div.prototype.release();
 
     // Add some children (owned by tree, no defer needed)
     const span = try doc.createElement("span");
     const text1 = try doc.createTextNode("Old");
 
-    _ = try span.node.appendChild(&text1.node);
-    _ = try div.node.appendChild(&span.node);
+    _ = try span.prototype.appendChild(&text1.prototype);
+    _ = try div.prototype.appendChild(&span.prototype);
 
     // Set text content - should remove all children (releasing span and text1)
-    try div.node.setTextContent("New text");
+    try div.prototype.setTextContent("New text");
 
     // Should have exactly one child (text node)
-    try std.testing.expect(div.node.hasChildNodes());
-    try std.testing.expectEqual(@as(usize, 1), div.node.childNodes().length());
-    try std.testing.expectEqual(NodeType.text, div.node.first_child.?.node_type);
+    try std.testing.expect(div.prototype.hasChildNodes());
+    try std.testing.expectEqual(@as(usize, 1), div.prototype.childNodes().length());
+    try std.testing.expectEqual(NodeType.text, div.prototype.first_child.?.node_type);
 
-    const content = try div.node.textContent(allocator);
+    const content = try div.prototype.textContent(allocator);
     defer if (content) |c| allocator.free(c);
 
     try std.testing.expectEqualStrings("New text", content.?);
@@ -3563,19 +3563,19 @@ test "Node.textContent - setter with empty string removes all children" {
     defer doc.release();
 
     const div = try doc.createElement("div");
-    defer div.node.release();
+    defer div.prototype.release();
 
     const text = try doc.createTextNode("Some text");
     // text owned by div after appendChild
-    _ = try div.node.appendChild(&text.node);
+    _ = try div.prototype.appendChild(&text.prototype);
 
-    try std.testing.expect(div.node.hasChildNodes());
+    try std.testing.expect(div.prototype.hasChildNodes());
 
     // Set to empty string - should remove all children (releasing text)
-    try div.node.setTextContent("");
+    try div.prototype.setTextContent("");
 
-    try std.testing.expect(!div.node.hasChildNodes());
-    try std.testing.expectEqual(@as(?*Node, null), div.node.first_child);
+    try std.testing.expect(!div.prototype.hasChildNodes());
+    try std.testing.expectEqual(@as(?*Node, null), div.prototype.first_child);
 }
 
 test "Node.textContent - setter with null removes all children" {
@@ -3585,19 +3585,19 @@ test "Node.textContent - setter with null removes all children" {
     defer doc.release();
 
     const div = try doc.createElement("div");
-    defer div.node.release();
+    defer div.prototype.release();
 
     const text = try doc.createTextNode("Some text");
     // text owned by div after appendChild
-    _ = try div.node.appendChild(&text.node);
+    _ = try div.prototype.appendChild(&text.prototype);
 
-    try std.testing.expect(div.node.hasChildNodes());
+    try std.testing.expect(div.prototype.hasChildNodes());
 
     // Set to null - should remove all children (releasing text)
-    try div.node.setTextContent(null);
+    try div.prototype.setTextContent(null);
 
-    try std.testing.expect(!div.node.hasChildNodes());
-    try std.testing.expectEqual(@as(?*Node, null), div.node.first_child);
+    try std.testing.expect(!div.prototype.hasChildNodes());
+    try std.testing.expectEqual(@as(?*Node, null), div.prototype.first_child);
 }
 
 test "Node.textContent - setter propagates connected state" {
@@ -3610,14 +3610,14 @@ test "Node.textContent - setter propagates connected state" {
     // root owned by document after appendChild, no defer needed
 
     // Connect to document
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Set text content
-    try root.node.setTextContent("Connected text");
+    try root.prototype.setTextContent("Connected text");
 
     // New text node should be connected
-    try std.testing.expect(root.node.first_child != null);
-    try std.testing.expect(root.node.first_child.?.isConnected());
+    try std.testing.expect(root.prototype.first_child != null);
+    try std.testing.expect(root.prototype.first_child.?.isConnected());
 }
 
 test "Node.textContent - no memory leaks" {
@@ -3627,17 +3627,17 @@ test "Node.textContent - no memory leaks" {
     defer doc.release();
 
     const div = try doc.createElement("div");
-    defer div.node.release();
+    defer div.prototype.release();
 
     // Set multiple times
-    try div.node.setTextContent("First");
-    try div.node.setTextContent("Second");
-    try div.node.setTextContent("Third");
-    try div.node.setTextContent(null);
+    try div.prototype.setTextContent("First");
+    try div.prototype.setTextContent("Second");
+    try div.prototype.setTextContent("Third");
+    try div.prototype.setTextContent(null);
 
     // Get multiple times
     for (0..10) |_| {
-        const content = try div.node.textContent(allocator);
+        const content = try div.prototype.textContent(allocator);
         if (content) |c| allocator.free(c);
     }
 
@@ -3653,9 +3653,9 @@ test "Node.isSameNode - returns true for same node" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
-    try std.testing.expect(elem.node.isSameNode(&elem.node));
+    try std.testing.expect(elem.prototype.isSameNode(&elem.prototype));
 }
 
 test "Node.isSameNode - returns false for different nodes" {
@@ -3665,12 +3665,12 @@ test "Node.isSameNode - returns false for different nodes" {
     defer doc.release();
 
     const elem1 = try doc.createElement("div");
-    defer elem1.node.release();
+    defer elem1.prototype.release();
 
     const elem2 = try doc.createElement("div");
-    defer elem2.node.release();
+    defer elem2.prototype.release();
 
-    try std.testing.expect(!elem1.node.isSameNode(&elem2.node));
+    try std.testing.expect(!elem1.prototype.isSameNode(&elem2.prototype));
 }
 
 test "Node.isSameNode - returns false for null" {
@@ -3680,9 +3680,9 @@ test "Node.isSameNode - returns false for null" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
-    try std.testing.expect(!elem.node.isSameNode(null));
+    try std.testing.expect(!elem.prototype.isSameNode(null));
 }
 
 // === getRootNode() Tests ===
@@ -3696,11 +3696,11 @@ test "Node.getRootNode - returns document for connected node" {
     const parent = try doc.createElement("div");
     const child = try doc.createElement("span");
 
-    _ = try parent.node.appendChild(&child.node);
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
-    const root = child.node.getRootNode(false);
-    try std.testing.expect(root == &doc.node);
+    const root = child.prototype.getRootNode(false);
+    try std.testing.expect(root == &doc.prototype);
 }
 
 test "Node.getRootNode - returns self for disconnected single node" {
@@ -3710,10 +3710,10 @@ test "Node.getRootNode - returns self for disconnected single node" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
-    const root = elem.node.getRootNode(false);
-    try std.testing.expect(root == &elem.node);
+    const root = elem.prototype.getRootNode(false);
+    try std.testing.expect(root == &elem.prototype);
 }
 
 test "Node.getRootNode - returns topmost disconnected node" {
@@ -3723,15 +3723,15 @@ test "Node.getRootNode - returns topmost disconnected node" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("span");
 
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     // Not connected to document
-    const root = child.node.getRootNode(false);
-    try std.testing.expect(root == &parent.node);
+    const root = child.prototype.getRootNode(false);
+    try std.testing.expect(root == &parent.prototype);
 }
 
 test "Node.getRootNode - composed parameter (no shadow DOM yet)" {
@@ -3742,14 +3742,14 @@ test "Node.getRootNode - composed parameter (no shadow DOM yet)" {
 
     const elem = try doc.createElement("div");
 
-    _ = try doc.node.appendChild(&elem.node);
+    _ = try doc.prototype.appendChild(&elem.prototype);
 
     // Both should return same result (no shadow DOM)
-    const root1 = elem.node.getRootNode(false);
-    const root2 = elem.node.getRootNode(true);
+    const root1 = elem.prototype.getRootNode(false);
+    const root2 = elem.prototype.getRootNode(true);
 
     try std.testing.expect(root1 == root2);
-    try std.testing.expect(root1 == &doc.node);
+    try std.testing.expect(root1 == &doc.prototype);
 }
 
 // === contains() Tests ===
@@ -3761,9 +3761,9 @@ test "Node.contains - returns true for self (inclusive)" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
-    try std.testing.expect(elem.node.contains(&elem.node));
+    try std.testing.expect(elem.prototype.contains(&elem.prototype));
 }
 
 test "Node.contains - returns true for direct child" {
@@ -3773,13 +3773,13 @@ test "Node.contains - returns true for direct child" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("span");
 
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
-    try std.testing.expect(parent.node.contains(&child.node));
+    try std.testing.expect(parent.prototype.contains(&child.prototype));
 }
 
 test "Node.contains - returns true for deep descendant" {
@@ -3789,15 +3789,15 @@ test "Node.contains - returns true for deep descendant" {
     defer doc.release();
 
     const grandparent = try doc.createElement("div");
-    defer grandparent.node.release();
+    defer grandparent.prototype.release();
 
     const parent = try doc.createElement("section");
     const child = try doc.createElement("span");
 
-    _ = try grandparent.node.appendChild(&parent.node);
-    _ = try parent.node.appendChild(&child.node);
+    _ = try grandparent.prototype.appendChild(&parent.prototype);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
-    try std.testing.expect(grandparent.node.contains(&child.node));
+    try std.testing.expect(grandparent.prototype.contains(&child.prototype));
 }
 
 test "Node.contains - returns false for parent (not ancestor of child)" {
@@ -3807,13 +3807,13 @@ test "Node.contains - returns false for parent (not ancestor of child)" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("span");
 
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
-    try std.testing.expect(!child.node.contains(&parent.node));
+    try std.testing.expect(!child.prototype.contains(&parent.prototype));
 }
 
 test "Node.contains - returns false for sibling" {
@@ -3823,16 +3823,16 @@ test "Node.contains - returns false for sibling" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("span");
     const child2 = try doc.createElement("p");
 
-    _ = try parent.node.appendChild(&child1.node);
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
-    try std.testing.expect(!child1.node.contains(&child2.node));
-    try std.testing.expect(!child2.node.contains(&child1.node));
+    try std.testing.expect(!child1.prototype.contains(&child2.prototype));
+    try std.testing.expect(!child2.prototype.contains(&child1.prototype));
 }
 
 test "Node.contains - returns false for null (per spec)" {
@@ -3842,9 +3842,9 @@ test "Node.contains - returns false for null (per spec)" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
-    try std.testing.expect(!elem.node.contains(null));
+    try std.testing.expect(!elem.prototype.contains(null));
 }
 
 // === baseURI() Tests ===
@@ -3856,9 +3856,9 @@ test "Node.baseURI - returns empty string (placeholder)" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
-    const uri = elem.node.baseURI();
+    const uri = elem.prototype.baseURI();
     try std.testing.expectEqualStrings("", uri);
 }
 
@@ -3871,9 +3871,9 @@ test "Node.compareDocumentPosition - returns 0 for same node" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
-    const pos = elem.node.compareDocumentPosition(&elem.node);
+    const pos = elem.prototype.compareDocumentPosition(&elem.prototype);
     try std.testing.expectEqual(@as(u16, 0), pos);
 }
 
@@ -3884,12 +3884,12 @@ test "Node.compareDocumentPosition - disconnected nodes" {
     defer doc.release();
 
     const elem1 = try doc.createElement("div");
-    defer elem1.node.release();
+    defer elem1.prototype.release();
 
     const elem2 = try doc.createElement("span");
-    defer elem2.node.release();
+    defer elem2.prototype.release();
 
-    const pos = elem1.node.compareDocumentPosition(&elem2.node);
+    const pos = elem1.prototype.compareDocumentPosition(&elem2.prototype);
 
     // Must have DISCONNECTED flag
     try std.testing.expect((pos & Node.DOCUMENT_POSITION_DISCONNECTED) != 0);
@@ -3906,13 +3906,13 @@ test "Node.compareDocumentPosition - parent contains child" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("span");
 
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
-    const pos = child.node.compareDocumentPosition(&parent.node);
+    const pos = child.prototype.compareDocumentPosition(&parent.prototype);
 
     // Parent CONTAINS child (from child's perspective)
     try std.testing.expect((pos & Node.DOCUMENT_POSITION_CONTAINS) != 0);
@@ -3926,13 +3926,13 @@ test "Node.compareDocumentPosition - child contained by parent" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try doc.createElement("span");
 
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
-    const pos = parent.node.compareDocumentPosition(&child.node);
+    const pos = parent.prototype.compareDocumentPosition(&child.prototype);
 
     // Child CONTAINED_BY parent (from parent's perspective)
     try std.testing.expect((pos & Node.DOCUMENT_POSITION_CONTAINED_BY) != 0);
@@ -3946,15 +3946,15 @@ test "Node.compareDocumentPosition - sibling order (preceding)" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("span");
     const child2 = try doc.createElement("p");
 
-    _ = try parent.node.appendChild(&child1.node);
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
-    const pos = child2.node.compareDocumentPosition(&child1.node);
+    const pos = child2.prototype.compareDocumentPosition(&child1.prototype);
 
     // child1 PRECEDES child2 (from child2's perspective)
     try std.testing.expect((pos & Node.DOCUMENT_POSITION_PRECEDING) != 0);
@@ -3967,15 +3967,15 @@ test "Node.compareDocumentPosition - sibling order (following)" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child1 = try doc.createElement("span");
     const child2 = try doc.createElement("p");
 
-    _ = try parent.node.appendChild(&child1.node);
-    _ = try parent.node.appendChild(&child2.node);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+    _ = try parent.prototype.appendChild(&child2.prototype);
 
-    const pos = child1.node.compareDocumentPosition(&child2.node);
+    const pos = child1.prototype.compareDocumentPosition(&child2.prototype);
 
     // child2 FOLLOWS child1 (from child1's perspective)
     try std.testing.expect((pos & Node.DOCUMENT_POSITION_FOLLOWING) != 0);
@@ -3988,20 +3988,20 @@ test "Node.compareDocumentPosition - complex tree order" {
     defer doc.release();
 
     const root = try doc.createElement("div");
-    defer root.node.release();
+    defer root.prototype.release();
 
     const branch1 = try doc.createElement("section");
     const branch2 = try doc.createElement("article");
     const leaf1 = try doc.createElement("span");
     const leaf2 = try doc.createElement("p");
 
-    _ = try root.node.appendChild(&branch1.node);
-    _ = try root.node.appendChild(&branch2.node);
-    _ = try branch1.node.appendChild(&leaf1.node);
-    _ = try branch2.node.appendChild(&leaf2.node);
+    _ = try root.prototype.appendChild(&branch1.prototype);
+    _ = try root.prototype.appendChild(&branch2.prototype);
+    _ = try branch1.prototype.appendChild(&leaf1.prototype);
+    _ = try branch2.prototype.appendChild(&leaf2.prototype);
 
     // leaf1 precedes leaf2 (different branches, branch1 before branch2)
-    const pos = leaf2.node.compareDocumentPosition(&leaf1.node);
+    const pos = leaf2.prototype.compareDocumentPosition(&leaf1.prototype);
     try std.testing.expect((pos & Node.DOCUMENT_POSITION_PRECEDING) != 0);
 }
 
@@ -4014,9 +4014,9 @@ test "Node.isEqualNode - returns true for same node" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
-    try std.testing.expect(elem.node.isEqualNode(&elem.node));
+    try std.testing.expect(elem.prototype.isEqualNode(&elem.prototype));
 }
 
 test "Node.isEqualNode - returns false for null" {
@@ -4026,9 +4026,9 @@ test "Node.isEqualNode - returns false for null" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
-    try std.testing.expect(!elem.node.isEqualNode(null));
+    try std.testing.expect(!elem.prototype.isEqualNode(null));
 }
 
 test "Node.isEqualNode - returns true for equal elements (no attributes)" {
@@ -4038,12 +4038,12 @@ test "Node.isEqualNode - returns true for equal elements (no attributes)" {
     defer doc.release();
 
     const elem1 = try doc.createElement("div");
-    defer elem1.node.release();
+    defer elem1.prototype.release();
 
     const elem2 = try doc.createElement("div");
-    defer elem2.node.release();
+    defer elem2.prototype.release();
 
-    try std.testing.expect(elem1.node.isEqualNode(&elem2.node));
+    try std.testing.expect(elem1.prototype.isEqualNode(&elem2.prototype));
 }
 
 test "Node.isEqualNode - returns false for different tag names" {
@@ -4053,12 +4053,12 @@ test "Node.isEqualNode - returns false for different tag names" {
     defer doc.release();
 
     const elem1 = try doc.createElement("div");
-    defer elem1.node.release();
+    defer elem1.prototype.release();
 
     const elem2 = try doc.createElement("span");
-    defer elem2.node.release();
+    defer elem2.prototype.release();
 
-    try std.testing.expect(!elem1.node.isEqualNode(&elem2.node));
+    try std.testing.expect(!elem1.prototype.isEqualNode(&elem2.prototype));
 }
 
 // ============================================================================
@@ -4070,10 +4070,10 @@ test "Node.dispatchEvent - basic dispatch returns true" {
     const Element = @import("element.zig").Element;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     var event = Event.init("click", .{});
-    const result = try elem.node.dispatchEvent(&event);
+    const result = try elem.prototype.dispatchEvent(&event);
 
     // Should return true (not canceled)
     try std.testing.expect(result);
@@ -4084,7 +4084,7 @@ test "Node.dispatchEvent - invokes listener with event" {
     const Element = @import("element.zig").Element;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     var invoked: bool = false;
     const callback = struct {
@@ -4097,10 +4097,10 @@ test "Node.dispatchEvent - invokes listener with event" {
         }
     }.cb;
 
-    try elem.node.addEventListener("click", callback, @ptrCast(&invoked), false, false, false, null);
+    try elem.prototype.addEventListener("click", callback, @ptrCast(&invoked), false, false, false, null);
 
     var event = Event.init("click", .{});
-    _ = try elem.node.dispatchEvent(&event);
+    _ = try elem.prototype.dispatchEvent(&event);
 
     try std.testing.expect(invoked);
 }
@@ -4110,7 +4110,7 @@ test "Node.dispatchEvent - returns false when preventDefault called" {
     const Element = @import("element.zig").Element;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const callback = struct {
         fn cb(evt: *Event, _: *anyopaque) void {
@@ -4118,10 +4118,10 @@ test "Node.dispatchEvent - returns false when preventDefault called" {
         }
     }.cb;
 
-    try elem.node.addEventListener("click", callback, undefined, false, false, false, null);
+    try elem.prototype.addEventListener("click", callback, undefined, false, false, false, null);
 
     var event = Event.init("click", .{ .cancelable = true });
-    const result = try elem.node.dispatchEvent(&event);
+    const result = try elem.prototype.dispatchEvent(&event);
 
     // Should return false (canceled)
     try std.testing.expect(!result);
@@ -4133,7 +4133,7 @@ test "Node.dispatchEvent - once listener removed after dispatch" {
     const Element = @import("element.zig").Element;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     var count: u32 = 0;
     const callback = struct {
@@ -4144,16 +4144,16 @@ test "Node.dispatchEvent - once listener removed after dispatch" {
     }.cb;
 
     // Add listener with once=true
-    try elem.node.addEventListener("click", callback, @ptrCast(&count), false, true, false, null);
+    try elem.prototype.addEventListener("click", callback, @ptrCast(&count), false, true, false, null);
 
     // First dispatch
     var event1 = Event.init("click", .{});
-    _ = try elem.node.dispatchEvent(&event1);
+    _ = try elem.prototype.dispatchEvent(&event1);
     try std.testing.expectEqual(@as(u32, 1), count);
 
     // Second dispatch - listener should be removed
     var event2 = Event.init("click", .{});
-    _ = try elem.node.dispatchEvent(&event2);
+    _ = try elem.prototype.dispatchEvent(&event2);
     try std.testing.expectEqual(@as(u32, 1), count); // Still 1, not 2
 }
 
@@ -4162,7 +4162,7 @@ test "Node.dispatchEvent - passive listener blocks preventDefault" {
     const Element = @import("element.zig").Element;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const callback = struct {
         fn cb(evt: *Event, _: *anyopaque) void {
@@ -4172,10 +4172,10 @@ test "Node.dispatchEvent - passive listener blocks preventDefault" {
     }.cb;
 
     // Add passive listener
-    try elem.node.addEventListener("click", callback, undefined, false, false, true, null);
+    try elem.prototype.addEventListener("click", callback, undefined, false, false, true, null);
 
     var event = Event.init("click", .{ .cancelable = true });
-    const result = try elem.node.dispatchEvent(&event);
+    const result = try elem.prototype.dispatchEvent(&event);
 
     // preventDefault should have been ignored
     try std.testing.expect(result); // Returns true
@@ -4187,7 +4187,7 @@ test "Node.dispatchEvent - stopImmediatePropagation prevents remaining listeners
     const Element = @import("element.zig").Element;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     var count: u32 = 0;
 
@@ -4214,12 +4214,12 @@ test "Node.dispatchEvent - stopImmediatePropagation prevents remaining listeners
         }
     }.cb;
 
-    try elem.node.addEventListener("click", callback1, @ptrCast(&count), false, false, false, null);
-    try elem.node.addEventListener("click", callback2, @ptrCast(&count), false, false, false, null);
-    try elem.node.addEventListener("click", callback3, @ptrCast(&count), false, false, false, null);
+    try elem.prototype.addEventListener("click", callback1, @ptrCast(&count), false, false, false, null);
+    try elem.prototype.addEventListener("click", callback2, @ptrCast(&count), false, false, false, null);
+    try elem.prototype.addEventListener("click", callback3, @ptrCast(&count), false, false, false, null);
 
     var event = Event.init("click", .{});
-    _ = try elem.node.dispatchEvent(&event);
+    _ = try elem.prototype.dispatchEvent(&event);
 
     // Only first two listeners should be invoked
     try std.testing.expectEqual(@as(u32, 2), count);
@@ -4230,13 +4230,13 @@ test "Node.dispatchEvent - rejects already dispatching event" {
     const Element = @import("element.zig").Element;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     var event = Event.init("click", .{});
     event.dispatch_flag = true; // Manually set dispatch flag
 
     // Should return InvalidStateError
-    try std.testing.expectError(error.InvalidStateError, elem.node.dispatchEvent(&event));
+    try std.testing.expectError(error.InvalidStateError, elem.prototype.dispatchEvent(&event));
 }
 
 test "Node.dispatchEvent - sets event properties correctly" {
@@ -4244,7 +4244,7 @@ test "Node.dispatchEvent - sets event properties correctly" {
     const Element = @import("element.zig").Element;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     const callback = struct {
         fn cb(evt: *Event, context: *anyopaque) void {
@@ -4259,10 +4259,10 @@ test "Node.dispatchEvent - sets event properties correctly" {
         }
     }.cb;
 
-    try elem.node.addEventListener("click", callback, @ptrCast(&elem.node), false, false, false, null);
+    try elem.prototype.addEventListener("click", callback, @ptrCast(&elem.prototype), false, false, false, null);
 
     var event = Event.init("click", .{});
-    _ = try elem.node.dispatchEvent(&event);
+    _ = try elem.prototype.dispatchEvent(&event);
 
     // After dispatch - should be cleaned up
     try std.testing.expectEqual(Event.EventPhase.none, event.event_phase);
@@ -4277,14 +4277,14 @@ test "Node.isEqualNode - returns false for different attribute values" {
     defer doc.release();
 
     const elem1 = try doc.createElement("div");
-    defer elem1.node.release();
+    defer elem1.prototype.release();
     try elem1.setAttribute("id", "test1");
 
     const elem2 = try doc.createElement("div");
-    defer elem2.node.release();
+    defer elem2.prototype.release();
     try elem2.setAttribute("id", "test2");
 
-    try std.testing.expect(!elem1.node.isEqualNode(&elem2.node));
+    try std.testing.expect(!elem1.prototype.isEqualNode(&elem2.prototype));
 }
 
 test "Node.isEqualNode - returns false for different attribute counts" {
@@ -4294,15 +4294,15 @@ test "Node.isEqualNode - returns false for different attribute counts" {
     defer doc.release();
 
     const elem1 = try doc.createElement("div");
-    defer elem1.node.release();
+    defer elem1.prototype.release();
     try elem1.setAttribute("id", "test");
 
     const elem2 = try doc.createElement("div");
-    defer elem2.node.release();
+    defer elem2.prototype.release();
     try elem2.setAttribute("id", "test");
     try elem2.setAttribute("class", "foo");
 
-    try std.testing.expect(!elem1.node.isEqualNode(&elem2.node));
+    try std.testing.expect(!elem1.prototype.isEqualNode(&elem2.prototype));
 }
 
 test "Node.isEqualNode - returns true for equal text nodes" {
@@ -4312,12 +4312,12 @@ test "Node.isEqualNode - returns true for equal text nodes" {
     defer doc.release();
 
     const text1 = try doc.createTextNode("Hello");
-    defer text1.node.release();
+    defer text1.prototype.release();
 
     const text2 = try doc.createTextNode("Hello");
-    defer text2.node.release();
+    defer text2.prototype.release();
 
-    try std.testing.expect(text1.node.isEqualNode(&text2.node));
+    try std.testing.expect(text1.prototype.isEqualNode(&text2.prototype));
 }
 
 test "Node.isEqualNode - returns false for different text content" {
@@ -4327,12 +4327,12 @@ test "Node.isEqualNode - returns false for different text content" {
     defer doc.release();
 
     const text1 = try doc.createTextNode("Hello");
-    defer text1.node.release();
+    defer text1.prototype.release();
 
     const text2 = try doc.createTextNode("World");
-    defer text2.node.release();
+    defer text2.prototype.release();
 
-    try std.testing.expect(!text1.node.isEqualNode(&text2.node));
+    try std.testing.expect(!text1.prototype.isEqualNode(&text2.prototype));
 }
 
 test "Node.isEqualNode - returns true for equal subtrees" {
@@ -4343,27 +4343,27 @@ test "Node.isEqualNode - returns true for equal subtrees" {
 
     // Build first tree
     const parent1 = try doc.createElement("div");
-    defer parent1.node.release();
+    defer parent1.prototype.release();
     try parent1.setAttribute("id", "container");
 
     const child1a = try doc.createElement("span");
     const text1 = try doc.createTextNode("Hello");
 
-    _ = try child1a.node.appendChild(&text1.node);
-    _ = try parent1.node.appendChild(&child1a.node);
+    _ = try child1a.prototype.appendChild(&text1.prototype);
+    _ = try parent1.prototype.appendChild(&child1a.prototype);
 
     // Build identical tree
     const parent2 = try doc.createElement("div");
-    defer parent2.node.release();
+    defer parent2.prototype.release();
     try parent2.setAttribute("id", "container");
 
     const child2a = try doc.createElement("span");
     const text2 = try doc.createTextNode("Hello");
 
-    _ = try child2a.node.appendChild(&text2.node);
-    _ = try parent2.node.appendChild(&child2a.node);
+    _ = try child2a.prototype.appendChild(&text2.prototype);
+    _ = try parent2.prototype.appendChild(&child2a.prototype);
 
-    try std.testing.expect(parent1.node.isEqualNode(&parent2.node));
+    try std.testing.expect(parent1.prototype.isEqualNode(&parent2.prototype));
 }
 
 test "Node.isEqualNode - returns false for different child counts" {
@@ -4373,22 +4373,22 @@ test "Node.isEqualNode - returns false for different child counts" {
     defer doc.release();
 
     const parent1 = try doc.createElement("div");
-    defer parent1.node.release();
+    defer parent1.prototype.release();
 
     const child1 = try doc.createElement("span");
 
-    _ = try parent1.node.appendChild(&child1.node);
+    _ = try parent1.prototype.appendChild(&child1.prototype);
 
     const parent2 = try doc.createElement("div");
-    defer parent2.node.release();
+    defer parent2.prototype.release();
 
     const child2a = try doc.createElement("span");
     const child2b = try doc.createElement("p");
 
-    _ = try parent2.node.appendChild(&child2a.node);
-    _ = try parent2.node.appendChild(&child2b.node);
+    _ = try parent2.prototype.appendChild(&child2a.prototype);
+    _ = try parent2.prototype.appendChild(&child2b.prototype);
 
-    try std.testing.expect(!parent1.node.isEqualNode(&parent2.node));
+    try std.testing.expect(!parent1.prototype.isEqualNode(&parent2.prototype));
 }
 
 test "Node.isEqualNode - returns false for different child order" {
@@ -4398,24 +4398,24 @@ test "Node.isEqualNode - returns false for different child order" {
     defer doc.release();
 
     const parent1 = try doc.createElement("div");
-    defer parent1.node.release();
+    defer parent1.prototype.release();
 
     const child1a = try doc.createElement("span");
     const child1b = try doc.createElement("p");
 
-    _ = try parent1.node.appendChild(&child1a.node);
-    _ = try parent1.node.appendChild(&child1b.node);
+    _ = try parent1.prototype.appendChild(&child1a.prototype);
+    _ = try parent1.prototype.appendChild(&child1b.prototype);
 
     const parent2 = try doc.createElement("div");
-    defer parent2.node.release();
+    defer parent2.prototype.release();
 
     const child2a = try doc.createElement("p");
     const child2b = try doc.createElement("span");
 
-    _ = try parent2.node.appendChild(&child2a.node);
-    _ = try parent2.node.appendChild(&child2b.node);
+    _ = try parent2.prototype.appendChild(&child2a.prototype);
+    _ = try parent2.prototype.appendChild(&child2b.prototype);
 
-    try std.testing.expect(!parent1.node.isEqualNode(&parent2.node));
+    try std.testing.expect(!parent1.prototype.isEqualNode(&parent2.prototype));
 }
 
 test "Node.appendChild - cross-document adoption" {
@@ -4435,25 +4435,25 @@ test "Node.appendChild - cross-document adoption" {
 
     // Add to doc1's tree
     const container1 = try doc1.createElement("container");
-    _ = try doc1.node.appendChild(&container1.node);
-    _ = try container1.node.appendChild(&elem.node);
+    _ = try doc1.prototype.appendChild(&container1.prototype);
+    _ = try container1.prototype.appendChild(&elem.prototype);
 
     // Verify initial state
-    try std.testing.expect(elem.node.getOwnerDocument() == doc1);
+    try std.testing.expect(elem.prototype.getOwnerDocument() == doc1);
     try std.testing.expectEqualStrings("value1", elem.getAttribute("attr1").?);
 
     // Move to doc2 via appendChild (should trigger adoption)
     const container2 = try doc2.createElement("container");
-    _ = try doc2.node.appendChild(&container2.node);
-    _ = try container2.node.appendChild(&elem.node);
+    _ = try doc2.prototype.appendChild(&container2.prototype);
+    _ = try container2.prototype.appendChild(&elem.prototype);
 
     // Verify adoption occurred
-    try std.testing.expect(elem.node.getOwnerDocument() == doc2);
+    try std.testing.expect(elem.prototype.getOwnerDocument() == doc2);
     try std.testing.expectEqualStrings("value1", elem.getAttribute("attr1").?);
     try std.testing.expectEqualStrings("test-id", elem.getAttribute("data-id").?);
 
     // elem should no longer be in doc1's tree
-    try std.testing.expect(container1.node.first_child == null);
+    try std.testing.expect(container1.prototype.first_child == null);
 }
 
 // ============================================================================
@@ -4469,11 +4469,11 @@ test "Node - supports any case in tag names" {
 
     // Can create elements with different case variations
     const lower = try doc.createElement("element");
-    defer lower.node.release();
+    defer lower.prototype.release();
     const upper = try doc.createElement("ELEMENT");
-    defer upper.node.release();
+    defer upper.prototype.release();
     const mixed = try doc.createElement("Element");
-    defer mixed.node.release();
+    defer mixed.prototype.release();
 
     // Each preserves its own casing (NOT normalized)
     try std.testing.expect(std.mem.eql(u8, lower.tag_name, "element"));
@@ -4493,19 +4493,19 @@ test "Node - nodeName() preserves original casing" {
     defer doc.release();
 
     const elem1 = try doc.createElement("container");
-    defer elem1.node.release();
+    defer elem1.prototype.release();
     const elem2 = try doc.createElement("CONTAINER");
-    defer elem2.node.release();
+    defer elem2.prototype.release();
     const elem3 = try doc.createElement("Container");
-    defer elem3.node.release();
+    defer elem3.prototype.release();
 
     // nodeName() returns the exact casing used in createElement
-    try std.testing.expect(std.mem.eql(u8, elem1.node.nodeName(), "container"));
-    try std.testing.expect(std.mem.eql(u8, elem2.node.nodeName(), "CONTAINER"));
-    try std.testing.expect(std.mem.eql(u8, elem3.node.nodeName(), "Container"));
+    try std.testing.expect(std.mem.eql(u8, elem1.prototype.nodeName(), "container"));
+    try std.testing.expect(std.mem.eql(u8, elem2.prototype.nodeName(), "CONTAINER"));
+    try std.testing.expect(std.mem.eql(u8, elem3.prototype.nodeName(), "Container"));
 
     // They are NOT equal
-    try std.testing.expect(!std.mem.eql(u8, elem1.node.nodeName(), elem2.node.nodeName()));
+    try std.testing.expect(!std.mem.eql(u8, elem1.prototype.nodeName(), elem2.prototype.nodeName()));
 }
 
 test "Node - supports any case in attribute names (case-sensitive matching)" {
@@ -4516,7 +4516,7 @@ test "Node - supports any case in attribute names (case-sensitive matching)" {
     defer doc.release();
 
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Can set attributes with any casing
     try elem.setAttribute("data-id", "123");
@@ -4555,7 +4555,7 @@ test "Node - setAttribute with different case creates separate attributes" {
     defer doc.release();
 
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Set with lowercase
     try elem.setAttribute("key", "value1");
@@ -4585,7 +4585,7 @@ test "Node - hasAttribute is case-sensitive" {
     defer doc.release();
 
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     try elem.setAttribute("attr1", "value");
 
@@ -4604,7 +4604,7 @@ test "Node - removeAttribute is case-sensitive" {
     defer doc.release();
 
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Set with lowercase
     try elem.setAttribute("data-test", "value");
@@ -4629,29 +4629,29 @@ test "Node.normalize - merges adjacent text nodes" {
     defer doc.release();
 
     const parent = try doc.createElement("container");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const text1 = try doc.createTextNode("Hello");
     const text2 = try doc.createTextNode(" ");
     const text3 = try doc.createTextNode("World");
 
-    _ = try parent.node.appendChild(&text1.node);
-    _ = try parent.node.appendChild(&text2.node);
-    _ = try parent.node.appendChild(&text3.node);
+    _ = try parent.prototype.appendChild(&text1.prototype);
+    _ = try parent.prototype.appendChild(&text2.prototype);
+    _ = try parent.prototype.appendChild(&text3.prototype);
 
     // Before: 3 text nodes
-    try std.testing.expectEqual(@as(usize, 3), parent.node.childNodes().length());
+    try std.testing.expectEqual(@as(usize, 3), parent.prototype.childNodes().length());
 
-    try parent.node.normalize();
+    try parent.prototype.normalize();
 
     // After: 1 text node with merged data
-    try std.testing.expectEqual(@as(usize, 1), parent.node.childNodes().length());
+    try std.testing.expectEqual(@as(usize, 1), parent.prototype.childNodes().length());
 
-    const merged = parent.node.first_child.?;
+    const merged = parent.prototype.first_child.?;
     try std.testing.expectEqual(NodeType.text, merged.node_type);
 
     const Text = @import("text.zig").Text;
-    const merged_text: *Text = @fieldParentPtr("node", merged);
+    const merged_text: *Text = @fieldParentPtr("prototype", merged);
     try std.testing.expectEqualStrings("Hello World", merged_text.data);
 }
 
@@ -4663,27 +4663,27 @@ test "Node.normalize - removes empty text nodes" {
     defer doc.release();
 
     const parent = try doc.createElement("container");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const text1 = try doc.createTextNode("Hello");
     const empty = try doc.createTextNode("");
     const text2 = try doc.createTextNode("World");
 
-    _ = try parent.node.appendChild(&text1.node);
-    _ = try parent.node.appendChild(&empty.node);
-    _ = try parent.node.appendChild(&text2.node);
+    _ = try parent.prototype.appendChild(&text1.prototype);
+    _ = try parent.prototype.appendChild(&empty.prototype);
+    _ = try parent.prototype.appendChild(&text2.prototype);
 
     // Before: 3 text nodes (one empty)
-    try std.testing.expectEqual(@as(usize, 3), parent.node.childNodes().length());
+    try std.testing.expectEqual(@as(usize, 3), parent.prototype.childNodes().length());
 
-    try parent.node.normalize();
+    try parent.prototype.normalize();
 
     // After: 1 text node (empty removed, others merged)
-    try std.testing.expectEqual(@as(usize, 1), parent.node.childNodes().length());
+    try std.testing.expectEqual(@as(usize, 1), parent.prototype.childNodes().length());
 
     const Text = @import("text.zig").Text;
-    const merged = parent.node.first_child.?;
-    const merged_text: *Text = @fieldParentPtr("node", merged);
+    const merged = parent.prototype.first_child.?;
+    const merged_text: *Text = @fieldParentPtr("prototype", merged);
     try std.testing.expectEqualStrings("HelloWorld", merged_text.data);
 }
 
@@ -4695,31 +4695,31 @@ test "Node.normalize - respects element boundaries" {
     defer doc.release();
 
     const parent = try doc.createElement("container");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const text1 = try doc.createTextNode("Hello");
     const elem = try doc.createElement("span");
     const text2 = try doc.createTextNode("World");
 
-    _ = try parent.node.appendChild(&text1.node);
-    _ = try parent.node.appendChild(&elem.node);
-    _ = try parent.node.appendChild(&text2.node);
+    _ = try parent.prototype.appendChild(&text1.prototype);
+    _ = try parent.prototype.appendChild(&elem.prototype);
+    _ = try parent.prototype.appendChild(&text2.prototype);
 
     // Before: text, element, text
-    try std.testing.expectEqual(@as(usize, 3), parent.node.childNodes().length());
+    try std.testing.expectEqual(@as(usize, 3), parent.prototype.childNodes().length());
 
-    try parent.node.normalize();
+    try parent.prototype.normalize();
 
     // After: text nodes NOT merged across element boundary
-    try std.testing.expectEqual(@as(usize, 3), parent.node.childNodes().length());
+    try std.testing.expectEqual(@as(usize, 3), parent.prototype.childNodes().length());
 
     const Text = @import("text.zig").Text;
-    const first = parent.node.first_child.?;
-    const first_text: *Text = @fieldParentPtr("node", first);
+    const first = parent.prototype.first_child.?;
+    const first_text: *Text = @fieldParentPtr("prototype", first);
     try std.testing.expectEqualStrings("Hello", first_text.data);
 
-    const last = parent.node.last_child.?;
-    const last_text: *Text = @fieldParentPtr("node", last);
+    const last = parent.prototype.last_child.?;
+    const last_text: *Text = @fieldParentPtr("prototype", last);
     try std.testing.expectEqualStrings("World", last_text.data);
 }
 
@@ -4731,27 +4731,27 @@ test "Node.normalize - recursively normalizes descendants" {
     defer doc.release();
 
     const parent = try doc.createElement("container");
-    _ = try doc.node.appendChild(&parent.node);
+    _ = try doc.prototype.appendChild(&parent.prototype);
 
     const child = try doc.createElement("child");
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     const text1 = try doc.createTextNode("A");
     const text2 = try doc.createTextNode("B");
-    _ = try child.node.appendChild(&text1.node);
-    _ = try child.node.appendChild(&text2.node);
+    _ = try child.prototype.appendChild(&text1.prototype);
+    _ = try child.prototype.appendChild(&text2.prototype);
 
     // Before: child has 2 text nodes
-    try std.testing.expectEqual(@as(usize, 2), child.node.childNodes().length());
+    try std.testing.expectEqual(@as(usize, 2), child.prototype.childNodes().length());
 
-    try parent.node.normalize();
+    try parent.prototype.normalize();
 
     // After: child has 1 merged text node
-    try std.testing.expectEqual(@as(usize, 1), child.node.childNodes().length());
+    try std.testing.expectEqual(@as(usize, 1), child.prototype.childNodes().length());
 
     const Text = @import("text.zig").Text;
-    const merged = child.node.first_child.?;
-    const merged_text: *Text = @fieldParentPtr("node", merged);
+    const merged = child.prototype.first_child.?;
+    const merged_text: *Text = @fieldParentPtr("prototype", merged);
     try std.testing.expectEqualStrings("AB", merged_text.data);
 }
 
@@ -4763,21 +4763,21 @@ test "Node.normalize - handles document fragments" {
     defer doc.release();
 
     const fragment = try doc.createDocumentFragment();
-    defer fragment.node.release();
+    defer fragment.prototype.release();
 
     const text1 = try doc.createTextNode("Frag");
     const text2 = try doc.createTextNode("ment");
-    _ = try fragment.node.appendChild(&text1.node);
-    _ = try fragment.node.appendChild(&text2.node);
+    _ = try fragment.prototype.appendChild(&text1.prototype);
+    _ = try fragment.prototype.appendChild(&text2.prototype);
 
-    try std.testing.expectEqual(@as(usize, 2), fragment.node.childNodes().length());
+    try std.testing.expectEqual(@as(usize, 2), fragment.prototype.childNodes().length());
 
-    try fragment.node.normalize();
+    try fragment.prototype.normalize();
 
-    try std.testing.expectEqual(@as(usize, 1), fragment.node.childNodes().length());
+    try std.testing.expectEqual(@as(usize, 1), fragment.prototype.childNodes().length());
 
     const Text = @import("text.zig").Text;
-    const merged = fragment.node.first_child.?;
-    const merged_text: *Text = @fieldParentPtr("node", merged);
+    const merged = fragment.prototype.first_child.?;
+    const merged_text: *Text = @fieldParentPtr("prototype", merged);
     try std.testing.expectEqualStrings("Fragment", merged_text.data);
 }

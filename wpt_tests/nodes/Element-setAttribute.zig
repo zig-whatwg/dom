@@ -13,7 +13,7 @@ test "setAttribute sets attribute value" {
     defer doc.release();
 
     const el = try doc.createElement("div");
-    defer el.node.release(); // Must release orphaned nodes
+    defer el.prototype.release(); // Must release orphaned nodes
     try el.setAttribute("id", "test");
 
     const value = el.getAttribute("id");
@@ -27,7 +27,7 @@ test "getAttribute returns null for non-existent attribute" {
     defer doc.release();
 
     const el = try doc.createElement("div");
-    defer el.node.release(); // Must release orphaned nodes
+    defer el.prototype.release(); // Must release orphaned nodes
     const value = el.getAttribute("nonexistent");
     try std.testing.expect(value == null);
 }
@@ -38,7 +38,7 @@ test "setAttribute overwrites existing attribute" {
     defer doc.release();
 
     const el = try doc.createElement("div");
-    defer el.node.release(); // Must release orphaned nodes
+    defer el.prototype.release(); // Must release orphaned nodes
     try el.setAttribute("class", "foo");
     try el.setAttribute("class", "bar");
 
@@ -53,7 +53,7 @@ test "setAttribute with multiple attributes" {
     defer doc.release();
 
     const el = try doc.createElement("div");
-    defer el.node.release(); // Must release orphaned nodes
+    defer el.prototype.release(); // Must release orphaned nodes
     try el.setAttribute("id", "myid");
     try el.setAttribute("class", "myclass");
     try el.setAttribute("data-value", "123");
@@ -76,7 +76,7 @@ test "setAttribute with empty string value" {
     defer doc.release();
 
     const el = try doc.createElement("div");
-    defer el.node.release(); // Must release orphaned nodes
+    defer el.prototype.release(); // Must release orphaned nodes
     try el.setAttribute("disabled", "");
 
     const value = el.getAttribute("disabled");

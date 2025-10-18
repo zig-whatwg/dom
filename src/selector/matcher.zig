@@ -30,7 +30,7 @@
 //! ```zig
 //! const allocator = std.heap.page_allocator;
 //! const elem = try Element.create(allocator, "div");
-//! defer elem.node.release();
+//! defer elem.prototype.release();
 //! try elem.setAttribute("class", "container active");
 //!
 //! // Parse selector
@@ -182,7 +182,7 @@
 //! ### Basic Matching
 //! ```zig
 //! const elem = try Element.create(allocator, "div");
-//! defer elem.node.release();
+//! defer elem.prototype.release();
 //! try elem.setAttribute("class", "container");
 //!
 //! var tokenizer = Tokenizer.init(allocator, "div.container");
@@ -199,10 +199,10 @@
 //! ### Combinator Matching
 //! ```zig
 //! const parent = try Element.create(allocator, "div");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
 //! const child = try Element.create(allocator, "p");
-//! _ = try parent.node.appendChild(&child.node);
+//! _ = try parent.prototype.appendChild(&child.prototype);
 //!
 //! // Test "div > p" (child combinator)
 //! var tokenizer = Tokenizer.init(allocator, "div > p");
@@ -219,12 +219,12 @@
 //! ### Pseudo-Class Matching
 //! ```zig
 //! const parent = try Element.create(allocator, "ul");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
 //! const li1 = try Element.create(allocator, "li");
 //! const li2 = try Element.create(allocator, "li");
-//! _ = try parent.node.appendChild(&li1.node);
-//! _ = try parent.node.appendChild(&li2.node);
+//! _ = try parent.prototype.appendChild(&li1.prototype);
+//! _ = try parent.prototype.appendChild(&li2.prototype);
 //!
 //! // Test ":first-child"
 //! var tokenizer = Tokenizer.init(allocator, "li:first-child");
@@ -363,10 +363,10 @@ pub const Matcher = struct {
         compound: *const CompoundSelector,
     ) MatcherError!?*Element {
         // Element's parent must match compound selector
-        const parent_node = element.node.parent_node orelse return null;
+        const parent_node = element.prototype.parent_node orelse return null;
         if (parent_node.node_type != .element) return null;
 
-        const parent_element: *Element = @fieldParentPtr("node", parent_node);
+        const parent_element: *Element = @fieldParentPtr("prototype", parent_node);
         if (try self.matchesCompoundSelector(parent_element, compound)) {
             return parent_element;
         }
@@ -380,10 +380,10 @@ pub const Matcher = struct {
         compound: *const CompoundSelector,
     ) MatcherError!?*Element {
         // Any ancestor must match compound selector
-        var current = element.node.parent_node;
+        var current = element.prototype.parent_node;
         while (current) |ancestor_node| {
             if (ancestor_node.node_type == .element) {
-                const ancestor_element: *Element = @fieldParentPtr("node", ancestor_node);
+                const ancestor_element: *Element = @fieldParentPtr("prototype", ancestor_node);
                 if (try self.matchesCompoundSelector(ancestor_element, compound)) {
                     return ancestor_element;
                 }
@@ -400,10 +400,10 @@ pub const Matcher = struct {
         compound: *const CompoundSelector,
     ) MatcherError!?*Element {
         // Previous sibling must match compound selector
-        const prev_node = element.node.previous_sibling orelse return null;
+        const prev_node = element.prototype.previous_sibling orelse return null;
         if (prev_node.node_type != .element) return null;
 
-        const prev_element: *Element = @fieldParentPtr("node", prev_node);
+        const prev_element: *Element = @fieldParentPtr("prototype", prev_node);
         if (try self.matchesCompoundSelector(prev_element, compound)) {
             return prev_element;
         }
@@ -417,10 +417,10 @@ pub const Matcher = struct {
         compound: *const CompoundSelector,
     ) MatcherError!?*Element {
         // Any previous sibling must match compound selector
-        var current = element.node.previous_sibling;
+        var current = element.prototype.previous_sibling;
         while (current) |sibling_node| {
             if (sibling_node.node_type == .element) {
-                const sibling_element: *Element = @fieldParentPtr("node", sibling_node);
+                const sibling_element: *Element = @fieldParentPtr("prototype", sibling_node);
                 if (try self.matchesCompoundSelector(sibling_element, compound)) {
                     return sibling_element;
                 }
@@ -529,10 +529,10 @@ pub const Matcher = struct {
     /// Match :has() pseudo-class (element has descendant matching selector)
     fn matchesHas(self: *const Matcher, element: *Element, selector_list: *const SelectorList) MatcherError!bool {
         // Check if any descendant matches selector list
-        var current = element.node.first_child;
+        var current = element.prototype.first_child;
         while (current) |child_node| {
             if (child_node.node_type == .element) {
-                const child_element: *Element = @fieldParentPtr("node", child_node);
+                const child_element: *Element = @fieldParentPtr("prototype", child_node);
                 // Check if child matches
                 if (try self.matches(child_element, selector_list)) {
                     return true;
@@ -648,31 +648,31 @@ fn matchAttributeDashMatch(value: []const u8, target: []const u8, case_sensitive
 
 /// Match :first-child
 fn matchesFirstChild(element: *Element) bool {
-    const parent = element.node.parent_node orelse return false;
-    return parent.first_child == &element.node;
+    const parent = element.prototype.parent_node orelse return false;
+    return parent.first_child == &element.prototype;
 }
 
 /// Match :last-child
 fn matchesLastChild(element: *Element) bool {
-    const parent = element.node.parent_node orelse return false;
-    return parent.last_child == &element.node;
+    const parent = element.prototype.parent_node orelse return false;
+    return parent.last_child == &element.prototype;
 }
 
 /// Match :only-child
 fn matchesOnlyChild(element: *Element) bool {
-    const parent = element.node.parent_node orelse return false;
+    const parent = element.prototype.parent_node orelse return false;
     // Only child if first and last child are same
-    return parent.first_child == &element.node and parent.last_child == &element.node;
+    return parent.first_child == &element.prototype and parent.last_child == &element.prototype;
 }
 
 /// Match :first-of-type
 fn matchesFirstOfType(element: *Element) bool {
     // Find first element sibling with same tag name
-    const parent = element.node.parent_node orelse return false;
+    const parent = element.prototype.parent_node orelse return false;
     var current = parent.first_child;
     while (current) |node| {
         if (node.node_type == .element) {
-            const elem: *Element = @fieldParentPtr("node", node);
+            const elem: *Element = @fieldParentPtr("prototype", node);
             if (std.mem.eql(u8, elem.tag_name, element.tag_name)) {
                 return elem == element;
             }
@@ -685,11 +685,11 @@ fn matchesFirstOfType(element: *Element) bool {
 /// Match :last-of-type
 fn matchesLastOfType(element: *Element) bool {
     // Find last element sibling with same tag name
-    const parent = element.node.parent_node orelse return false;
+    const parent = element.prototype.parent_node orelse return false;
     var current = parent.last_child;
     while (current) |node| {
         if (node.node_type == .element) {
-            const elem: *Element = @fieldParentPtr("node", node);
+            const elem: *Element = @fieldParentPtr("prototype", node);
             if (std.mem.eql(u8, elem.tag_name, element.tag_name)) {
                 return elem == element;
             }
@@ -702,12 +702,12 @@ fn matchesLastOfType(element: *Element) bool {
 /// Match :only-of-type
 fn matchesOnlyOfType(element: *Element) bool {
     // Count elements with same tag name
-    const parent = element.node.parent_node orelse return false;
+    const parent = element.prototype.parent_node orelse return false;
     var count: usize = 0;
     var current = parent.first_child;
     while (current) |node| {
         if (node.node_type == .element) {
-            const elem: *Element = @fieldParentPtr("node", node);
+            const elem: *Element = @fieldParentPtr("prototype", node);
             if (std.mem.eql(u8, elem.tag_name, element.tag_name)) {
                 count += 1;
                 if (count > 1) return false;
@@ -721,13 +721,13 @@ fn matchesOnlyOfType(element: *Element) bool {
 /// Match :empty
 fn matchesEmpty(element: *Element) bool {
     // Element is empty if it has no child nodes
-    return element.node.first_child == null;
+    return element.prototype.first_child == null;
 }
 
 /// Match :root
 fn matchesRoot(element: *Element) bool {
     // Root element has no parent or parent is document
-    const parent = element.node.parent_node orelse return true;
+    const parent = element.prototype.parent_node orelse return true;
     return parent.node_type == .document;
 }
 
@@ -757,11 +757,11 @@ fn matchesNthLastOfType(element: *Element, pattern: NthPattern) bool {
 
 /// Get element's index among all child elements (1-based)
 fn getChildIndex(element: *Element) ?usize {
-    const parent = element.node.parent_node orelse return null;
+    const parent = element.prototype.parent_node orelse return null;
     var index: usize = 1;
     var current = parent.first_child;
     while (current) |node| {
-        if (node == &element.node) return index;
+        if (node == &element.prototype) return index;
         if (node.node_type == .element) {
             index += 1;
         }
@@ -772,11 +772,11 @@ fn getChildIndex(element: *Element) ?usize {
 
 /// Get element's index from last among all child elements (1-based)
 fn getChildIndexFromLast(element: *Element) ?usize {
-    const parent = element.node.parent_node orelse return null;
+    const parent = element.prototype.parent_node orelse return null;
     var index: usize = 1;
     var current = parent.last_child;
     while (current) |node| {
-        if (node == &element.node) return index;
+        if (node == &element.prototype) return index;
         if (node.node_type == .element) {
             index += 1;
         }
@@ -787,13 +787,13 @@ fn getChildIndexFromLast(element: *Element) ?usize {
 
 /// Get element's index among siblings of same type (1-based)
 fn getChildIndexOfType(element: *Element) ?usize {
-    const parent = element.node.parent_node orelse return null;
+    const parent = element.prototype.parent_node orelse return null;
     var index: usize = 1;
     var current = parent.first_child;
     while (current) |node| {
-        if (node == &element.node) return index;
+        if (node == &element.prototype) return index;
         if (node.node_type == .element) {
-            const elem: *Element = @fieldParentPtr("node", node);
+            const elem: *Element = @fieldParentPtr("prototype", node);
             if (std.mem.eql(u8, elem.tag_name, element.tag_name)) {
                 index += 1;
             }
@@ -805,13 +805,13 @@ fn getChildIndexOfType(element: *Element) ?usize {
 
 /// Get element's index from last among siblings of same type (1-based)
 fn getChildIndexOfTypeFromLast(element: *Element) ?usize {
-    const parent = element.node.parent_node orelse return null;
+    const parent = element.prototype.parent_node orelse return null;
     var index: usize = 1;
     var current = parent.last_child;
     while (current) |node| {
-        if (node == &element.node) return index;
+        if (node == &element.prototype) return index;
         if (node.node_type == .element) {
-            const elem: *Element = @fieldParentPtr("node", node);
+            const elem: *Element = @fieldParentPtr("prototype", node);
             if (std.mem.eql(u8, elem.tag_name, element.tag_name)) {
                 index += 1;
             }
@@ -850,7 +850,7 @@ test "Matcher - type selector" {
     const allocator = testing.allocator;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     var tokenizer = Tokenizer.init(allocator, "div");
     var p = try Parser.init(allocator, &tokenizer);
@@ -867,7 +867,7 @@ test "Matcher - class selector" {
     const allocator = testing.allocator;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
     try elem.setAttribute("class", "container");
 
     var tokenizer = Tokenizer.init(allocator, ".container");
@@ -885,7 +885,7 @@ test "Matcher - compound selector" {
     const allocator = testing.allocator;
 
     const elem = try Element.create(allocator, "div");
-    defer elem.node.release();
+    defer elem.prototype.release();
     try elem.setAttribute("class", "container active");
     try elem.setAttribute("id", "main");
 
@@ -904,10 +904,10 @@ test "Matcher - child combinator" {
     const allocator = testing.allocator;
 
     const parent = try Element.create(allocator, "div");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const child = try Element.create(allocator, "p");
-    _ = try parent.node.appendChild(&child.node);
+    _ = try parent.prototype.appendChild(&child.prototype);
 
     var tokenizer = Tokenizer.init(allocator, "div > p");
     var p = try Parser.init(allocator, &tokenizer);
@@ -924,12 +924,12 @@ test "Matcher - :first-child" {
     const allocator = testing.allocator;
 
     const parent = try Element.create(allocator, "ul");
-    defer parent.node.release();
+    defer parent.prototype.release();
 
     const li1 = try Element.create(allocator, "li");
     const li2 = try Element.create(allocator, "li");
-    _ = try parent.node.appendChild(&li1.node);
-    _ = try parent.node.appendChild(&li2.node);
+    _ = try parent.prototype.appendChild(&li1.prototype);
+    _ = try parent.prototype.appendChild(&li2.prototype);
 
     var tokenizer = Tokenizer.init(allocator, "li:first-child");
     var p = try Parser.init(allocator, &tokenizer);

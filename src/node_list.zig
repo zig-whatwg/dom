@@ -25,14 +25,14 @@
 //! NodeList is a "live" collection - it automatically reflects DOM changes:
 //! ```zig
 //! const parent = try Element.create(allocator, "div");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
-//! const children = parent.node.childNodes();
+//! const children = parent.prototype.childNodes();
 //! try std.testing.expectEqual(@as(usize, 0), children.length());
 //!
 //! // Add child - list updates automatically
 //! const child = try Element.create(allocator, "span");
-//! _ = try parent.node.appendChild(&child.node);
+//! _ = try parent.prototype.appendChild(&child.prototype);
 //! try std.testing.expectEqual(@as(usize, 1), children.length()); // Now 1!
 //! ```
 //!
@@ -40,15 +40,15 @@
 //! Access nodes by index using item() or array-like notation:
 //! ```zig
 //! const parent = try Element.create(allocator, "ul");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
 //! // Add children
 //! for (0..3) |_| {
 //!     const li = try Element.create(allocator, "li");
-//!     _ = try parent.node.appendChild(&li.node);
+//!     _ = try parent.prototype.appendChild(&li.prototype);
 //! }
 //!
-//! const children = parent.node.childNodes();
+//! const children = parent.prototype.childNodes();
 //! const first = children.item(0); // First child
 //! const second = children.item(1); // Second child
 //! const none = children.item(99); // null (out of bounds)
@@ -57,7 +57,7 @@
 //! ### Iteration
 //! Iterate over all nodes in the list:
 //! ```zig
-//! const children = parent.node.childNodes();
+//! const children = parent.prototype.childNodes();
 //! for (0..children.length()) |i| {
 //!     if (children.item(i)) |node| {
 //!         // Process node
@@ -85,9 +85,9 @@
 //! NodeList is a stack-allocated value type (not heap-allocated):
 //! ```zig
 //! const parent = try Element.create(allocator, "div");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
-//! const children = parent.node.childNodes();
+//! const children = parent.prototype.childNodes();
 //! // No defer needed - NodeList is a plain struct value
 //!
 //! // NodeList doesn't own nodes - parent owns them
@@ -106,16 +106,16 @@
 //! const allocator = std.heap.page_allocator;
 //!
 //! const container = try Element.create(allocator, "div");
-//! defer container.node.release();
+//! defer container.prototype.release();
 //!
 //! // Add some children
 //! for (0..5) |i| {
 //!     const child = try Element.create(allocator, "span");
-//!     _ = try container.node.appendChild(&child.node);
+//!     _ = try container.prototype.appendChild(&child.prototype);
 //! }
 //!
 //! // Iterate via NodeList
-//! const children = container.node.childNodes();
+//! const children = container.prototype.childNodes();
 //! for (0..children.length()) |i| {
 //!     const child = children.item(i).?;
 //!     std.debug.print("Child {}: {s}\n", .{i, child.nodeName()});
@@ -125,25 +125,25 @@
 //! ### Live Collection Behavior
 //! ```zig
 //! const parent = try Element.create(allocator, "ul");
-//! defer parent.node.release();
+//! defer parent.prototype.release();
 //!
-//! const list = parent.node.childNodes();
+//! const list = parent.prototype.childNodes();
 //!
 //! // Initially empty
 //! try std.testing.expectEqual(@as(usize, 0), list.length());
 //!
 //! // Add child - list updates
 //! const li1 = try Element.create(allocator, "li");
-//! _ = try parent.node.appendChild(&li1.node);
+//! _ = try parent.prototype.appendChild(&li1.prototype);
 //! try std.testing.expectEqual(@as(usize, 1), list.length());
 //!
 //! // Add another - list updates again
 //! const li2 = try Element.create(allocator, "li");
-//! _ = try parent.node.appendChild(&li2.node);
+//! _ = try parent.prototype.appendChild(&li2.prototype);
 //! try std.testing.expectEqual(@as(usize, 2), list.length());
 //!
 //! // Remove child - list updates
-//! _ = try parent.node.removeChild(&li1.node);
+//! _ = try parent.prototype.removeChild(&li1.prototype);
 //! try std.testing.expectEqual(@as(usize, 1), list.length());
 //! ```
 //!

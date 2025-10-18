@@ -6,7 +6,7 @@
 //!
 //! ## Example
 //! ```zig
-//! var iter = ElementIterator.init(&root.node);
+//! var iter = ElementIterator.init(&root.prototype);
 //! while (iter.next()) |element| {
 //!     // Only element nodes, no text/comment nodes
 //!     if (element.hasClass("target")) {
@@ -57,7 +57,7 @@ pub const ElementIterator = struct {
 
             // Return only elements (skip text, comment, etc.)
             if (node.node_type == .element) {
-                return @fieldParentPtr("node", node);
+                return @fieldParentPtr("prototype", node);
             }
         }
 
@@ -82,21 +82,21 @@ test "ElementIterator - skips text nodes" {
     defer doc.release();
 
     const root = try doc.createElement("div");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Add mixed content
     const p1 = try doc.createElement("p");
-    _ = try root.node.appendChild(&p1.node);
+    _ = try root.prototype.appendChild(&p1.prototype);
 
     const text1 = try Text.create(allocator, "text");
     // Don't defer release - it's now owned by the tree
-    _ = try root.node.appendChild(&text1.node);
+    _ = try root.prototype.appendChild(&text1.prototype);
 
     const p2 = try doc.createElement("p");
-    _ = try root.node.appendChild(&p2.node);
+    _ = try root.prototype.appendChild(&p2.prototype);
 
     // Iterator should only yield p1 and p2
-    var iter = ElementIterator.init(&root.node);
+    var iter = ElementIterator.init(&root.prototype);
 
     const elem1 = iter.next();
     try testing.expect(elem1 != null);
@@ -117,7 +117,7 @@ test "ElementIterator - depth-first order" {
     defer doc.release();
 
     const root = try doc.createElement("div");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Create tree:
     //   root
@@ -125,16 +125,16 @@ test "ElementIterator - depth-first order" {
     //   │   └── b
     //   └── c
     const a = try doc.createElement("a");
-    _ = try root.node.appendChild(&a.node);
+    _ = try root.prototype.appendChild(&a.prototype);
 
     const b = try doc.createElement("b");
-    _ = try a.node.appendChild(&b.node);
+    _ = try a.prototype.appendChild(&b.prototype);
 
     const c = try doc.createElement("c");
-    _ = try root.node.appendChild(&c.node);
+    _ = try root.prototype.appendChild(&c.prototype);
 
     // Depth-first order: a, b, c
-    var iter = ElementIterator.init(&root.node);
+    var iter = ElementIterator.init(&root.prototype);
 
     try testing.expect(iter.next().? == a);
     try testing.expect(iter.next().? == b);
@@ -149,9 +149,9 @@ test "ElementIterator - empty root" {
     defer doc.release();
 
     const root = try doc.createElement("div");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
-    var iter = ElementIterator.init(&root.node);
+    var iter = ElementIterator.init(&root.prototype);
     try testing.expect(iter.next() == null);
 }
 
@@ -162,12 +162,12 @@ test "ElementIterator - reset" {
     defer doc.release();
 
     const root = try doc.createElement("div");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const p = try doc.createElement("p");
-    _ = try root.node.appendChild(&p.node);
+    _ = try root.prototype.appendChild(&p.prototype);
 
-    var iter = ElementIterator.init(&root.node);
+    var iter = ElementIterator.init(&root.prototype);
     try testing.expect(iter.next().? == p);
     try testing.expect(iter.next() == null);
 

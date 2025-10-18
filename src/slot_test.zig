@@ -15,7 +15,7 @@ test "Slottable - Element.assignedSlot initially null" {
     defer doc.release();
 
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Initially not assigned to any slot
     const slot = elem.assignedSlot();
@@ -29,7 +29,7 @@ test "Slottable - Text.assignedSlot initially null" {
     defer doc.release();
 
     const text = try doc.createTextNode("text");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Initially not assigned to any slot
     const slot = text.assignedSlot();
@@ -44,10 +44,10 @@ test "Slottable - Element manual slot assignment" {
 
     // Create a slot element (just an Element with tag name "slot")
     const slot = try doc.createElement("slot");
-    defer slot.node.release();
+    defer slot.prototype.release();
 
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Manually assign element to slot
     try elem.setAssignedSlot(slot);
@@ -65,10 +65,10 @@ test "Slottable - Text manual slot assignment" {
     defer doc.release();
 
     const slot = try doc.createElement("slot");
-    defer slot.node.release();
+    defer slot.prototype.release();
 
     const text = try doc.createTextNode("text");
-    defer text.node.release();
+    defer text.prototype.release();
 
     // Manually assign text to slot
     try text.setAssignedSlot(slot);
@@ -86,10 +86,10 @@ test "Slottable - clear assignment" {
     defer doc.release();
 
     const slot = try doc.createElement("slot");
-    defer slot.node.release();
+    defer slot.prototype.release();
 
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Assign to slot
     try elem.setAssignedSlot(slot);
@@ -108,7 +108,7 @@ test "Slottable - slot with name attribute" {
 
     // Named slot
     const slot = try doc.createElement("slot");
-    defer slot.node.release();
+    defer slot.prototype.release();
     try slot.setAttribute("name", "header");
 
     try std.testing.expectEqualStrings("slot", slot.tag_name);
@@ -125,7 +125,7 @@ test "Slottable - default slot (no name)" {
 
     // Default slot (no name attribute)
     const slot = try doc.createElement("slot");
-    defer slot.node.release();
+    defer slot.prototype.release();
 
     try std.testing.expectEqualStrings("slot", slot.tag_name);
     const name = slot.getAttribute("name");
@@ -139,7 +139,7 @@ test "Slottable - element with slot attribute" {
     defer doc.release();
 
     const elem = try doc.createElement("element");
-    defer elem.node.release();
+    defer elem.prototype.release();
 
     // Set slot attribute (indicates which slot this element should go to)
     try elem.setAttribute("slot", "header");
@@ -156,7 +156,7 @@ test "Slottable - slot in shadow tree" {
     defer doc.release();
 
     const host = try doc.createElement("host");
-    defer host.node.release();
+    defer host.prototype.release();
 
     const shadow = try host.attachShadow(.{
         .mode = .open,
@@ -166,9 +166,9 @@ test "Slottable - slot in shadow tree" {
     // Add slot to shadow tree
     const slot = try doc.createElement("slot");
     try slot.setAttribute("name", "content");
-    _ = try shadow.node.appendChild(&slot.node);
+    _ = try shadow.prototype.appendChild(&slot.prototype);
 
-    try std.testing.expect(slot.node.parent_node == &shadow.node);
+    try std.testing.expect(slot.prototype.parent_node == &shadow.prototype);
     try std.testing.expectEqualStrings("content", slot.getAttribute("name").?);
 }
 
@@ -179,7 +179,7 @@ test "Slottable - light DOM content with slot attribute" {
     defer doc.release();
 
     const host = try doc.createElement("host");
-    defer host.node.release();
+    defer host.prototype.release();
 
     const shadow = try host.attachShadow(.{
         .mode = .open,
@@ -189,16 +189,16 @@ test "Slottable - light DOM content with slot attribute" {
     // Slot in shadow tree
     const slot = try doc.createElement("slot");
     try slot.setAttribute("name", "header");
-    _ = try shadow.node.appendChild(&slot.node);
+    _ = try shadow.prototype.appendChild(&slot.prototype);
 
     // Content in light DOM
     const content = try doc.createElement("content");
     try content.setAttribute("slot", "header");
-    _ = try host.node.appendChild(&content.node);
+    _ = try host.prototype.appendChild(&content.prototype);
 
     // Verify structure
-    try std.testing.expect(slot.node.parent_node == &shadow.node);
-    try std.testing.expect(content.node.parent_node == &host.node);
+    try std.testing.expect(slot.prototype.parent_node == &shadow.prototype);
+    try std.testing.expect(content.prototype.parent_node == &host.prototype);
     try std.testing.expectEqualStrings("header", slot.getAttribute("name").?);
     try std.testing.expectEqualStrings("header", content.getAttribute("slot").?);
 }
@@ -212,10 +212,10 @@ test "Slottable - memory leak test" {
         defer doc.release();
 
         const slot = try doc.createElement("slot");
-        defer slot.node.release();
+        defer slot.prototype.release();
 
         const elem = try doc.createElement("element");
-        defer elem.node.release();
+        defer elem.prototype.release();
 
         try elem.setAssignedSlot(slot);
     }
@@ -226,10 +226,10 @@ test "Slottable - memory leak test" {
         defer doc.release();
 
         const slot = try doc.createElement("slot");
-        defer slot.node.release();
+        defer slot.prototype.release();
 
         const text = try doc.createTextNode("text");
-        defer text.node.release();
+        defer text.prototype.release();
 
         try text.setAssignedSlot(slot);
     }
@@ -240,15 +240,15 @@ test "Slottable - memory leak test" {
         defer doc.release();
 
         const host = try doc.createElement("host");
-        defer host.node.release();
+        defer host.prototype.release();
 
         const shadow = try host.attachShadow(.{ .mode = .open, .delegates_focus = false });
 
         const slot = try doc.createElement("slot");
-        _ = try shadow.node.appendChild(&slot.node);
+        _ = try shadow.prototype.appendChild(&slot.prototype);
 
         const content = try doc.createElement("content");
-        _ = try host.node.appendChild(&content.node);
+        _ = try host.prototype.appendChild(&content.prototype);
 
         try content.setAssignedSlot(slot);
     }

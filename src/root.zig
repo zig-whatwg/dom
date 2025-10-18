@@ -56,17 +56,17 @@
 //!
 //!     // Build DOM tree
 //!     const html = try doc.createElement("html");
-//!     _ = try doc.node.appendChild(&html.node);
+//!     _ = try doc.prototype.appendChild(&html.prototype);
 //!
 //!     const body = try doc.createElement("body");
-//!     _ = try html.node.appendChild(&body.node);
+//!     _ = try html.prototype.appendChild(&body.prototype);
 //!
 //!     const div = try doc.createElement("div");
 //!     try div.setAttribute("class", "container");
-//!     _ = try body.node.appendChild(&div.node);
+//!     _ = try body.prototype.appendChild(&div.prototype);
 //!
 //!     const text = try doc.createTextNode("Hello, World!");
-//!     _ = try div.node.appendChild(&text.node);
+//!     _ = try div.prototype.appendChild(&text.prototype);
 //! }
 //! ```
 //!
@@ -79,10 +79,10 @@
 //! }
 //!
 //! const button = try doc.createElement("button");
-//! try button.node.addEventListener("click", handleClick, null, .{});
+//! try button.prototype.addEventListener("click", handleClick, null, .{});
 //!
 //! var event = dom.Event.init("click", .{ .bubbles = true, .cancelable = true, .composed = false });
-//! _ = try button.node.dispatchEvent(&event);
+//! _ = try button.prototype.dispatchEvent(&event);
 //! ```
 //!
 //! ### Cancellation

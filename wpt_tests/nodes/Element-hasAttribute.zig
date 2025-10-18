@@ -12,7 +12,7 @@ test "hasAttribute returns false for non-existent attribute" {
     defer doc.release();
 
     const el = try doc.createElement("p");
-    defer el.node.release(); // Must release orphaned nodes
+    defer el.prototype.release(); // Must release orphaned nodes
     try std.testing.expect(!el.hasAttribute("nonexistent"));
 }
 
@@ -22,7 +22,7 @@ test "hasAttribute returns true for existing attribute" {
     defer doc.release();
 
     const el = try doc.createElement("p");
-    defer el.node.release(); // Must release orphaned nodes
+    defer el.prototype.release(); // Must release orphaned nodes
     try el.setAttribute("x", "first");
 
     try std.testing.expect(el.hasAttribute("x"));
@@ -34,7 +34,7 @@ test "hasAttribute after setAttribute" {
     defer doc.release();
 
     const el = try doc.createElement("span");
-    defer el.node.release(); // Must release orphaned nodes
+    defer el.prototype.release(); // Must release orphaned nodes
     try el.setAttribute("data-e2", "2");
     try el.setAttribute("data-F2", "3");
     try el.setAttribute("id", "t");
@@ -50,7 +50,7 @@ test "hasAttribute returns false after removeAttribute" {
     defer doc.release();
 
     const el = try doc.createElement("p");
-    defer el.node.release(); // Must release orphaned nodes
+    defer el.prototype.release(); // Must release orphaned nodes
     try el.setAttribute("test", "value");
     try std.testing.expect(el.hasAttribute("test"));
 
