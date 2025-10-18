@@ -142,6 +142,22 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
 
+    // WPT (Web Platform Tests) - converted from /Users/bcardarella/projects/wpt
+    const wpt_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("wpt_tests/wpt_tests.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "dom", .module = mod },
+            },
+        }),
+    });
+
+    const run_wpt_tests = b.addRunArtifact(wpt_tests);
+    const wpt_test_step = b.step("test-wpt", "Run Web Platform Tests");
+    wpt_test_step.dependOn(&run_wpt_tests.step);
+
     // Just like flags, top level steps are also listed in the `--help` menu.
     //
     // The Zig build system is entirely implemented in userland, which means
