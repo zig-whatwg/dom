@@ -72,8 +72,8 @@ test "AbortSignal.throwIfAborted - does not throw when not aborted" {
     try signal.throwIfAborted(); // Should not throw
 }
 
-test "AbortSignal - size is exactly 48 bytes" {
-    try std.testing.expectEqual(@as(usize, 48), @sizeOf(AbortSignal));
+test "AbortSignal - size is exactly 56 bytes (includes EventTarget)" {
+    try std.testing.expectEqual(@as(usize, 56), @sizeOf(AbortSignal));
 }
 
 test "AbortSignal - no memory leaks on init/release" {

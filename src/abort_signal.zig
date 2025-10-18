@@ -310,6 +310,8 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const EventTarget = @import("event_target.zig").EventTarget;
+const EventTargetVTable = @import("event_target.zig").EventTargetVTable;
 const EventTargetMixin = @import("event_target.zig").EventTargetMixin;
 const SignalRareData = @import("abort_signal_rare_data.zig").SignalRareData;
 const Event = @import("event.zig").Event;
@@ -445,7 +447,41 @@ pub const AbortAlgorithm = struct {
 /// - Interface: https://dom.spec.whatwg.org/#interface-abortsignal
 /// - Algorithms: https://dom.spec.whatwg.org/#abortsignal-signal-abort
 /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl
+
+// === EventTarget VTable Implementation for AbortSignal ===
+
+/// EventTarget deinit implementation for AbortSignal
+fn eventtargetDeinitImpl(et: *EventTarget) void {
+    const signal: *AbortSignal = @fieldParentPtr("prototype", et);
+    signal.deinit();
+}
+
+/// EventTarget getAllocator implementation for AbortSignal
+fn eventtargetGetAllocatorImpl(et: *const EventTarget) Allocator {
+    const signal: *const AbortSignal = @fieldParentPtr("prototype", et);
+    return signal.allocator;
+}
+
+/// EventTarget ensureRareData implementation for AbortSignal
+fn eventtargetEnsureRareDataImpl(et: *EventTarget) anyerror!*anyopaque {
+    const signal: *AbortSignal = @fieldParentPtr("prototype", et);
+    const rare = try signal.ensureRareData();
+    return @ptrCast(rare);
+}
+
+/// EventTarget vtable for AbortSignal type
+pub const eventtarget_vtable = EventTargetVTable{
+    .deinit = eventtargetDeinitImpl,
+    .get_allocator = eventtargetGetAllocatorImpl,
+    .ensure_rare_data = eventtargetEnsureRareDataImpl,
+};
+
 pub const AbortSignal = struct {
+    /// EventTarget prototype (MUST be first field for proper inheritance)
+    /// Per WHATWG: interface AbortSignal : EventTarget
+    /// 8 bytes (vtable pointer)
+    prototype: EventTarget,
+
     /// Memory allocator (8 bytes)
     allocator: Allocator,
 
@@ -503,6 +539,9 @@ pub const AbortSignal = struct {
     pub fn init(allocator: Allocator) !*AbortSignal {
         const signal = try allocator.create(AbortSignal);
         signal.* = .{
+            .prototype = .{
+                .vtable = &eventtarget_vtable,
+            },
             .allocator = allocator,
             .rare_data = null,
             .ref_count = 1,
@@ -1380,7 +1419,7 @@ pub const AbortSignal = struct {
 
 // Compile-time size verification
 comptime {
-    const expected_size = 48;
+    const expected_size = 56; // 8 bytes added for EventTarget prototype
     const actual_size = @sizeOf(AbortSignal);
     if (actual_size != expected_size) {
         @compileError(std.fmt.comptimePrint(
