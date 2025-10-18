@@ -1149,6 +1149,129 @@ pub const Element = struct {
         }
     }
 
+    /// Returns all descendant elements with the specified tag name.
+    ///
+    /// Implements WHATWG DOM Element.getElementsByTagName() per §4.9.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.9 Interface Element**: https://dom.spec.whatwg.org/#dom-element-getelementsbytagname
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// HTMLCollection getElementsByTagName(DOMString qualifiedName);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Element.getElementsByTagName(): https://developer.mozilla.org/en-US/docs/Web/API/Element/getElementsByTagName
+    ///
+    /// ## Algorithm (WHATWG DOM §4.9)
+    /// Return a collection of all descendant elements with the given tag name.
+    ///
+    /// ## Performance
+    /// **O(n)** where n = number of descendant nodes.
+    /// Traverses subtree to find matching elements.
+    ///
+    /// ## Parameters
+    /// - `allocator`: Allocator for result array
+    /// - `tag_name`: Tag name to match (e.g., "container", "widget")
+    ///
+    /// ## Returns
+    /// Slice of elements with matching tag name in tree order.
+    /// Caller owns the slice and must free it.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const container = try doc.createElement("container");
+    /// const widget1 = try doc.createElement("widget");
+    /// _ = try container.node.appendChild(&widget1.node);
+    /// const widget2 = try doc.createElement("widget");
+    /// _ = try container.node.appendChild(&widget2.node);
+    ///
+    /// const widgets = try container.getElementsByTagName(allocator, "widget");
+    /// defer allocator.free(widgets);
+    /// // widgets.len == 2
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// const widgets = element.getElementsByTagName('widget');
+    /// // Returns: HTMLCollection
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-element-getelementsbytagname
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:Element
+    ///
+    /// ## Note
+    /// This returns a snapshot (not live). The slice becomes stale after DOM mutations.
+    /// Caller must free the returned slice.
+    pub fn getElementsByTagName(self: *Element, allocator: Allocator, tag_name: []const u8) ![]const *Element {
+        return try self.queryAllByTagName(allocator, tag_name);
+    }
+
+    /// Returns all descendant elements with the specified class name.
+    ///
+    /// Implements WHATWG DOM Element.getElementsByClassName() per §4.9.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.9 Interface Element**: https://dom.spec.whatwg.org/#dom-element-getelementsbyclassname
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// HTMLCollection getElementsByClassName(DOMString classNames);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Element.getElementsByClassName(): https://developer.mozilla.org/en-US/docs/Web/API/Element/getElementsByClassName
+    ///
+    /// ## Algorithm (WHATWG DOM §4.9)
+    /// Return a collection of all descendant elements with the given class name.
+    ///
+    /// ## Performance
+    /// **O(n)** where n = number of descendant nodes.
+    /// Traverses subtree with bloom filter pre-filtering for fast rejection.
+    ///
+    /// ## Parameters
+    /// - `allocator`: Allocator for result array
+    /// - `class_name`: Single class name to match (without "." prefix)
+    ///
+    /// ## Returns
+    /// Slice of elements with matching class name in tree order.
+    /// Caller owns the slice and must free it.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const container = try doc.createElement("container");
+    /// const widget1 = try doc.createElement("widget");
+    /// try widget1.setAttribute("class", "primary active");
+    /// _ = try container.node.appendChild(&widget1.node);
+    /// const widget2 = try doc.createElement("widget");
+    /// try widget2.setAttribute("class", "primary");
+    /// _ = try container.node.appendChild(&widget2.node);
+    ///
+    /// const primaries = try container.getElementsByClassName(allocator, "primary");
+    /// defer allocator.free(primaries);
+    /// // primaries.len == 2
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// const primaries = element.getElementsByClassName('primary');
+    /// // Returns: HTMLCollection
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-element-getelementsbyclassname
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:Element
+    ///
+    /// ## Note
+    /// This returns a snapshot (not live). The slice becomes stale after DOM mutations.
+    /// Caller must free the returned slice.
+    /// Only supports single class name lookup (not space-separated list yet).
+    pub fn getElementsByClassName(self: *Element, allocator: Allocator, class_name: []const u8) ![]const *Element {
+        return try self.queryAllByClass(allocator, class_name);
+    }
+
     // ========================================================================
     // Fast Path Query Methods (Phase 1 Optimizations)
     // ========================================================================
@@ -3692,4 +3815,145 @@ test "Element - children is live collection" {
     child1.node.release(); // Manual release for removed node
     try std.testing.expectEqual(@as(usize, 1), collection.length());
     try std.testing.expectEqualStrings("child2", collection.item(0).?.tag_name);
+}
+
+test "Element - getElementsByTagName basic" {
+    const allocator = std.testing.allocator;
+
+    const root = try Element.create(allocator, "root");
+    defer root.node.release();
+
+    const widget1 = try Element.create(allocator, "widget");
+    _ = try root.node.appendChild(&widget1.node);
+
+    const widget2 = try Element.create(allocator, "widget");
+    _ = try root.node.appendChild(&widget2.node);
+
+    const container = try Element.create(allocator, "container");
+    _ = try root.node.appendChild(&container.node);
+
+    // Get all widgets
+    const widgets = try root.getElementsByTagName(allocator, "widget");
+    defer allocator.free(widgets);
+    try std.testing.expectEqual(@as(usize, 2), widgets.len);
+    try std.testing.expect(widgets[0] == widget1);
+    try std.testing.expect(widgets[1] == widget2);
+
+    // Get all containers
+    const containers = try root.getElementsByTagName(allocator, "container");
+    defer allocator.free(containers);
+    try std.testing.expectEqual(@as(usize, 1), containers.len);
+    try std.testing.expect(containers[0] == container);
+
+    // Not found
+    const panels = try root.getElementsByTagName(allocator, "panel");
+    defer allocator.free(panels);
+    try std.testing.expectEqual(@as(usize, 0), panels.len);
+}
+
+test "Element - getElementsByTagName nested" {
+    const allocator = std.testing.allocator;
+
+    const root = try Element.create(allocator, "root");
+    defer root.node.release();
+
+    const container1 = try Element.create(allocator, "container");
+    _ = try root.node.appendChild(&container1.node);
+
+    const widget1 = try Element.create(allocator, "widget");
+    _ = try container1.node.appendChild(&widget1.node);
+
+    const container2 = try Element.create(allocator, "container");
+    _ = try root.node.appendChild(&container2.node);
+
+    const widget2 = try Element.create(allocator, "widget");
+    _ = try container2.node.appendChild(&widget2.node);
+
+    // Get all widgets from root
+    const all_widgets = try root.getElementsByTagName(allocator, "widget");
+    defer allocator.free(all_widgets);
+    try std.testing.expectEqual(@as(usize, 2), all_widgets.len);
+
+    // Get widgets from first container only
+    const container1_widgets = try container1.getElementsByTagName(allocator, "widget");
+    defer allocator.free(container1_widgets);
+    try std.testing.expectEqual(@as(usize, 1), container1_widgets.len);
+    try std.testing.expect(container1_widgets[0] == widget1);
+}
+
+test "Element - getElementsByClassName basic" {
+    const allocator = std.testing.allocator;
+
+    const root = try Element.create(allocator, "root");
+    defer root.node.release();
+
+    const widget1 = try Element.create(allocator, "widget");
+    try widget1.setAttribute("class", "primary active");
+    _ = try root.node.appendChild(&widget1.node);
+
+    const widget2 = try Element.create(allocator, "widget");
+    try widget2.setAttribute("class", "primary");
+    _ = try root.node.appendChild(&widget2.node);
+
+    const container = try Element.create(allocator, "container");
+    try container.setAttribute("class", "secondary");
+    _ = try root.node.appendChild(&container.node);
+
+    // Get all "primary" elements
+    const primaries = try root.getElementsByClassName(allocator, "primary");
+    defer allocator.free(primaries);
+    try std.testing.expectEqual(@as(usize, 2), primaries.len);
+    try std.testing.expect(primaries[0] == widget1);
+    try std.testing.expect(primaries[1] == widget2);
+
+    // Get all "active" elements
+    const actives = try root.getElementsByClassName(allocator, "active");
+    defer allocator.free(actives);
+    try std.testing.expectEqual(@as(usize, 1), actives.len);
+    try std.testing.expect(actives[0] == widget1);
+
+    // Get all "secondary" elements
+    const secondaries = try root.getElementsByClassName(allocator, "secondary");
+    defer allocator.free(secondaries);
+    try std.testing.expectEqual(@as(usize, 1), secondaries.len);
+    try std.testing.expect(secondaries[0] == container);
+
+    // Not found
+    const notfound = try root.getElementsByClassName(allocator, "notfound");
+    defer allocator.free(notfound);
+    try std.testing.expectEqual(@as(usize, 0), notfound.len);
+}
+
+test "Element - getElementsByClassName nested" {
+    const allocator = std.testing.allocator;
+
+    const root = try Element.create(allocator, "root");
+    defer root.node.release();
+
+    const container1 = try Element.create(allocator, "container");
+    try container1.setAttribute("class", "group");
+    _ = try root.node.appendChild(&container1.node);
+
+    const widget1 = try Element.create(allocator, "widget");
+    try widget1.setAttribute("class", "item");
+    _ = try container1.node.appendChild(&widget1.node);
+
+    const container2 = try Element.create(allocator, "container");
+    try container2.setAttribute("class", "group");
+    _ = try root.node.appendChild(&container2.node);
+
+    const widget2 = try Element.create(allocator, "widget");
+    try widget2.setAttribute("class", "item");
+    _ = try container2.node.appendChild(&widget2.node);
+
+    // Get all "item" elements from root
+    const all_items = try root.getElementsByClassName(allocator, "item");
+    defer allocator.free(all_items);
+    try std.testing.expectEqual(@as(usize, 2), all_items.len);
+
+    // Get "item" elements from first container only
+    const container1_items = try container1.getElementsByClassName(allocator, "item");
+    defer allocator.free(container1_items);
+    try std.testing.expectEqual(@as(usize, 1), container1_items.len);
+    try std.testing.expect(container1_items[0] == widget1);
 }
