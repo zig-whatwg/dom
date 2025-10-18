@@ -576,6 +576,193 @@ pub const Comment = struct {
         return null;
     }
 
+    // ========================================================================
+    // ChildNode Mixin (WHATWG DOM §4.2.8)
+    // ========================================================================
+
+    /// NodeOrString union for ChildNode variadic methods.
+    ///
+    /// Represents the WebIDL `(Node or DOMString)` union type.
+    pub const NodeOrString = union(enum) {
+        node: *Node,
+        string: []const u8,
+    };
+
+    /// Removes this comment node from its parent.
+    ///
+    /// Implements WHATWG DOM ChildNode.remove() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined remove();
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - remove(): https://developer.mozilla.org/en-US/docs/Web/API/CharacterData/remove
+    ///
+    /// ## Algorithm (from spec §4.2.8)
+    /// If this's parent is null, return. Otherwise, remove this from its parent.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-remove
+    /// - WebIDL: dom.idl:148
+    pub fn remove(self: *Comment) !void {
+        if (self.node.parent_node) |parent| {
+            _ = try parent.removeChild(&self.node);
+        }
+    }
+
+    /// Inserts nodes before this comment node.
+    ///
+    /// Implements WHATWG DOM ChildNode.before() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined before((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - before(): https://developer.mozilla.org/en-US/docs/Web/API/CharacterData/before
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-before
+    /// - WebIDL: dom.idl:145
+    pub fn before(self: *Comment, nodes: []const NodeOrString) !void {
+        const parent = self.node.parent_node orelse return;
+
+        const result = try convertNodesToNode(&self.node, nodes);
+        if (result == null) return;
+
+        const node_to_insert = result.?.node;
+        const should_release = result.?.should_release_after_insert;
+
+        const returned_node = try parent.insertBefore(node_to_insert, &self.node);
+
+        if (should_release) {
+            returned_node.release();
+        }
+    }
+
+    /// Inserts nodes after this comment node.
+    ///
+    /// Implements WHATWG DOM ChildNode.after() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined after((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - after(): https://developer.mozilla.org/en-US/docs/Web/API/CharacterData/after
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-after
+    /// - WebIDL: dom.idl:146
+    pub fn after(self: *Comment, nodes: []const NodeOrString) !void {
+        const parent = self.node.parent_node orelse return;
+
+        const result = try convertNodesToNode(&self.node, nodes);
+        if (result == null) return;
+
+        const node_to_insert = result.?.node;
+        const should_release = result.?.should_release_after_insert;
+
+        const returned_node = try parent.insertBefore(node_to_insert, self.node.next_sibling);
+
+        if (should_release) {
+            returned_node.release();
+        }
+    }
+
+    /// Replaces this comment node with other nodes.
+    ///
+    /// Implements WHATWG DOM ChildNode.replaceWith() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined replaceWith((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - replaceWith(): https://developer.mozilla.org/en-US/docs/Web/API/CharacterData/replaceWith
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-replacewith
+    /// - WebIDL: dom.idl:147
+    pub fn replaceWith(self: *Comment, nodes: []const NodeOrString) !void {
+        const parent = self.node.parent_node orelse return;
+
+        const result = try convertNodesToNode(&self.node, nodes);
+
+        if (result) |r| {
+            _ = try parent.replaceChild(r.node, &self.node);
+            if (r.should_release_after_insert) {
+                r.node.release();
+            }
+        } else {
+            _ = try parent.removeChild(&self.node);
+        }
+    }
+
+    /// Result of converting nodes/strings
+    const ConvertResult = struct {
+        node: *Node,
+        should_release_after_insert: bool,
+    };
+
+    /// Helper: Convert slice of nodes/strings into a single node.
+    fn convertNodesToNode(parent: *Node, items: []const NodeOrString) !?ConvertResult {
+        if (items.len == 0) return null;
+
+        const owner_doc = parent.owner_document orelse {
+            return error.InvalidStateError;
+        };
+
+        const Document = @import("document.zig").Document;
+        if (owner_doc.node_type != .document) {
+            return error.InvalidStateError;
+        }
+        const doc: *Document = @fieldParentPtr("node", owner_doc);
+
+        if (items.len == 1) {
+            switch (items[0]) {
+                .node => |n| {
+                    return ConvertResult{
+                        .node = n,
+                        .should_release_after_insert = false,
+                    };
+                },
+                .string => |s| {
+                    const text = try doc.createTextNode(s);
+                    return ConvertResult{
+                        .node = &text.node,
+                        .should_release_after_insert = false,
+                    };
+                },
+            }
+        }
+
+        const fragment = try doc.createDocumentFragment();
+        errdefer fragment.node.release();
+
+        for (items) |item| {
+            switch (item) {
+                .node => |n| {
+                    _ = try fragment.node.appendChild(n);
+                },
+                .string => |s| {
+                    const text = try doc.createTextNode(s);
+                    _ = try fragment.node.appendChild(&text.node);
+                },
+            }
+        }
+
+        return ConvertResult{
+            .node = &fragment.node,
+            .should_release_after_insert = true,
+        };
+    }
+
     // === Private vtable implementations ===
 
     /// Vtable implementation: adopting steps (no-op for Comment)

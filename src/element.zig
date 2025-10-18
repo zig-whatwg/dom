@@ -2168,6 +2168,217 @@ pub const Element = struct {
         return null;
     }
 
+    // ========================================================================
+    // ChildNode Mixin (WHATWG DOM §4.2.8)
+    // ========================================================================
+
+    /// Removes this element from its parent.
+    ///
+    /// Implements WHATWG DOM ChildNode.remove() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined remove();
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - remove(): https://developer.mozilla.org/en-US/docs/Web/API/Element/remove
+    ///
+    /// ## Algorithm (from spec §4.2.8)
+    /// If this's parent is null, return. Otherwise, remove this from its parent.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-remove
+    /// - WebIDL: dom.idl:148
+    ///
+    /// ## Errors
+    /// - No errors (no-op if no parent)
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const child = try doc.createElement("child");
+    /// _ = try parent.node.appendChild(&child.node);
+    ///
+    /// // Remove child from parent
+    /// try child.remove();
+    /// try std.testing.expect(parent.node.first_child == null);
+    /// ```
+    pub fn remove(self: *Element) !void {
+        if (self.node.parent_node) |parent| {
+            _ = try parent.removeChild(&self.node);
+        }
+    }
+
+    /// Inserts nodes before this element.
+    ///
+    /// Implements WHATWG DOM ChildNode.before() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined before((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - before(): https://developer.mozilla.org/en-US/docs/Web/API/Element/before
+    ///
+    /// ## Algorithm (from spec §4.2.8)
+    /// 1. Let parent be this's parent
+    /// 2. If parent is null, return
+    /// 3. Let viablePreviousSibling be this's first preceding sibling not in nodes
+    /// 4. Let node be the result of converting nodes into a node
+    /// 5. Pre-insert node into parent before this
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-before
+    /// - WebIDL: dom.idl:145
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to insert before this element
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate
+    /// - `error.HierarchyRequestError`: Invalid tree structure
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const target = try doc.createElement("target");
+    /// _ = try parent.node.appendChild(&target.node);
+    ///
+    /// const new_node = try doc.createElement("new");
+    /// try target.before(&[_]NodeOrString{.{ .node = &new_node.node }});
+    /// // Order: new, target
+    /// ```
+    pub fn before(self: *Element, nodes: []const NodeOrString) !void {
+        const parent = self.node.parent_node orelse return;
+
+        const result = try convertNodesToNode(&self.node, nodes);
+        if (result == null) return;
+
+        const node_to_insert = result.?.node;
+        const should_release = result.?.should_release_after_insert;
+
+        const returned_node = try parent.insertBefore(node_to_insert, &self.node);
+
+        if (should_release) {
+            returned_node.release();
+        }
+    }
+
+    /// Inserts nodes after this element.
+    ///
+    /// Implements WHATWG DOM ChildNode.after() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined after((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - after(): https://developer.mozilla.org/en-US/docs/Web/API/Element/after
+    ///
+    /// ## Algorithm (from spec §4.2.8)
+    /// 1. Let parent be this's parent
+    /// 2. If parent is null, return
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes
+    /// 4. Let node be the result of converting nodes into a node
+    /// 5. Pre-insert node into parent before viableNextSibling
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-after
+    /// - WebIDL: dom.idl:146
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to insert after this element
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate
+    /// - `error.HierarchyRequestError`: Invalid tree structure
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const target = try doc.createElement("target");
+    /// _ = try parent.node.appendChild(&target.node);
+    ///
+    /// const new_node = try doc.createElement("new");
+    /// try target.after(&[_]NodeOrString{.{ .node = &new_node.node }});
+    /// // Order: target, new
+    /// ```
+    pub fn after(self: *Element, nodes: []const NodeOrString) !void {
+        const parent = self.node.parent_node orelse return;
+
+        const result = try convertNodesToNode(&self.node, nodes);
+        if (result == null) return;
+
+        const node_to_insert = result.?.node;
+        const should_release = result.?.should_release_after_insert;
+
+        const returned_node = try parent.insertBefore(node_to_insert, self.node.next_sibling);
+
+        if (should_release) {
+            returned_node.release();
+        }
+    }
+
+    /// Replaces this element with other nodes.
+    ///
+    /// Implements WHATWG DOM ChildNode.replaceWith() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined replaceWith((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - replaceWith(): https://developer.mozilla.org/en-US/docs/Web/API/Element/replaceWith
+    ///
+    /// ## Algorithm (from spec §4.2.8)
+    /// 1. Let parent be this's parent
+    /// 2. If parent is null, return
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes
+    /// 4. Let node be the result of converting nodes into a node
+    /// 5. If this's parent is parent, replace this with node within parent
+    /// 6. Otherwise, pre-insert node into parent before viableNextSibling
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-replacewith
+    /// - WebIDL: dom.idl:147
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to replace this element with
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate
+    /// - `error.HierarchyRequestError`: Invalid tree structure
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const old = try doc.createElement("old");
+    /// _ = try parent.node.appendChild(&old.node);
+    ///
+    /// const new_node = try doc.createElement("new");
+    /// try old.replaceWith(&[_]NodeOrString{.{ .node = &new_node.node }});
+    /// // parent now contains: new (old is removed)
+    /// ```
+    pub fn replaceWith(self: *Element, nodes: []const NodeOrString) !void {
+        const parent = self.node.parent_node orelse return;
+
+        const result = try convertNodesToNode(&self.node, nodes);
+
+        if (result) |r| {
+            _ = try parent.replaceChild(r.node, &self.node);
+            if (r.should_release_after_insert) {
+                r.node.release();
+            }
+        } else {
+            // Empty nodes array - just remove self
+            _ = try parent.removeChild(&self.node);
+        }
+    }
+
     // === Private implementation ===
 
     /// Updates the bloom filter from a class attribute value.

@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Phase 3 Complete: ChildNode Mixin** ✅
+  - Implemented node manipulation methods for Element, Text, and Comment
+  - **remove()** - Removes node from its parent
+    - WebIDL: `[CEReactions, Unscopable] undefined remove();`
+    - Spec: https://dom.spec.whatwg.org/#dom-childnode-remove
+    - No-op if node has no parent (safe to call anytime)
+    - Available on Element, Text, Comment
+  - **before()** - Inserts nodes/strings before this node
+    - WebIDL: `[CEReactions, Unscopable] undefined before((Node or DOMString)... nodes);`
+    - Spec: https://dom.spec.whatwg.org/#dom-childnode-before
+    - Requires parent (no-op if orphaned)
+    - Accepts variadic Node or DOMString arguments
+    - Available on Element, Text, Comment
+  - **after()** - Inserts nodes/strings after this node
+    - WebIDL: `[CEReactions, Unscopable] undefined after((Node or DOMString)... nodes);`
+    - Spec: https://dom.spec.whatwg.org/#dom-childnode-after
+    - Requires parent (no-op if orphaned)
+    - Accepts variadic Node or DOMString arguments
+    - Available on Element, Text, Comment
+  - **replaceWith()** - Replaces this node with other nodes/strings
+    - WebIDL: `[CEReactions, Unscopable] undefined replaceWith((Node or DOMString)... nodes);`
+    - Spec: https://dom.spec.whatwg.org/#dom-childnode-replacewith
+    - Requires parent (no-op if orphaned)
+    - Empty array removes node without replacement
+    - Available on Element, Text, Comment
+  - **Type Safety**: Methods only on types that can be children (not Document)
+  - **WebIDL Compliance**: `Element includes ChildNode` ✓
+  - **WebIDL Compliance**: `CharacterData includes ChildNode` ✓ (implemented on Text/Comment)
+  - **WebIDL Compliance**: `DocumentType includes ChildNode` - Not yet (DocumentType not implemented)
+  - **Test Count**: 407/407 tests passing, 0 leaks ✅
+  - **Spec Reference**: https://dom.spec.whatwg.org/#childnode (lines 144-152 in dom.idl)
+
 - **Phase 2 Complete: NonDocumentTypeChildNode Mixin** ✅
   - Implemented element sibling navigation for Element, Text, and Comment
   - **previousElementSibling()** - Returns previous sibling that is an element
