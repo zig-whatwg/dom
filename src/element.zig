@@ -1643,11 +1643,7 @@ pub const Element = struct {
                     elem.removeFromClassMap(doc, classes) catch unreachable;
                 }
 
-                // Only release node ref if this node was ever inserted into the document tree.
-                // Orphaned nodes (created but never inserted) don't hold node refs.
-                if (elem.node.flags & Node.FLAG_EVER_INSERTED != 0) {
-                    doc.releaseNodeRef();
-                }
+                doc.releaseNodeRef();
             }
         }
 

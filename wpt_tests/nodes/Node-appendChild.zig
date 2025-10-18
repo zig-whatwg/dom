@@ -14,9 +14,7 @@ fn testLeaf(node: *Node, desc: []const u8, doc: *Document) !void {
 
     // Pre-insert step 1: Appending to a leaf node should fail
     const text = try doc.createTextNode("fail");
-    // Note: No need to release - text node is arena-allocated and will be
-    // freed when document is destroyed. Manual release on arena allocations
-    // causes false leak reports.
+    defer text.node.release(); // Clean up since appendChild will fail
     const result = node.appendChild(&text.node);
     try std.testing.expectError(error.HierarchyRequestError, result);
 
