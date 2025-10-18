@@ -1,5 +1,25 @@
 # Testing Requirements Skill
 
+## ⚠️ CRITICAL: Generic DOM Library - Test Naming Rules
+
+**THIS IS A GENERIC DOM LIBRARY** - Tests MUST use generic element/attribute names.
+
+### Test Naming Rules
+
+✅ **ALWAYS use generic names**:
+- Elements: `element`, `container`, `item`, `node`, `component`, `widget`, `panel`, `view`, `content`, `wrapper`, `parent`, `child`, `root`
+- Attributes: `attr1`, `attr2`, `data-id`, `data-name`, `key`, `value`, `flag`
+
+❌ **NEVER use HTML-specific names**:
+- NO HTML elements: `div`, `span`, `p`, `a`, `button`, `input`, `form`, `table`, `ul`, `li`, `header`, `footer`, `section`, `article`, `nav`, `main`, `aside`, `h1`, `body`, `html`
+- NO HTML attributes: `id`, `class`, `href`, `src`, `type`, `name`, `action`, `method`, `placeholder`
+
+### Test Location Rules
+
+- **Unit tests**: Co-located with implementation in `src/` files
+- **WPT tests**: Converted from Web Platform Tests, placed in `wpt_tests/` directory ONLY
+- **WPT conversion**: Replace ALL HTML element/attribute names with generic names
+
 ## When to use this skill
 
 Load this skill when:
@@ -26,10 +46,11 @@ Testing standards and patterns for DOM implementation:
 test "Element.appendChild - adds child successfully" {
     const allocator = std.testing.allocator;
     
-    const parent = try Element.create(allocator, "div");
+    // ✅ CORRECT: Generic element names
+    const parent = try Element.create(allocator, "parent");
     defer parent.node.release();
     
-    const child = try Element.create(allocator, "span");
+    const child = try Element.create(allocator, "child");
     defer child.node.release();
     
     _ = try parent.node.appendChild(&child.node);
@@ -39,6 +60,8 @@ test "Element.appendChild - adds child successfully" {
 }
 ```
 
+**❌ WRONG**: Using HTML element names like `"div"`, `"span"`, `"button"`
+
 ### 2. Edge Cases - Boundary Conditions
 
 ```zig
@@ -47,7 +70,10 @@ test "Element.appendChild - handles empty parent" {
 }
 
 test "Element.appendChild - maintains order with multiple children" {
-    // Test with many children
+    // ✅ CORRECT: Generic names for multiple elements
+    const container = try Element.create(allocator, "container");
+    const item1 = try Element.create(allocator, "item1");
+    const item2 = try Element.create(allocator, "item2");
 }
 
 test "NodeList.item - returns null for out of bounds index" {
@@ -61,10 +87,11 @@ test "NodeList.item - returns null for out of bounds index" {
 test "Element.appendChild - rejects DocumentType child" {
     const allocator = std.testing.allocator;
     
-    const elem = try Element.create(allocator, "div");
+    // ✅ CORRECT: Generic element name
+    const elem = try Element.create(allocator, "element");
     defer elem.node.release();
     
-    const doctype = try DocumentType.init(allocator, "html", "", "");
+    const doctype = try DocumentType.init(allocator, "root", "", "");
     defer doctype.node.release();
     
     try std.testing.expectError(

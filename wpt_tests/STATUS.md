@@ -4,9 +4,10 @@
 
 Web Platform Tests converted from `/Users/bcardarella/projects/wpt/dom/nodes/`.
 
-**Status**: 75/75 functional tests passing (100%) 🎉
+**Status**: 89/89 functional tests passing (100%) 🎉
 **Memory**: 0 leaks (100% leak-free) 🎉
 **Test Results**: All tests pass for implemented features
+**Total Tests**: 384 tests across entire codebase (unit + WPT)
 
 ## Running Tests
 
@@ -16,31 +17,42 @@ zig build test-wpt
 
 ## Test Files Converted
 
-### Node Tests (35 tests - 100% passing, 0 leaks)
+### Node Tests (51 tests - 100% passing, 0 leaks)
 - [x] Node-appendChild.zig (3 tests - ✅ all passing)
 - [x] Node-baseURI.zig (3 tests - ✅ all passing)
-- [x] Node-cloneNode.zig (8 tests - ✅ all passing)
-- [x] Node-compareDocumentPosition.zig (8 tests - ✅ all passing)
-- [x] Node-contains.zig (5 tests - ✅ all passing)
+- [x] Node-cloneNode.zig (24 tests - ✅ all passing) **← EXPANDED 2025-10-18**
+- [x] Node-compareDocumentPosition.zig (7 tests - ✅ all passing)
+- [x] Node-contains.zig (4 tests - ✅ all passing)
 - [x] Node-insertBefore.zig (6 tests - ✅ all passing)
 - [x] Node-isConnected.zig (1 test - ✅ passing)
 - [x] Node-removeChild.zig (6 tests - ✅ all passing)
-- [x] Node-replaceChild.zig (9 tests - ✅ all passing)
+- [x] Node-replaceChild.zig (8 tests - ✅ all passing)
 
 ### Element Tests (9 tests - 100% passing, 0 leaks)
 - [x] Element-hasAttribute.zig (4 tests - ✅ all passing)
 - [x] Element-setAttribute.zig (5 tests - ✅ all passing)
 
-### Document Tests (19 tests - 100% passing, 0 leaks)
-- [x] Document-createElement.zig (11 tests - ✅ all passing)
+### Document Tests (18 tests - 100% passing, 0 leaks)
+- [x] Document-createElement.zig (10 tests - ✅ all passing)
 - [x] Document-createTextNode.zig (8 tests - ✅ all passing)
 
-## Recent Fixes (2025-10-18)
+## Recent Updates (2025-10-18)
 
+### Session 1: Critical Fixes
 1. ✅ **Node.contains(null)** - Fixed to return false per WHATWG spec
 2. ✅ **Deep cloning** - cloneNode(true) now recursively clones children
 3. ✅ **Owner document preservation** - Clone operations now preserve ownerDocument
 4. ✅ **ALL memory leaks eliminated** - Two-phase document destruction implemented
+5. ✅ **Cross-document adoption** - Fixed appendChild fast path bypass bug
+
+### Session 2: Test Coverage Expansion
+6. ✅ **Node-cloneNode tests expanded** - 7 tests → 24 tests (3.4x increase)
+   - Added DocumentFragment cloning tests (shallow & deep)
+   - Added clone independence verification tests
+   - Added complex tree structure tests
+   - Added multiple attribute cloning tests
+   - Added edge case tests (empty strings, whitespace, special chars)
+   - Added standard and custom element tag name tests
 
 ## Memory Leak Fix
 

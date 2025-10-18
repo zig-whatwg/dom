@@ -1,5 +1,51 @@
 # WHATWG Specification Compliance Skill
 
+## ⚠️ CRITICAL: Generic DOM Library - NO HTML Specifics
+
+**THIS IS A GENERIC DOM LIBRARY** implementing the WHATWG DOM Standard for **ANY document type** (XML, custom formats, etc.), **NOT HTML**.
+
+### Absolute Prohibitions
+
+❌ **NEVER** implement HTML-specific features:
+- NO HTML element interfaces (HTMLDivElement, HTMLButtonElement, etc.)
+- NO HTML element semantics (button click behavior, form submission, etc.)
+- NO HTML-specific attributes (href, src, action, etc.)
+- NO HTML parsing (HTML namespace, case normalization for HTML context)
+- NO HTML-only APIs (document.forms, document.images, etc.)
+
+✅ **ONLY** implement generic DOM features:
+- Generic Element interface (tag names are arbitrary strings)
+- Generic attribute handling (key-value pairs, no semantic behavior)
+- Generic tree manipulation (appendChild, removeChild, etc.)
+- Generic query selectors (CSS selector matching, no HTML assumptions)
+- Generic event system (EventTarget, Event, no HTML-specific events)
+
+### Test Guidelines
+
+✅ **Use generic element names in tests**:
+- `element`, `container`, `item`, `node`, `component`, `widget`, `panel`, `view`, `content`, `wrapper`
+
+❌ **NEVER use HTML element names**:
+- NO `div`, `span`, `p`, `a`, `button`, `input`, `form`, `table`, `ul`, `li`, `header`, `footer`, `section`, `article`, `nav`, `main`, `aside`, `h1`, `body`, `html`
+
+✅ **Use generic attribute names in tests**:
+- `attr1`, `attr2`, `data-id`, `data-name`, `key`, `value`, `flag`
+
+❌ **NEVER use HTML attribute names**:
+- NO `id`, `class`, `href`, `src`, `type`, `name`, `action`, `method`, `placeholder`
+
+### WPT Test Conversion Rules
+
+When converting tests from WPT (Web Platform Tests):
+
+1. **ONLY convert generic DOM tests** - Skip HTML-specific test files
+2. **Replace ALL HTML element names** with generic names
+3. **Replace ALL HTML attributes** with generic attributes
+4. **Skip HTML-specific assertions** (e.g., element.href behavior)
+5. **Place converted tests in `wpt_tests/` directory ONLY**
+
+**Location**: Tests converted from WPT go in `wpt_tests/` directory. Original WPT tests may use HTML elements, but our conversions MUST use generic names.
+
 ## When to use this skill
 
 Load this skill automatically when:
@@ -56,6 +102,71 @@ Contains:
 **Usage**: Understand extended attributes and type system rules.
 
 ## Critical Principles
+
+### 0. Interface Mixins - NEVER Add to Base Classes ⚠️ CRITICAL
+
+**WHATWG uses interface mixins to add methods to SPECIFIC types, NOT base classes.**
+
+**WRONG** ❌:
+```zig
+// Node is the base class
+pub const Node = struct {
+    pub fn children(self: *Node) ElementCollection { } // ❌ WRONG!
+    pub fn firstElementChild(self: *const Node) ?*Element { } // ❌ WRONG!
+    // These should NOT be on Node!
+};
+```
+
+**CORRECT** ✅:
+```zig
+// Element includes ParentNode mixin
+pub const Element = struct {
+    pub fn children(self: *Element) ElementCollection { } // ✅ CORRECT
+    pub fn firstElementChild(self: *const Element) ?*Element { } // ✅ CORRECT
+};
+
+// Document includes ParentNode mixin
+pub const Document = struct {
+    pub fn children(self: *Document) ElementCollection { } // ✅ CORRECT
+    pub fn firstElementChild(self: *const Document) ?*Element { } // ✅ CORRECT
+};
+```
+
+**Why**: Not all nodes can have element children! Text and Comment nodes cannot have children, so they should not have `firstElementChild()` methods.
+
+**How to verify**:
+1. Find the mixin in `dom.idl`:
+   ```webidl
+   interface mixin ParentNode {
+     [SameObject] readonly attribute HTMLCollection children;
+     readonly attribute Element? firstElementChild;
+     // ...
+   };
+   ```
+
+2. Check which types include it:
+   ```webidl
+   Document includes ParentNode;        // ✅ Add to Document
+   DocumentFragment includes ParentNode; // ✅ Add to DocumentFragment
+   Element includes ParentNode;          // ✅ Add to Element
+   // Node does NOT include ParentNode!  // ❌ Do NOT add to Node
+   ```
+
+3. Implement ONLY on the specified types:
+   ```zig
+   // Add to Element, Document, DocumentFragment
+   // Do NOT add to Node, Text, Comment, or other types
+   ```
+
+**Common mixins to watch**:
+- `ParentNode` → Element, Document, DocumentFragment (NOT Node!)
+- `ChildNode` → Element, CharacterData, DocumentType (NOT Node!)
+- `NonDocumentTypeChildNode` → Element, CharacterData (NOT Node!)
+- `NonElementParentNode` → Document, DocumentFragment (NOT Node, NOT Element!)
+
+**Rule**: **NEVER put mixin methods on a base class just for inheritance convenience.** Always implement on the EXACT types specified in the WebIDL `includes` declarations.
+
+---
 
 ### 1. Dual Specification Compliance
 
@@ -212,11 +323,13 @@ From `dom_spec_complete.md`, find algorithm section and read **ALL steps**:
 The setAttribute(qualifiedName, value) method steps are:
 
 1. If qualifiedName does not match the Name production, then throw an "InvalidCharacterError" DOMException.
-2. If this is in the HTML namespace and its node document is an HTML document, then set qualifiedName to qualifiedName in ASCII lowercase.
+2. If this is in the HTML namespace and its node document is an HTML document, then set qualifiedName to qualifiedName in ASCII lowercase. ← **SKIP: HTML-SPECIFIC**
 3. Let attribute be the first attribute in this's attribute list whose qualified name is qualifiedName, and null otherwise.
 4. If attribute is null, create an attribute whose local name is qualifiedName, value is value, and node document is this's node document, then append this attribute to this, and then return.
 5. Change attribute to value.
 ```
+
+⚠️ **HTML-Specific Steps**: When implementing generic DOM, **SKIP or stub out** steps that mention "HTML namespace", "HTML document", or "HTML elements". This library is document-type agnostic.
 
 **Read ALL steps**, not just step 1. Understanding complete behavior prevents bugs.
 

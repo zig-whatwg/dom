@@ -332,6 +332,7 @@ pub const Element = struct {
         .node_value = nodeValueImpl,
         .set_node_value = setNodeValueImpl,
         .clone_node = cloneNodeImpl,
+        .adopting_steps = adoptingStepsImpl,
     };
 
     /// Creates a new Element with the specified tag name.
@@ -598,6 +599,106 @@ pub const Element = struct {
         }
 
         return false;
+    }
+
+    /// Toggles a boolean attribute on the element.
+    ///
+    /// Implements WHATWG DOM Element.toggleAttribute() per §4.9.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] boolean toggleAttribute(DOMString qualifiedName, optional boolean force);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - toggleAttribute(): https://developer.mozilla.org/en-US/docs/Web/API/Element/toggleAttribute
+    ///
+    /// ## Algorithm (from spec §4.9)
+    /// 1. If qualifiedName does not match the Name production, throw "InvalidCharacterError"
+    /// 2. If this has an attribute whose qualified name is qualifiedName:
+    ///    a. If force is not given or is false, remove the attribute and return false
+    ///    b. Return true
+    /// 3. Otherwise:
+    ///    a. If force is not given or is true, set an attribute with qualifiedName and empty string
+    ///       and return true
+    ///    b. Return false
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-element-toggleattribute
+    /// - WebIDL: dom.idl:382
+    ///
+    /// ## Parameters
+    /// - `qualified_name`: Attribute name to toggle
+    /// - `force`: Optional - if true, add attribute; if false, remove attribute
+    ///
+    /// ## Returns
+    /// true if attribute is now present, false if now absent
+    ///
+    /// ## Errors
+    /// - `error.InvalidCharacterError`: Invalid character in qualified_name
+    /// - `error.OutOfMemory`: Failed to allocate attribute storage
+    ///
+    /// ## Usage
+    /// ```zig
+    /// const elem = try doc.createElement("button");
+    /// defer elem.node.release();
+    ///
+    /// // Toggle without force (add if absent, remove if present)
+    /// const is_present = try elem.toggleAttribute("disabled", null); // true - added
+    /// const is_absent = try elem.toggleAttribute("disabled", null);  // false - removed
+    ///
+    /// // Force add
+    /// const forced_on = try elem.toggleAttribute("disabled", true);  // true - added
+    /// const still_on = try elem.toggleAttribute("disabled", true);   // true - already present
+    ///
+    /// // Force remove
+    /// const forced_off = try elem.toggleAttribute("disabled", false); // false - removed
+    /// const still_off = try elem.toggleAttribute("disabled", false);  // false - already absent
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// const button = document.querySelector('button');
+    ///
+    /// // Toggle disabled state
+    /// button.toggleAttribute('disabled'); // Add if absent, remove if present
+    ///
+    /// // Force enable
+    /// button.toggleAttribute('disabled', false); // Always remove
+    ///
+    /// // Force disable
+    /// button.toggleAttribute('disabled', true); // Always add
+    /// ```
+    pub fn toggleAttribute(self: *Element, qualified_name: []const u8, force: ?bool) !bool {
+        // Step 1: Validate qualified name
+        // TODO: Add XML Name production validation per spec
+        // For now, rely on setAttribute's validation
+
+        // Step 2: Check if attribute exists
+        const has_attr = self.hasAttribute(qualified_name);
+
+        // Step 3: Apply toggle logic
+        if (has_attr) {
+            // Attribute exists
+            if (force == null or force.? == false) {
+                // Remove attribute
+                self.removeAttribute(qualified_name);
+                return false;
+            } else {
+                // Force is true, keep attribute
+                return true;
+            }
+        } else {
+            // Attribute doesn't exist
+            if (force == null or force.? == true) {
+                // Add attribute with empty value
+                try self.setAttribute(qualified_name, "");
+                return true;
+            } else {
+                // Force is false, don't add
+                return false;
+            }
+        }
     }
 
     // === WHATWG DOM Core Properties ===
@@ -1567,6 +1668,53 @@ pub const Element = struct {
         return null;
     }
 
+    /// Returns a live collection of element children.
+    ///
+    /// Implements WHATWG DOM ParentNode.children property per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [SameObject] readonly attribute HTMLCollection children;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - children: https://developer.mozilla.org/en-US/docs/Web/API/Element/children
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// Return a live ElementCollection of the element children of this element.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-children
+    /// - WebIDL: dom.idl:119
+    ///
+    /// ## Returns
+    /// Live ElementCollection of element children (excludes text, comment, etc.)
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const parent = try doc.createElement("parent");
+    ///
+    /// // Add mixed children
+    /// const elem1 = try doc.createElement("child1");
+    /// _ = try parent.node.appendChild(&elem1.node);
+    ///
+    /// const text = try doc.createTextNode("text");
+    /// _ = try parent.node.appendChild(&text.node);
+    ///
+    /// const elem2 = try doc.createElement("child2");
+    /// _ = try parent.node.appendChild(&elem2.node);
+    ///
+    /// // children() returns live collection of elements only
+    /// const children = parent.children();
+    /// try std.testing.expectEqual(@as(usize, 2), children.length()); // Excludes text
+    /// ```
+    pub fn children(self: *Element) @import("element_collection.zig").ElementCollection {
+        return @import("element_collection.zig").ElementCollection.init(&self.node);
+    }
+
     // === Private implementation ===
 
     /// Updates the bloom filter from a class attribute value.
@@ -1704,12 +1852,77 @@ pub const Element = struct {
                 const child_clone = try child_node.cloneNode(true);
                 errdefer child_clone.release();
                 _ = try cloned.node.appendChild(child_clone);
-                child_clone.release(); // appendChild takes ownership
+                // NO release - parent owns child (ref_count=1, has_parent=true)
                 child = child_node.next_sibling;
             }
         }
 
         return &cloned.node;
+    }
+
+    /// Vtable implementation: adopting steps
+    /// Called when node is adopted into a new document
+    fn adoptingStepsImpl(node: *Node, old_document: ?*Node) !void {
+        const elem: *Element = @fieldParentPtr("node", node);
+
+        // Remove from old document's maps if it had one
+        if (old_document) |old_doc| {
+            if (old_doc.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const old_doc_ptr: *Document = @fieldParentPtr("node", old_doc);
+
+                // Remove from old tag map
+                if (old_doc_ptr.tag_map.getPtr(elem.tag_name)) |list_ptr| {
+                    for (list_ptr.items, 0..) |item, i| {
+                        if (item == elem) {
+                            _ = list_ptr.swapRemove(i);
+                            break;
+                        }
+                    }
+                }
+
+                // Remove from old class map
+                if (elem.getAttribute("class")) |classes| {
+                    elem.removeFromClassMap(old_doc_ptr, classes) catch {};
+                }
+
+                // Remove from old id map
+                if (elem.getAttribute("id")) |id| {
+                    _ = old_doc_ptr.id_map.remove(id);
+                    old_doc_ptr.invalidateIdCache();
+                }
+            }
+        }
+
+        // Add to new document's maps if it has one
+        if (node.owner_document) |new_doc| {
+            if (new_doc.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const new_doc_ptr: *Document = @fieldParentPtr("node", new_doc);
+
+                // Re-intern tag name in new document's string pool
+                const new_tag_name = try new_doc_ptr.string_pool.intern(elem.tag_name);
+                elem.tag_name = new_tag_name;
+
+                // Add to new tag map
+                const gop = try new_doc_ptr.tag_map.getOrPut(elem.tag_name);
+                if (!gop.found_existing) {
+                    gop.value_ptr.* = std.ArrayList(*Element){};
+                }
+                try gop.value_ptr.append(new_doc_ptr.node.allocator, elem);
+
+                // Add to new class map
+                if (elem.getAttribute("class")) |classes| {
+                    try elem.addToClassMap(new_doc_ptr, classes);
+                }
+
+                // Add to new id map
+                if (elem.getAttribute("id")) |id| {
+                    try new_doc_ptr.id_map.put(id, elem);
+                    new_doc_ptr.invalidateIdCache();
+                }
+            }
+        }
     }
 };
 
@@ -2672,4 +2885,147 @@ test "Element - queryByClass only returns descendants" {
     // Querying from div for "container" should not find itself
     const found = div.queryByClass("container");
     try std.testing.expect(found == null);
+}
+
+test "Element - toggleAttribute basic toggle" {
+    const allocator = std.testing.allocator;
+    const elem = try Element.create(allocator, "button");
+    defer elem.node.release();
+
+    // Initially no disabled attribute
+    try std.testing.expect(!elem.hasAttribute("disabled"));
+
+    // Toggle adds attribute
+    const added = try elem.toggleAttribute("disabled", null);
+    try std.testing.expect(added);
+    try std.testing.expect(elem.hasAttribute("disabled"));
+
+    // Toggle removes attribute
+    const removed = try elem.toggleAttribute("disabled", null);
+    try std.testing.expect(!removed);
+    try std.testing.expect(!elem.hasAttribute("disabled"));
+}
+
+test "Element - toggleAttribute with force parameter" {
+    const allocator = std.testing.allocator;
+    const elem = try Element.create(allocator, "button");
+    defer elem.node.release();
+
+    // Force add (attribute not present)
+    const forced_add = try elem.toggleAttribute("disabled", true);
+    try std.testing.expect(forced_add);
+    try std.testing.expect(elem.hasAttribute("disabled"));
+
+    // Force add again (attribute already present) - should remain true
+    const still_present = try elem.toggleAttribute("disabled", true);
+    try std.testing.expect(still_present);
+    try std.testing.expect(elem.hasAttribute("disabled"));
+
+    // Force remove
+    const forced_remove = try elem.toggleAttribute("disabled", false);
+    try std.testing.expect(!forced_remove);
+    try std.testing.expect(!elem.hasAttribute("disabled"));
+
+    // Force remove again (attribute not present) - should remain false
+    const still_absent = try elem.toggleAttribute("disabled", false);
+    try std.testing.expect(!still_absent);
+    try std.testing.expect(!elem.hasAttribute("disabled"));
+}
+
+test "Element - toggleAttribute with empty value" {
+    const allocator = std.testing.allocator;
+    const elem = try Element.create(allocator, "button");
+    defer elem.node.release();
+
+    // Toggle adds attribute with empty value
+    _ = try elem.toggleAttribute("disabled", null);
+    const value = elem.getAttribute("disabled");
+    try std.testing.expect(value != null);
+    try std.testing.expectEqualStrings("", value.?);
+}
+
+test "Element - children returns empty collection" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    defer parent.node.release();
+
+    const collection = parent.children();
+    try std.testing.expectEqual(@as(usize, 0), collection.length());
+}
+
+test "Element - children excludes non-element nodes" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    defer parent.node.release();
+
+    // Add mixed children: element, text, element, comment, element
+    const elem1 = try doc.createElement("elem1");
+    _ = try parent.node.appendChild(&elem1.node);
+
+    const text = try doc.createTextNode("text");
+    _ = try parent.node.appendChild(&text.node);
+
+    const elem2 = try doc.createElement("elem2");
+    _ = try parent.node.appendChild(&elem2.node);
+
+    const comment = try doc.createComment("comment");
+    _ = try parent.node.appendChild(&comment.node);
+
+    const elem3 = try doc.createElement("elem3");
+    _ = try parent.node.appendChild(&elem3.node);
+
+    // children should only include elements
+    const collection = parent.children();
+    try std.testing.expectEqual(@as(usize, 3), collection.length());
+
+    try std.testing.expectEqualStrings("elem1", collection.item(0).?.tag_name);
+    try std.testing.expectEqualStrings("elem2", collection.item(1).?.tag_name);
+    try std.testing.expectEqualStrings("elem3", collection.item(2).?.tag_name);
+}
+
+test "Element - children is live collection" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    defer parent.node.release();
+
+    const collection = parent.children();
+
+    // Initially empty
+    try std.testing.expectEqual(@as(usize, 0), collection.length());
+
+    // Add element - collection updates
+    const child1 = try doc.createElement("child1");
+    _ = try parent.node.appendChild(&child1.node);
+    try std.testing.expectEqual(@as(usize, 1), collection.length());
+
+    // Add text - collection does NOT update
+    const text = try doc.createTextNode("text");
+    _ = try parent.node.appendChild(&text.node);
+    try std.testing.expectEqual(@as(usize, 1), collection.length());
+
+    // Add another element - collection updates
+    const child2 = try doc.createElement("child2");
+    _ = try parent.node.appendChild(&child2.node);
+    try std.testing.expectEqual(@as(usize, 2), collection.length());
+
+    // Remove element - collection updates
+    _ = try parent.node.removeChild(&child1.node);
+    child1.node.release(); // Manual release for removed node
+    try std.testing.expectEqual(@as(usize, 1), collection.length());
+    try std.testing.expectEqualStrings("child2", collection.item(0).?.tag_name);
 }

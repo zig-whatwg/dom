@@ -109,6 +109,7 @@
 //!
 //! ### Collections
 //! - `NodeList` - Live collection of nodes
+//! - `ElementCollection` - Live collection of elements (excludes text/comment nodes)
 //! - `AttributeMap` - Element attribute storage
 //! - `StringPool` - String interning for memory savings
 //!
@@ -198,8 +199,9 @@ pub const MutationObserver = @import("rare_data.zig").MutationObserver;
 pub const EventCallback = @import("rare_data.zig").EventCallback;
 pub const MutationCallback = @import("rare_data.zig").MutationCallback;
 
-// Export NodeList collection
+// Export collections
 pub const NodeList = @import("node_list.zig").NodeList;
+pub const ElementCollection = @import("element_collection.zig").ElementCollection;
 
 // Export AbortSignal and AbortController
 pub const AbortSignal = @import("abort_signal.zig").AbortSignal;
@@ -241,6 +243,7 @@ test {
     _ = @import("document_fragment.zig");
     _ = @import("rare_data.zig");
     _ = @import("node_list.zig");
+    _ = @import("element_collection.zig");
     _ = @import("validation.zig");
     _ = @import("tree_helpers.zig");
     _ = @import("abort_signal.zig");

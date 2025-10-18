@@ -520,6 +520,7 @@ pub const Document = struct {
         .node_value = nodeValueImpl,
         .set_node_value = setNodeValueImpl,
         .clone_node = cloneNodeImpl,
+        .adopting_steps = adoptingStepsImpl,
     };
 
     /// Creates a new Document.
@@ -648,8 +649,8 @@ pub const Document = struct {
     /// Increments the internal node reference count.
     ///
     /// Called when a node sets ownerDocument=this.
-    /// Internal use only, not exposed in public API.
-    fn acquireNodeRef(self: *Document) void {
+    /// PUBLIC for node adoption to call.
+    pub fn acquireNodeRef(self: *Document) void {
         _ = self.node_ref_count.fetchAdd(1, .monotonic);
     }
 
@@ -683,8 +684,9 @@ pub const Document = struct {
         // Intern tag name via string pool
         const interned_tag = try self.string_pool.intern(tag_name);
 
-        // Create element using arena allocator (100-200x faster than general-purpose allocator)
-        const elem = try Element.create(self.node_arena.allocator(), interned_tag);
+        // Create element using general-purpose allocator (required for cross-document adoption)
+        // NOTE: Cannot use arena allocator because nodes may be adopted to other documents
+        const elem = try Element.create(self.node.allocator, interned_tag);
         errdefer elem.node.release();
 
         // Set owner document and assign node ID
@@ -719,7 +721,7 @@ pub const Document = struct {
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate text node
     pub fn createTextNode(self: *Document, data: []const u8) !*Text {
-        const text = try Text.create(self.node_arena.allocator(), data);
+        const text = try Text.create(self.node.allocator, data);
         errdefer text.node.release();
 
         // Set owner document and assign node ID
@@ -743,7 +745,7 @@ pub const Document = struct {
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate comment node
     pub fn createComment(self: *Document, data: []const u8) !*Comment {
-        const comment = try Comment.create(self.node_arena.allocator(), data);
+        const comment = try Comment.create(self.node.allocator, data);
         errdefer comment.node.release();
 
         // Set owner document and assign node ID
@@ -799,7 +801,7 @@ pub const Document = struct {
     /// _ = try doc.node.appendChild(&fragment.node);
     /// ```
     pub fn createDocumentFragment(self: *Document) !*DocumentFragment {
-        const fragment = try DocumentFragment.create(self.node_arena.allocator());
+        const fragment = try DocumentFragment.create(self.node.allocator);
         errdefer fragment.node.release();
 
         // Set owner document and assign node ID
@@ -810,6 +812,77 @@ pub const Document = struct {
         self.acquireNodeRef();
 
         return fragment;
+    }
+
+    /// Adopts a node from another document into this document.
+    ///
+    /// Implements WHATWG DOM Document.adoptNode() per §4.10.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] Node adoptNode(Node node);
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.10)
+    /// 1. If node is a document → throw NotSupportedError
+    /// 2. If node is a shadow root → throw HierarchyRequestError
+    /// 3. If node is a DocumentFragment with non-null host → return (no-op)
+    /// 4. Adopt node into this document
+    /// 5. Return node
+    ///
+    /// ## Memory Management
+    /// Node remains owned by caller. Document gains a node reference
+    /// through owner_document tracking.
+    ///
+    /// ## Parameters
+    /// - `node`: Node to adopt (must not be a Document or ShadowRoot)
+    ///
+    /// ## Returns
+    /// The adopted node (same as input parameter)
+    ///
+    /// ## Errors
+    /// - `error.NotSupported`: Node is a Document
+    /// - `error.HierarchyRequestError`: Node is a ShadowRoot
+    /// - `error.OutOfMemory`: Failed to allocate during adoption
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-adoptnode
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:519
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc1 = try Document.init(allocator);
+    /// defer doc1.release();
+    ///
+    /// const doc2 = try Document.init(allocator);
+    /// defer doc2.release();
+    ///
+    /// // Create element in doc1
+    /// const elem = try doc1.createElement("div");
+    /// try std.testing.expect(elem.node.getOwnerDocument() == doc1);
+    ///
+    /// // Adopt to doc2
+    /// _ = try doc2.adoptNode(&elem.node);
+    /// try std.testing.expect(elem.node.getOwnerDocument() == doc2);
+    /// ```
+    pub fn adoptNode(self: *Document, node: *Node) !*Node {
+        // Step 1: If node is a document, throw NotSupportedError
+        if (node.node_type == .document) {
+            return error.NotSupported;
+        }
+
+        // Step 2: If node is a shadow root, throw HierarchyRequestError
+        // (Shadow DOM not yet implemented, so this is a no-op for now)
+
+        // Step 3: If node is a DocumentFragment with non-null host, return
+        // (Shadow DOM host not yet implemented, so this is a no-op for now)
+
+        // Step 4: Adopt node into this document
+        const adopt_fn = @import("node.zig").adopt;
+        try adopt_fn(node, &self.node);
+
+        // Step 5: Return node
+        return node;
     }
 
     /// Returns the document element (root element) of the document.
@@ -1216,6 +1289,28 @@ pub const Document = struct {
         return &[_]*Element{};
     }
 
+    /// Returns a live collection of element children.
+    ///
+    /// Implements WHATWG DOM ParentNode.children property per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [SameObject] readonly attribute HTMLCollection children;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - children: https://developer.mozilla.org/en-US/docs/Web/API/Document/children
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-children
+    /// - WebIDL: dom.idl:119
+    ///
+    /// ## Returns
+    /// Live ElementCollection of element children (typically just documentElement)
+    pub fn children(self: *Document) @import("element_collection.zig").ElementCollection {
+        return @import("element_collection.zig").ElementCollection.init(&self.node);
+    }
+
     // === Private implementation ===
 
     /// Allocates the next available node ID.
@@ -1266,9 +1361,6 @@ pub const Document = struct {
             cleanupElementAttributesRecursive(first_child);
         }
 
-        // Clean up string pool
-        self.string_pool.deinit();
-
         // Clean up selector cache
         self.selector_cache.deinit();
 
@@ -1276,6 +1368,7 @@ pub const Document = struct {
         self.id_map.deinit();
 
         // Clean up tag map - Free ArrayList values before deiniting the HashMap
+        // IMPORTANT: Must deinit tag_map BEFORE string_pool because tag_map keys are string pointers
         var tag_it = self.tag_map.valueIterator();
         while (tag_it.next()) |list_ptr| {
             list_ptr.deinit(self.node.allocator);
@@ -1283,11 +1376,15 @@ pub const Document = struct {
         self.tag_map.deinit();
 
         // Clean up class map - Free ArrayList values before deiniting the HashMap
+        // IMPORTANT: Must deinit class_map BEFORE string_pool because class_map keys are string pointers
         var class_it = self.class_map.valueIterator();
         while (class_it.next()) |list_ptr| {
             list_ptr.*.deinit(self.node.allocator);
         }
         self.class_map.deinit();
+
+        // Clean up string pool (must be AFTER tag_map and class_map)
+        self.string_pool.deinit();
 
         // Deinit arena allocator (frees all nodes at once - 100-200x faster than individual frees)
         self.node_arena.deinit();
@@ -1297,6 +1394,13 @@ pub const Document = struct {
     }
 
     // === Vtable implementations ===
+
+    /// Vtable implementation: adopting steps (no-op for Document)
+    ///
+    /// Documents cannot be adopted per WHATWG spec.
+    fn adoptingStepsImpl(_: *Node, _: ?*Node) !void {
+        // No-op: Documents cannot be adopted
+    }
 
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {
@@ -2204,31 +2308,31 @@ test "Document - class map cleaned up on element removal" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const root = try doc.createElement("html");
+    const root = try doc.createElement("root");
     _ = try doc.node.appendChild(&root.node);
 
-    const div1 = try doc.createElement("div");
-    try div1.setAttribute("class", "foo");
-    _ = try root.node.appendChild(&div1.node);
+    const elem1 = try doc.createElement("element");
+    try elem1.setAttribute("class", "testclass1");
+    _ = try root.node.appendChild(&elem1.node);
 
-    const div2 = try doc.createElement("div");
-    try div2.setAttribute("class", "foo");
-    _ = try root.node.appendChild(&div2.node);
+    const elem2 = try doc.createElement("element");
+    try elem2.setAttribute("class", "testclass1");
+    _ = try root.node.appendChild(&elem2.node);
 
-    // Should have 2 elements with "foo"
+    // Should have 2 elements with class "testclass1"
     {
-        const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 2), foos.len);
+        const results = doc.getElementsByClassName("testclass1");
+        try std.testing.expectEqual(@as(usize, 2), results.len);
     }
 
-    // Remove one div
-    _ = try root.node.removeChild(&div1.node);
-    div1.node.release();
+    // Remove one element
+    _ = try root.node.removeChild(&elem1.node);
+    elem1.node.release();
 
-    // Should have 1 element with "foo"
+    // Should have 1 element with class "testclass1"
     {
-        const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 1), foos.len);
-        try std.testing.expect(foos[0] == div2);
+        const results = doc.getElementsByClassName("testclass1");
+        try std.testing.expectEqual(@as(usize, 1), results.len);
+        try std.testing.expect(results[0] == elem2);
     }
 }

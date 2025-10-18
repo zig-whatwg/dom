@@ -19,6 +19,7 @@ Zig-specific programming patterns and idioms for DOM implementation:
 - Reference counting patterns
 - Type safety best practices
 - Comptime programming for zero-cost abstractions
+- **Interface mixin implementation patterns (DO NOT inherit from base classes)**
 
 ## Critical: Memory Management Pattern
 
@@ -303,6 +304,179 @@ pub fn takeOwnership(self: *Node) *Node {
     return self;
 }
 ```
+
+## Interface Mixin Implementation Pattern ⚠️ CRITICAL
+
+**WHATWG uses interface mixins. DO NOT implement mixin methods on base classes.**
+
+### ❌ WRONG: Adding to Base Class for Inheritance
+
+```zig
+// ❌ BAD: Putting mixin methods on Node for "convenience"
+pub const Node = struct {
+    // Base Node fields...
+    
+    // ❌ WRONG: ParentNode mixin methods on base class
+    pub fn children(self: *Node) ElementCollection {
+        return ElementCollection.init(self);
+    }
+    
+    pub fn firstElementChild(self: *const Node) ?*Element {
+        // traverse children...
+    }
+};
+
+// Problem: Now Text and Comment inherit these methods!
+const text = try Text.create(allocator, "hello");
+text.node.firstElementChild(); // ❌ Compiles but makes no sense!
+                               // Text nodes can't have children!
+```
+
+**Why this is wrong**:
+1. **Type safety violation**: Text/Comment nodes cannot have children
+2. **API confusion**: Users don't know which methods are valid
+3. **Spec non-compliance**: WHATWG explicitly specifies which types get which mixins
+
+---
+
+### ✅ CORRECT: Implementing on Specific Types
+
+```zig
+// ✅ GOOD: Base class has only base functionality
+pub const Node = struct {
+    // Only methods from Node interface
+    pub fn appendChild(self: *Node, child: *Node) !void { }
+    pub fn removeChild(self: *Node, child: *Node) !*Node { }
+    // etc.
+};
+
+// ✅ GOOD: ParentNode mixin on Element
+pub const Element = struct {
+    node: Node,
+    // Element fields...
+    
+    // ParentNode mixin methods
+    pub fn children(self: *Element) ElementCollection {
+        return ElementCollection.init(&self.node);
+    }
+    
+    pub fn firstElementChild(self: *const Element) ?*Element {
+        // traverse element children...
+    }
+};
+
+// ✅ GOOD: ParentNode mixin on Document
+pub const Document = struct {
+    node: Node,
+    // Document fields...
+    
+    // ParentNode mixin methods (same as Element)
+    pub fn children(self: *Document) ElementCollection {
+        return ElementCollection.init(&self.node);
+    }
+    
+    pub fn firstElementChild(self: *const Document) ?*Element {
+        // traverse element children...
+    }
+};
+
+// ✅ GOOD: Text does NOT have ParentNode mixin
+pub const Text = struct {
+    node: Node,
+    data: []const u8,
+    
+    // Text-specific methods only
+    pub fn splitText(self: *Text, offset: u32) !*Text { }
+    // NO firstElementChild - doesn't make sense for Text!
+};
+```
+
+**Result**: Compile-time type safety
+```zig
+const elem = try doc.createElement("container");
+const children = elem.children(); // ✅ OK - Element has ParentNode
+
+const text = try doc.createTextNode("hello");
+const children2 = text.children(); // ❌ Compile error - Text doesn't have children()
+```
+
+---
+
+### Code Duplication vs. Type Safety
+
+**You will duplicate code**. This is intentional and correct!
+
+```zig
+// Element.children()
+pub fn children(self: *Element) ElementCollection {
+    return ElementCollection.init(&self.node);
+}
+
+// Document.children() - SAME implementation, different type
+pub fn children(self: *Document) ElementCollection {
+    return ElementCollection.init(&self.node);
+}
+
+// DocumentFragment.children() - SAME implementation, different type
+pub fn children(self: *DocumentFragment) ElementCollection {
+    return ElementCollection.init(&self.node);
+}
+```
+
+**This is CORRECT because**:
+1. ✅ Type safety: Only valid types have the method
+2. ✅ Spec compliance: Matches WebIDL `includes` declarations
+3. ✅ API clarity: Users know which operations are valid
+4. ✅ Compiler catches mistakes at compile-time
+
+**DO NOT** try to reduce duplication by putting methods on Node!
+
+---
+
+### How to Implement Mixins Correctly
+
+**Step 1**: Find the mixin in `dom.idl`
+```webidl
+interface mixin ParentNode {
+  [SameObject] readonly attribute HTMLCollection children;
+  readonly attribute Element? firstElementChild;
+  // ...
+};
+```
+
+**Step 2**: Find which types include it
+```webidl
+Document includes ParentNode;        // ✅
+DocumentFragment includes ParentNode; // ✅
+Element includes ParentNode;          // ✅
+// NOT: Node includes ParentNode
+```
+
+**Step 3**: Implement on EACH type separately
+```zig
+// In src/element.zig
+pub fn children(self: *Element) ElementCollection { }
+pub fn firstElementChild(self: *const Element) ?*Element { }
+
+// In src/document.zig  
+pub fn children(self: *Document) ElementCollection { }
+pub fn firstElementChild(self: *const Document) ?*Element { }
+
+// In src/document_fragment.zig
+pub fn children(self: *DocumentFragment) ElementCollection { }
+pub fn firstElementChild(self: *const DocumentFragment) ?*Element { }
+
+// NOT in src/node.zig!
+```
+
+**Step 4**: Write tests for each type
+```zig
+test "Element - children returns ElementCollection" { }
+test "Document - children returns ElementCollection" { }
+test "DocumentFragment - children returns ElementCollection" { }
+```
+
+---
 
 ## Type Safety Patterns
 

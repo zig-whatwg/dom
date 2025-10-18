@@ -387,6 +387,15 @@ pub const NodeVTable = struct {
 
     /// Clones the node (shallow or deep)
     clone_node: *const fn (*const Node, bool) anyerror!*Node,
+
+    /// Called during cross-document adoption to update node-specific data.
+    /// Implements WHATWG "adopting steps" per §4.2.4.
+    ///
+    /// For elements: re-intern tag_name, update document maps (tag/class/id)
+    /// For text/comment: typically no-op (data is already owned)
+    ///
+    /// oldDocument may be null if node was created without owner_document.
+    adopting_steps: *const fn (*Node, oldDocument: ?*Node) anyerror!void,
 };
 
 /// Core DOM Node structure.
@@ -1327,6 +1336,407 @@ pub const Node = struct {
         return null;
     }
 
+    // === ParentNode Mixin (WHATWG DOM §4.2.6) ===
+
+    /// Returns the first child that is an element.
+    ///
+    /// Implements WHATWG DOM ParentNode.firstElementChild property per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute Element? firstElementChild;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - firstElementChild: https://developer.mozilla.org/en-US/docs/Web/API/Element/firstElementChild
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// Return the first child of this that is an element, or null if there is no such child.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-firstelementchild
+    /// - WebIDL: dom.idl:120
+    ///
+    /// ## Returns
+    /// First element child or null
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const parent = try doc.createElement("parent");
+    /// _ = try doc.node.appendChild(&parent.node);
+    ///
+    /// const text = try doc.createTextNode("text");
+    /// _ = try parent.node.appendChild(&text.node);
+    ///
+    /// const elem = try doc.createElement("child");
+    /// _ = try parent.node.appendChild(&elem.node);
+    ///
+    /// const first = parent.node.firstElementChild(); // elem (skips text)
+    /// ```
+    pub fn firstElementChild(self: *const Node) ?*@import("element.zig").Element {
+        var current = self.first_child;
+        while (current) |child| {
+            if (child.node_type == .element) {
+                return @fieldParentPtr("node", child);
+            }
+            current = child.next_sibling;
+        }
+        return null;
+    }
+
+    /// Returns the last child that is an element.
+    ///
+    /// Implements WHATWG DOM ParentNode.lastElementChild property per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute Element? lastElementChild;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - lastElementChild: https://developer.mozilla.org/en-US/docs/Web/API/Element/lastElementChild
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// Return the last child of this that is an element, or null if there is no such child.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-lastelementchild
+    /// - WebIDL: dom.idl:121
+    ///
+    /// ## Returns
+    /// Last element child or null
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const elem1 = try doc.createElement("child1");
+    /// const elem2 = try doc.createElement("child2");
+    /// const text = try doc.createTextNode("text");
+    ///
+    /// _ = try parent.node.appendChild(&elem1.node);
+    /// _ = try parent.node.appendChild(&elem2.node);
+    /// _ = try parent.node.appendChild(&text.node);
+    ///
+    /// const last = parent.node.lastElementChild(); // elem2 (skips text)
+    /// ```
+    pub fn lastElementChild(self: *const Node) ?*@import("element.zig").Element {
+        var current = self.last_child;
+        while (current) |child| {
+            if (child.node_type == .element) {
+                return @fieldParentPtr("node", child);
+            }
+            current = child.previous_sibling;
+        }
+        return null;
+    }
+
+    /// Returns the number of children that are elements.
+    ///
+    /// Implements WHATWG DOM ParentNode.childElementCount property per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute unsigned long childElementCount;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - childElementCount: https://developer.mozilla.org/en-US/docs/Web/API/Element/childElementCount
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// Return the number of children of this that are elements.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-childelementcount
+    /// - WebIDL: dom.idl:122
+    ///
+    /// ## Returns
+    /// Count of element children
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// _ = try parent.node.appendChild(&(try doc.createElement("child1")).node);
+    /// _ = try parent.node.appendChild(&(try doc.createTextNode("text")).node);
+    /// _ = try parent.node.appendChild(&(try doc.createElement("child2")).node);
+    ///
+    /// const count = parent.node.childElementCount(); // 2 (excludes text)
+    /// ```
+    pub fn childElementCount(self: *const Node) u32 {
+        var count: u32 = 0;
+        var current = self.first_child;
+        while (current) |child| {
+            if (child.node_type == .element) {
+                count += 1;
+            }
+            current = child.next_sibling;
+        }
+        return count;
+    }
+
+    /// NodeOrString union for ParentNode variadic methods.
+    ///
+    /// Represents the WebIDL `(Node or DOMString)` union type.
+    pub const NodeOrString = union(enum) {
+        node: *Node,
+        string: []const u8,
+    };
+
+    /// Inserts nodes or strings before the first child.
+    ///
+    /// Implements WHATWG DOM ParentNode.prepend() per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined prepend((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - prepend(): https://developer.mozilla.org/en-US/docs/Web/API/Element/prepend
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// 1. Let node be the result of converting nodes into a node given this's node document
+    /// 2. Pre-insert node into this before this's first child
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-prepend
+    /// - WebIDL: dom.idl:124
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to prepend
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate
+    /// - `error.HierarchyRequestError`: Invalid tree structure
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const existing = try doc.createElement("existing");
+    /// _ = try parent.node.appendChild(&existing.node);
+    ///
+    /// // Prepend nodes
+    /// const child1 = try doc.createElement("child1");
+    /// const child2 = try doc.createElement("child2");
+    /// try parent.node.prepend(&[_]NodeOrString{
+    ///     .{ .node = &child1.node },
+    ///     .{ .string = "text" },
+    ///     .{ .node = &child2.node },
+    /// });
+    /// // Order: child1, text, child2, existing
+    /// ```
+    pub fn prepend(self: *Node, nodes: []const NodeOrString) !void {
+        // Convert nodes/strings into a single node
+        const result = try convertNodesToNode(self, nodes);
+        if (result == null) return; // Empty list
+
+        const node_to_insert = result.?.node;
+        const should_release = result.?.should_release_after_insert;
+
+        // Insert before first child
+        const returned_node = try self.insertBefore(node_to_insert, self.first_child);
+
+        // Release if needed (for fragments)
+        // Note: insertBefore returns the node/fragment that was passed in
+        // For fragments, the children have been moved out, so the fragment is now empty
+        if (should_release) {
+            returned_node.release();
+        }
+    }
+
+    /// Inserts nodes or strings after the last child.
+    ///
+    /// Implements WHATWG DOM ParentNode.append() per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined append((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - append(): https://developer.mozilla.org/en-US/docs/Web/API/Element/append
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// 1. Let node be the result of converting nodes into a node given this's node document
+    /// 2. Append node to this
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-append
+    /// - WebIDL: dom.idl:125
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to append
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate
+    /// - `error.HierarchyRequestError`: Invalid tree structure
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// try parent.node.append(&[_]NodeOrString{
+    ///     .{ .string = "Hello " },
+    ///     .{ .node = &(try doc.createElement("span")).node },
+    ///     .{ .string = "World" },
+    /// });
+    /// ```
+    pub fn append(self: *Node, nodes: []const NodeOrString) !void {
+        // Convert nodes/strings into a single node
+        const result = try convertNodesToNode(self, nodes);
+        if (result == null) return; // Empty list
+
+        const node_to_insert = result.?.node;
+        const should_release = result.?.should_release_after_insert;
+
+        // Append to this node
+        const returned_node = try self.appendChild(node_to_insert);
+
+        // Release if needed (for fragments)
+        if (should_release) {
+            returned_node.release();
+        }
+    }
+
+    /// Replaces all children with new nodes or strings.
+    ///
+    /// Implements WHATWG DOM ParentNode.replaceChildren() per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined replaceChildren((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - replaceChildren(): https://developer.mozilla.org/en-US/docs/Web/API/Element/replaceChildren
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// 1. Let node be the result of converting nodes into a node given this's node document
+    /// 2. Ensure pre-replace validity of node
+    /// 3. Replace all children of this with node
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
+    /// - WebIDL: dom.idl:126
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to replace children with
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate
+    /// - `error.HierarchyRequestError`: Invalid tree structure
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// _ = try parent.node.appendChild(&(try doc.createElement("old1")).node);
+    /// _ = try parent.node.appendChild(&(try doc.createElement("old2")).node);
+    ///
+    /// // Replace all children
+    /// try parent.node.replaceChildren(&[_]NodeOrString{
+    ///     .{ .string = "new text" },
+    ///     .{ .node = &(try doc.createElement("new")).node },
+    /// });
+    /// // old1 and old2 are removed, replaced with text and new element
+    /// ```
+    pub fn replaceChildren(self: *Node, nodes: []const NodeOrString) !void {
+        // Convert nodes/strings into a single node
+        const result = try convertNodesToNode(self, nodes);
+
+        // Remove all existing children
+        // Note: removeChild returns the removed child, which becomes orphaned
+        // We must release these nodes to prevent memory leaks
+        while (self.first_child) |child| {
+            const removed = try self.removeChild(child);
+            removed.release(); // Release orphaned node
+        }
+
+        // If we have a node to insert, append it
+        if (result) |r| {
+            const returned_node = try self.appendChild(r.node);
+
+            // Release if needed (for fragments)
+            if (r.should_release_after_insert) {
+                returned_node.release();
+            }
+        }
+    }
+
+    /// Result of converting nodes/strings
+    const ConvertResult = struct {
+        node: *Node,
+        should_release_after_insert: bool,
+    };
+
+    /// Helper: Convert slice of nodes/strings into a single node.
+    ///
+    /// Per WHATWG spec §4.2.6, this creates a DocumentFragment if multiple items,
+    /// or returns the single node/text node if one item.
+    ///
+    /// Returns ConvertResult indicating the node and whether caller should release it after insertion.
+    fn convertNodesToNode(parent: *Node, items: []const NodeOrString) !?ConvertResult {
+        if (items.len == 0) return null;
+
+        // Get owner document
+        const owner_doc = parent.owner_document orelse {
+            return error.InvalidStateError;
+        };
+
+        const Document = @import("document.zig").Document;
+        if (owner_doc.node_type != .document) {
+            return error.InvalidStateError;
+        }
+        const doc: *Document = @fieldParentPtr("node", owner_doc);
+
+        // Single item case
+        if (items.len == 1) {
+            switch (items[0]) {
+                .node => |n| {
+                    // Node is already owned by caller, don't acquire
+                    // Caller should NOT release after insert (node moves to tree)
+                    return ConvertResult{
+                        .node = n,
+                        .should_release_after_insert = false,
+                    };
+                },
+                .string => |s| {
+                    const text = try doc.createTextNode(s);
+                    // Text node created with ref_count = 1
+                    // After insert, it will be in the tree, so caller should NOT release
+                    return ConvertResult{
+                        .node = &text.node,
+                        .should_release_after_insert = false,
+                    };
+                },
+            }
+        }
+
+        // Multiple items: create DocumentFragment
+        const fragment = try doc.createDocumentFragment();
+        errdefer fragment.node.release();
+
+        for (items) |item| {
+            switch (item) {
+                .node => |n| {
+                    _ = try fragment.node.appendChild(n);
+                },
+                .string => |s| {
+                    const text = try doc.createTextNode(s);
+                    _ = try fragment.node.appendChild(&text.node);
+                },
+            }
+        }
+
+        // Fragment now contains all children
+        // After insert, the children will be moved out and the fragment will be empty
+        // Caller should release the fragment
+        return ConvertResult{
+            .node = &fragment.node,
+            .should_release_after_insert = true,
+        };
+    }
+
     // === Tree manipulation methods ===
 
     /// Inserts node before child in this node's children.
@@ -1423,7 +1833,7 @@ pub const Node = struct {
             self.node_type == .element and
             node.node_type == .element)
         {
-            return self.appendChildFast(node);
+            return try self.appendChildFast(node);
         }
 
         // Slow path: full validation for all other cases
@@ -1440,7 +1850,18 @@ pub const Node = struct {
     /// - node.parent_node == null (not already in tree)
     /// - self.node_type == .element
     /// - node.node_type == .element
-    inline fn appendChildFast(self: *Node, node: *Node) *Node {
+    ///
+    /// ## Note
+    /// This function must be kept in sync with the full insert() algorithm,
+    /// especially regarding adoption for cross-document moves.
+    inline fn appendChildFast(self: *Node, node: *Node) !*Node {
+        // Adopt node if moving between documents (WHATWG DOM §4.2.4)
+        if (self.owner_document) |parent_doc| {
+            if (node.owner_document != parent_doc) {
+                try adopt(node, parent_doc);
+            }
+        }
+
         // Direct pointer manipulation (no validation)
         const last = self.last_child;
 
@@ -1544,6 +1965,123 @@ pub const Node = struct {
         child: *Node,
     ) !*Node {
         return try replace(child, node, self);
+    }
+
+    /// Removes empty Text nodes and merges adjacent Text nodes.
+    ///
+    /// Implements WHATWG DOM Node.normalize() per §4.4.
+    ///
+    /// ## WHATWG Specification
+    /// - **Algorithm**: https://dom.spec.whatwg.org/#dom-node-normalize
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] undefined normalize();
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Node.normalize(): https://developer.mozilla.org/en-US/docs/Web/API/Node/normalize
+    ///
+    /// ## Behavior
+    /// This method processes the subtree rooted at this node and:
+    /// 1. Removes all empty Text nodes (text.data.length == 0)
+    /// 2. Merges adjacent Text nodes into a single Text node
+    /// 3. Recursively normalizes all descendant elements
+    ///
+    /// ## Use Cases
+    /// - Cleaning up DOM after repeated text insertions
+    /// - Preparing DOM for serialization
+    /// - Simplifying DOM structure for traversal
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("container");
+    /// defer parent.node.release();
+    ///
+    /// const text1 = try doc.createTextNode("Hello");
+    /// const text2 = try doc.createTextNode(" ");
+    /// const text3 = try doc.createTextNode("World");
+    ///
+    /// _ = try parent.node.appendChild(&text1.node);
+    /// _ = try parent.node.appendChild(&text2.node);
+    /// _ = try parent.node.appendChild(&text3.node);
+    ///
+    /// // Before: 3 text nodes
+    /// try std.testing.expectEqual(@as(u32, 3), parent.node.getChildCount());
+    ///
+    /// try parent.node.normalize();
+    ///
+    /// // After: 1 text node with merged data "Hello World"
+    /// try std.testing.expectEqual(@as(u32, 1), parent.node.getChildCount());
+    /// ```
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate merged text data
+    ///
+    /// ## Spec Notes
+    /// Empty text nodes are removed before merging. Adjacent text nodes are merged
+    /// left-to-right, with the leftmost node retaining the merged data.
+    pub fn normalize(self: *Node) !void {
+        const Text = @import("text.zig").Text;
+
+        var current = self.first_child;
+
+        while (current) |node| {
+            const next = node.next_sibling;
+
+            if (node.node_type == .text) {
+                const text_node: *Text = @fieldParentPtr("node", node);
+
+                // Step 1: Remove empty text nodes
+                if (text_node.data.len == 0) {
+                    const removed = try self.removeChild(node);
+                    removed.release(); // Free the empty text node
+                    current = next;
+                    continue;
+                }
+
+                // Step 2: Merge adjacent text nodes
+                var adjacent = next;
+                while (adjacent) |adj_node| {
+                    // Stop if not a text node
+                    if (adj_node.node_type != .text) break;
+
+                    const adj_text: *Text = @fieldParentPtr("node", adj_node);
+                    const adj_next = adj_node.next_sibling;
+
+                    // Merge data: concatenate adj_text.data into text_node.data
+                    const new_data = try std.mem.concat(
+                        node.allocator,
+                        u8,
+                        &[_][]const u8{ text_node.data, adj_text.data },
+                    );
+
+                    // Free old data and update
+                    node.allocator.free(text_node.data);
+                    text_node.data = new_data;
+
+                    // Remove the merged node and release it
+                    // Note: adj_node is a sibling, so remove from parent (self)
+                    const removed = try self.removeChild(adj_node);
+                    removed.release(); // Free the merged text node
+
+                    // Continue to next adjacent sibling
+                    adjacent = adj_next;
+                }
+
+                // After merging, the current text node's next_sibling is now correct
+                // Skip to it to avoid processing merged nodes
+                current = node.next_sibling;
+                continue;
+            }
+
+            // Step 3: Recursively normalize child elements
+            if (node.node_type == .element or node.node_type == .document_fragment) {
+                try node.normalize();
+            }
+
+            current = next;
+        }
     }
 
     // === RareData management ===
@@ -1742,6 +2280,89 @@ pub const Node = struct {
 const validation = @import("validation.zig");
 const tree_helpers = @import("tree_helpers.zig");
 
+/// Adopt a node into a document per WHATWG DOM §4.2.4.
+///
+/// Implements the "adopt a node into a document" algorithm.
+/// This is called automatically during cross-document tree insertion,
+/// and can be called explicitly via Document.adoptNode().
+///
+/// ## Algorithm (WHATWG DOM §4.2.4)
+/// 1. Let oldDocument = node's node document
+/// 2. If node's parent is non-null, remove node
+/// 3. If document ≠ oldDocument:
+///    - For each inclusiveDescendant in node's shadow-including inclusive descendants:
+///      a. Set inclusiveDescendant's node document to document
+///      b. Run the adopting steps with inclusiveDescendant and oldDocument
+///
+/// ## Parameters
+/// - `node`: Node to adopt
+/// - `document`: Target document (as Node pointer)
+///
+/// ## Note
+/// This updates owner_document for the node and all descendants,
+/// and calls adoptingSteps vtable for each node to update node-specific data.
+///
+/// PUBLIC for Document.adoptNode() to call.
+pub fn adopt(node: *Node, document: *Node) !void {
+    // Step 1: Get old document
+    const old_document = node.owner_document;
+
+    // Step 2: If node has a parent, remove it
+    if (node.parent_node) |_| {
+        remove(node);
+    }
+
+    // Step 3: If same document, nothing to do
+    if (old_document == document) {
+        return;
+    }
+
+    // Step 4: For each inclusive descendant (node + descendants)
+    // We'll use a simple stack-based traversal to avoid recursion
+    var stack: [256]*Node = undefined;
+    var stack_size: usize = 1;
+    stack[0] = node;
+
+    while (stack_size > 0) {
+        stack_size -= 1;
+        const current = stack[stack_size];
+
+        // Update node document
+        const old_owner = current.owner_document;
+        current.owner_document = document;
+
+        // Update document reference counts
+        if (old_owner) |old_doc| {
+            if (old_doc.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const old_doc_ptr: *Document = @fieldParentPtr("node", old_doc);
+                old_doc_ptr.releaseNodeRef();
+            }
+        }
+
+        if (document.node_type == .document) {
+            const Document = @import("document.zig").Document;
+            const new_doc: *Document = @fieldParentPtr("node", document);
+            new_doc.acquireNodeRef();
+        }
+
+        // Call adopting steps for this node
+        try current.vtable.adopting_steps(current, old_owner);
+
+        // Add children to stack (process in reverse order to maintain tree order)
+        var child = current.last_child;
+        while (child) |c| {
+            if (stack_size >= stack.len) {
+                // Stack overflow protection - extremely unlikely with 256 depth
+                return error.TreeTooDeep;
+            }
+            stack[stack_size] = c;
+            stack_size += 1;
+            child = c.previous_sibling;
+        }
+    }
+}
+
 /// Pre-insert algorithm per WHATWG DOM §4.2.4.
 fn preInsert(
     node: *Node,
@@ -1790,8 +2411,18 @@ fn insert(
         }
         nodes = nodes_buffer[0..node_count];
 
-        // Remove from fragment (Step 4.1)
-        tree_helpers.removeAllChildren(node);
+        // Clear fragment's child pointers WITHOUT releasing children
+        // (we're about to insert them into parent, so they need to stay alive)
+        node.first_child = null;
+        node.last_child = null;
+
+        // Clear children's parent pointers and has_parent flag
+        for (nodes) |c| {
+            c.parent_node = null;
+            c.previous_sibling = null;
+            c.next_sibling = null;
+            c.setHasParent(false);
+        }
     } else {
         nodes_buffer[0] = node;
         node_count = 1;
@@ -1803,6 +2434,12 @@ fn insert(
 
     // Step 7: Insert each node
     for (nodes) |n| {
+        // Step 7.1: Adopt node into parent's node document (WHATWG DOM §4.2.4)
+        // This must happen BEFORE insertion to ensure all string references point to the right document
+        if (parent.owner_document) |parent_doc| {
+            try adopt(n, parent_doc);
+        }
+
         // Remove from old parent if any
         if (n.parent_node) |_| {
             remove(n);
@@ -2002,6 +2639,9 @@ test "Node - ref counting basic operations" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     const node = try Node.init(allocator, &test_vtable, .element);
@@ -2051,6 +2691,9 @@ test "Node - has_parent flag operations" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     const node = try Node.init(allocator, &test_vtable, .element);
@@ -2099,6 +2742,9 @@ test "Node - memory leak test" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     // Test 1: Simple create and release
@@ -2151,6 +2797,9 @@ test "Node - flag operations" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     const node = try Node.init(allocator, &test_vtable, .element);
@@ -2201,6 +2850,9 @@ test "Node - vtable dispatch" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     const node = try Node.init(allocator, &test_vtable, .element);
@@ -2245,6 +2897,9 @@ test "Node - rare data allocation" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     const node = try Node.init(allocator, &test_vtable, .element);
@@ -2295,6 +2950,9 @@ test "Node - rare data cleanup" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     const node = try Node.init(allocator, &test_vtable, .element);
@@ -2353,6 +3011,9 @@ test "Node - addEventListener wrapper" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     const node = try Node.init(allocator, &test_vtable, .element);
@@ -2408,6 +3069,9 @@ test "Node - hasChildNodes" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     const node = try Node.init(allocator, &test_vtable, .element);
@@ -2516,6 +3180,9 @@ test "Node - childNodes" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     const parent = try Node.init(allocator, &test_vtable, .element);
@@ -3988,4 +4655,743 @@ test "Node.isEqualNode - returns false for different child order" {
     _ = try parent2.node.appendChild(&child2b.node);
 
     try std.testing.expect(!parent1.node.isEqualNode(&parent2.node));
+}
+
+test "Node.appendChild - cross-document adoption" {
+    const allocator = std.testing.allocator;
+
+    // Create two documents
+    const doc1 = try @import("document.zig").Document.init(allocator);
+    defer doc1.release();
+
+    const doc2 = try @import("document.zig").Document.init(allocator);
+    defer doc2.release();
+
+    // Create element in doc1 with attributes
+    const elem = try doc1.createElement("element");
+    try elem.setAttribute("attr1", "value1");
+    try elem.setAttribute("data-id", "test-id");
+
+    // Add to doc1's tree
+    const container1 = try doc1.createElement("container");
+    _ = try doc1.node.appendChild(&container1.node);
+    _ = try container1.node.appendChild(&elem.node);
+
+    // Verify initial state
+    try std.testing.expect(elem.node.getOwnerDocument() == doc1);
+    try std.testing.expectEqualStrings("value1", elem.getAttribute("attr1").?);
+
+    // Move to doc2 via appendChild (should trigger adoption)
+    const container2 = try doc2.createElement("container");
+    _ = try doc2.node.appendChild(&container2.node);
+    _ = try container2.node.appendChild(&elem.node);
+
+    // Verify adoption occurred
+    try std.testing.expect(elem.node.getOwnerDocument() == doc2);
+    try std.testing.expectEqualStrings("value1", elem.getAttribute("attr1").?);
+    try std.testing.expectEqualStrings("test-id", elem.getAttribute("data-id").?);
+
+    // elem should no longer be in doc1's tree
+    try std.testing.expect(container1.node.first_child == null);
+}
+
+// ============================================================================
+// Case-Sensitive Tag Names and Attributes Tests (with any casing support)
+// ============================================================================
+
+test "Node - supports any case in tag names" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Can create elements with different case variations
+    const lower = try doc.createElement("element");
+    defer lower.node.release();
+    const upper = try doc.createElement("ELEMENT");
+    defer upper.node.release();
+    const mixed = try doc.createElement("Element");
+    defer mixed.node.release();
+
+    // Each preserves its own casing (NOT normalized)
+    try std.testing.expect(std.mem.eql(u8, lower.tag_name, "element"));
+    try std.testing.expect(std.mem.eql(u8, upper.tag_name, "ELEMENT"));
+    try std.testing.expect(std.mem.eql(u8, mixed.tag_name, "Element"));
+
+    // They are different tag names
+    try std.testing.expect(!std.mem.eql(u8, lower.tag_name, upper.tag_name));
+    try std.testing.expect(!std.mem.eql(u8, lower.tag_name, mixed.tag_name));
+}
+
+test "Node - nodeName() preserves original casing" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem1 = try doc.createElement("container");
+    defer elem1.node.release();
+    const elem2 = try doc.createElement("CONTAINER");
+    defer elem2.node.release();
+    const elem3 = try doc.createElement("Container");
+    defer elem3.node.release();
+
+    // nodeName() returns the exact casing used in createElement
+    try std.testing.expect(std.mem.eql(u8, elem1.node.nodeName(), "container"));
+    try std.testing.expect(std.mem.eql(u8, elem2.node.nodeName(), "CONTAINER"));
+    try std.testing.expect(std.mem.eql(u8, elem3.node.nodeName(), "Container"));
+
+    // They are NOT equal
+    try std.testing.expect(!std.mem.eql(u8, elem1.node.nodeName(), elem2.node.nodeName()));
+}
+
+test "Node - supports any case in attribute names (case-sensitive matching)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.node.release();
+
+    // Can set attributes with any casing
+    try elem.setAttribute("data-id", "123");
+    try elem.setAttribute("DATA-NAME", "456");
+    try elem.setAttribute("Data-Value", "789");
+
+    // getAttribute is case-sensitive (exact match only)
+    const lower = elem.getAttribute("data-id");
+    try std.testing.expect(lower != null);
+    try std.testing.expect(std.mem.eql(u8, lower.?, "123"));
+
+    // Different casing does NOT match
+    const upper_miss = elem.getAttribute("DATA-ID");
+    try std.testing.expect(upper_miss == null);
+
+    // Uppercase attribute exists
+    const upper = elem.getAttribute("DATA-NAME");
+    try std.testing.expect(upper != null);
+    try std.testing.expect(std.mem.eql(u8, upper.?, "456"));
+
+    // Lowercase does NOT match uppercase attribute
+    const lower_miss = elem.getAttribute("data-name");
+    try std.testing.expect(lower_miss == null);
+
+    // Mixed case attribute exists
+    const mixed = elem.getAttribute("Data-Value");
+    try std.testing.expect(mixed != null);
+    try std.testing.expect(std.mem.eql(u8, mixed.?, "789"));
+}
+
+test "Node - setAttribute with different case creates separate attributes" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.node.release();
+
+    // Set with lowercase
+    try elem.setAttribute("key", "value1");
+
+    // Set with uppercase creates DIFFERENT attribute
+    try elem.setAttribute("KEY", "value2");
+
+    // Both attributes exist independently
+    const lower = elem.getAttribute("key");
+    try std.testing.expect(lower != null);
+    try std.testing.expect(std.mem.eql(u8, lower.?, "value1"));
+
+    const upper = elem.getAttribute("KEY");
+    try std.testing.expect(upper != null);
+    try std.testing.expect(std.mem.eql(u8, upper.?, "value2"));
+
+    // Should have 2 separate attributes
+    try std.testing.expect(elem.hasAttribute("key"));
+    try std.testing.expect(elem.hasAttribute("KEY"));
+}
+
+test "Node - hasAttribute is case-sensitive" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.node.release();
+
+    try elem.setAttribute("attr1", "value");
+
+    // Only exact case matches
+    try std.testing.expect(elem.hasAttribute("attr1"));
+    try std.testing.expect(!elem.hasAttribute("ATTR1"));
+    try std.testing.expect(!elem.hasAttribute("Attr1"));
+    try std.testing.expect(!elem.hasAttribute("aTtR1"));
+}
+
+test "Node - removeAttribute is case-sensitive" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.node.release();
+
+    // Set with lowercase
+    try elem.setAttribute("data-test", "value");
+    try std.testing.expect(elem.hasAttribute("data-test"));
+
+    // Remove with uppercase does NOT remove lowercase attribute
+    elem.removeAttribute("DATA-TEST");
+
+    // Lowercase attribute still exists
+    try std.testing.expect(elem.hasAttribute("data-test"));
+
+    // Now remove with correct case
+    elem.removeAttribute("data-test");
+    try std.testing.expect(!elem.hasAttribute("data-test"));
+}
+
+test "Node - firstElementChild skips non-element nodes" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    // Add text node first
+    const text = try doc.createTextNode("text");
+    _ = try parent.node.appendChild(&text.node);
+
+    // Add comment node
+    const comment = try doc.createComment("comment");
+    _ = try parent.node.appendChild(&comment.node);
+
+    // Add first element
+    const elem1 = try doc.createElement("child1");
+    _ = try parent.node.appendChild(&elem1.node);
+
+    // Add second element
+    const elem2 = try doc.createElement("child2");
+    _ = try parent.node.appendChild(&elem2.node);
+
+    // firstElementChild should skip text and comment, return elem1
+    const first = parent.node.firstElementChild();
+    try std.testing.expect(first != null);
+    try std.testing.expect(first.? == elem1);
+}
+
+test "Node - lastElementChild skips non-element nodes" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    // Add first element
+    const elem1 = try doc.createElement("child1");
+    _ = try parent.node.appendChild(&elem1.node);
+
+    // Add second element
+    const elem2 = try doc.createElement("child2");
+    _ = try parent.node.appendChild(&elem2.node);
+
+    // Add text node last
+    const text = try doc.createTextNode("text");
+    _ = try parent.node.appendChild(&text.node);
+
+    // Add comment node last
+    const comment = try doc.createComment("comment");
+    _ = try parent.node.appendChild(&comment.node);
+
+    // lastElementChild should skip text and comment, return elem2
+    const last = parent.node.lastElementChild();
+    try std.testing.expect(last != null);
+    try std.testing.expect(last.? == elem2);
+}
+
+test "Node - childElementCount excludes non-element nodes" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    // Initially zero
+    try std.testing.expectEqual(@as(u32, 0), parent.node.childElementCount());
+
+    // Add text node (doesn't count)
+    const text = try doc.createTextNode("text");
+    _ = try parent.node.appendChild(&text.node);
+    try std.testing.expectEqual(@as(u32, 0), parent.node.childElementCount());
+
+    // Add element (counts)
+    const elem1 = try doc.createElement("child1");
+    _ = try parent.node.appendChild(&elem1.node);
+    try std.testing.expectEqual(@as(u32, 1), parent.node.childElementCount());
+
+    // Add comment (doesn't count)
+    const comment = try doc.createComment("comment");
+    _ = try parent.node.appendChild(&comment.node);
+    try std.testing.expectEqual(@as(u32, 1), parent.node.childElementCount());
+
+    // Add another element (counts)
+    const elem2 = try doc.createElement("child2");
+    _ = try parent.node.appendChild(&elem2.node);
+    try std.testing.expectEqual(@as(u32, 2), parent.node.childElementCount());
+
+    // Add more text (doesn't count)
+    const text2 = try doc.createTextNode("more text");
+    _ = try parent.node.appendChild(&text2.node);
+    try std.testing.expectEqual(@as(u32, 2), parent.node.childElementCount());
+}
+
+test "Node - firstElementChild returns null when no element children" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    // No children
+    try std.testing.expect(parent.node.firstElementChild() == null);
+
+    // Only text children
+    const text = try doc.createTextNode("text");
+    _ = try parent.node.appendChild(&text.node);
+    try std.testing.expect(parent.node.firstElementChild() == null);
+
+    // Only comment children
+    const comment = try doc.createComment("comment");
+    _ = try parent.node.appendChild(&comment.node);
+    try std.testing.expect(parent.node.firstElementChild() == null);
+}
+
+test "Node - lastElementChild returns null when no element children" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    // No children
+    try std.testing.expect(parent.node.lastElementChild() == null);
+
+    // Only text children
+    const text = try doc.createTextNode("text");
+    _ = try parent.node.appendChild(&text.node);
+    try std.testing.expect(parent.node.lastElementChild() == null);
+}
+
+test "Node - prepend adds single string" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    // Prepend a string
+    try parent.node.prepend(&[_]Node.NodeOrString{
+        .{ .string = "hello" },
+    });
+
+    // Should have 1 text child
+    try std.testing.expect(parent.node.first_child != null);
+    try std.testing.expectEqual(NodeType.text, parent.node.first_child.?.node_type);
+}
+
+test "Node - prepend adds two nodes" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    const child1 = try doc.createElement("child1");
+    const child2 = try doc.createElement("child2");
+
+    try parent.node.prepend(&[_]Node.NodeOrString{
+        .{ .node = &child1.node },
+        .{ .node = &child2.node },
+    });
+
+    // Should have 2 element children
+    try std.testing.expectEqual(@as(u32, 2), parent.node.childElementCount());
+}
+
+test "Node - prepend adds nodes and string" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    const child1 = try doc.createElement("child1");
+    const child2 = try doc.createElement("child2");
+
+    try parent.node.prepend(&[_]Node.NodeOrString{
+        .{ .node = &child1.node },
+        .{ .string = "text" },
+        .{ .node = &child2.node },
+    });
+
+    // Should have 2 element children + 1 text
+    try std.testing.expectEqual(@as(u32, 2), parent.node.childElementCount());
+}
+
+test "Node - prepend adds nodes before existing children" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    // Add existing child
+    const existing = try doc.createElement("existing");
+    _ = try parent.node.appendChild(&existing.node);
+
+    // Count before prepend
+    try std.testing.expectEqual(@as(u32, 1), parent.node.childElementCount());
+
+    // Prepend new nodes
+    const child1 = try doc.createElement("child1");
+    const child2 = try doc.createElement("child2");
+
+    try parent.node.prepend(&[_]Node.NodeOrString{
+        .{ .node = &child1.node },
+        .{ .string = "text" },
+        .{ .node = &child2.node },
+    });
+
+    // Verify we have 3 element children now (child1, child2, existing)
+    // Plus 1 text node
+    try std.testing.expectEqual(@as(u32, 3), parent.node.childElementCount());
+
+    // Verify first child is child1
+    const first_elem = parent.node.firstElementChild();
+    try std.testing.expect(first_elem != null);
+    try std.testing.expect(first_elem.? == child1);
+
+    // Verify last element is still existing
+    const last_elem = parent.node.lastElementChild();
+    try std.testing.expect(last_elem != null);
+    try std.testing.expect(last_elem.? == existing);
+}
+
+test "Node - append adds nodes after existing children" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    // Add existing child
+    const existing = try doc.createElement("existing");
+    _ = try parent.node.appendChild(&existing.node);
+
+    // Count before append
+    try std.testing.expectEqual(@as(u32, 1), parent.node.childElementCount());
+
+    // Append new nodes
+    const child1 = try doc.createElement("child1");
+    const child2 = try doc.createElement("child2");
+
+    try parent.node.append(&[_]Node.NodeOrString{
+        .{ .string = "text" },
+        .{ .node = &child1.node },
+        .{ .node = &child2.node },
+    });
+
+    // Verify we have 3 element children now (existing, child1, child2)
+    // Plus 1 text node
+    try std.testing.expectEqual(@as(u32, 3), parent.node.childElementCount());
+
+    // Verify first element is still existing
+    const first_elem = parent.node.firstElementChild();
+    try std.testing.expect(first_elem != null);
+    try std.testing.expect(first_elem.? == existing);
+
+    // Verify last element is child2
+    const last_elem = parent.node.lastElementChild();
+    try std.testing.expect(last_elem != null);
+    try std.testing.expect(last_elem.? == child2);
+}
+
+test "Node - replaceChildren removes old and adds new" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    // Add old children
+    const old1 = try doc.createElement("old1");
+    const old2 = try doc.createElement("old2");
+    _ = try parent.node.appendChild(&old1.node);
+    _ = try parent.node.appendChild(&old2.node);
+
+    try std.testing.expectEqual(@as(u32, 2), parent.node.childElementCount());
+
+    // Replace with new children
+    const new1 = try doc.createElement("new1");
+
+    try parent.node.replaceChildren(&[_]Node.NodeOrString{
+        .{ .string = "text" },
+        .{ .node = &new1.node },
+    });
+
+    // Verify old children removed
+    try std.testing.expect(old1.node.parent_node == null);
+    try std.testing.expect(old2.node.parent_node == null);
+
+    // Verify new children added
+    try std.testing.expect(parent.node.first_child.?.node_type == .text);
+    try std.testing.expect(parent.node.last_child.? == &new1.node);
+    try std.testing.expectEqual(@as(u32, 1), parent.node.childElementCount());
+}
+
+test "Node - prepend with empty slice is no-op" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    const existing = try doc.createElement("existing");
+    _ = try parent.node.appendChild(&existing.node);
+
+    // Prepend empty slice
+    try parent.node.prepend(&[_]Node.NodeOrString{});
+
+    // Nothing changed
+    try std.testing.expect(parent.node.first_child.? == &existing.node);
+    try std.testing.expectEqual(@as(u32, 1), parent.node.childElementCount());
+}
+
+test "Node - replaceChildren with empty slice removes all" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("parent");
+    _ = try doc.node.appendChild(&parent.node);
+
+    const child1 = try doc.createElement("child1");
+    const child2 = try doc.createElement("child2");
+    _ = try parent.node.appendChild(&child1.node);
+    _ = try parent.node.appendChild(&child2.node);
+
+    // Replace with nothing
+    try parent.node.replaceChildren(&[_]Node.NodeOrString{});
+
+    // All children removed
+    try std.testing.expect(parent.node.first_child == null);
+    try std.testing.expectEqual(@as(u32, 0), parent.node.childElementCount());
+}
+
+test "Node.normalize - merges adjacent text nodes" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("container");
+    _ = try doc.node.appendChild(&parent.node);
+
+    const text1 = try doc.createTextNode("Hello");
+    const text2 = try doc.createTextNode(" ");
+    const text3 = try doc.createTextNode("World");
+
+    _ = try parent.node.appendChild(&text1.node);
+    _ = try parent.node.appendChild(&text2.node);
+    _ = try parent.node.appendChild(&text3.node);
+
+    // Before: 3 text nodes
+    try std.testing.expectEqual(@as(usize, 3), parent.node.childNodes().length());
+
+    try parent.node.normalize();
+
+    // After: 1 text node with merged data
+    try std.testing.expectEqual(@as(usize, 1), parent.node.childNodes().length());
+
+    const merged = parent.node.first_child.?;
+    try std.testing.expectEqual(NodeType.text, merged.node_type);
+
+    const Text = @import("text.zig").Text;
+    const merged_text: *Text = @fieldParentPtr("node", merged);
+    try std.testing.expectEqualStrings("Hello World", merged_text.data);
+}
+
+test "Node.normalize - removes empty text nodes" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("container");
+    _ = try doc.node.appendChild(&parent.node);
+
+    const text1 = try doc.createTextNode("Hello");
+    const empty = try doc.createTextNode("");
+    const text2 = try doc.createTextNode("World");
+
+    _ = try parent.node.appendChild(&text1.node);
+    _ = try parent.node.appendChild(&empty.node);
+    _ = try parent.node.appendChild(&text2.node);
+
+    // Before: 3 text nodes (one empty)
+    try std.testing.expectEqual(@as(usize, 3), parent.node.childNodes().length());
+
+    try parent.node.normalize();
+
+    // After: 1 text node (empty removed, others merged)
+    try std.testing.expectEqual(@as(usize, 1), parent.node.childNodes().length());
+
+    const Text = @import("text.zig").Text;
+    const merged = parent.node.first_child.?;
+    const merged_text: *Text = @fieldParentPtr("node", merged);
+    try std.testing.expectEqualStrings("HelloWorld", merged_text.data);
+}
+
+test "Node.normalize - respects element boundaries" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("container");
+    _ = try doc.node.appendChild(&parent.node);
+
+    const text1 = try doc.createTextNode("Hello");
+    const elem = try doc.createElement("span");
+    const text2 = try doc.createTextNode("World");
+
+    _ = try parent.node.appendChild(&text1.node);
+    _ = try parent.node.appendChild(&elem.node);
+    _ = try parent.node.appendChild(&text2.node);
+
+    // Before: text, element, text
+    try std.testing.expectEqual(@as(usize, 3), parent.node.childNodes().length());
+
+    try parent.node.normalize();
+
+    // After: text nodes NOT merged across element boundary
+    try std.testing.expectEqual(@as(usize, 3), parent.node.childNodes().length());
+
+    const Text = @import("text.zig").Text;
+    const first = parent.node.first_child.?;
+    const first_text: *Text = @fieldParentPtr("node", first);
+    try std.testing.expectEqualStrings("Hello", first_text.data);
+
+    const last = parent.node.last_child.?;
+    const last_text: *Text = @fieldParentPtr("node", last);
+    try std.testing.expectEqualStrings("World", last_text.data);
+}
+
+test "Node.normalize - recursively normalizes descendants" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("container");
+    _ = try doc.node.appendChild(&parent.node);
+
+    const child = try doc.createElement("child");
+    _ = try parent.node.appendChild(&child.node);
+
+    const text1 = try doc.createTextNode("A");
+    const text2 = try doc.createTextNode("B");
+    _ = try child.node.appendChild(&text1.node);
+    _ = try child.node.appendChild(&text2.node);
+
+    // Before: child has 2 text nodes
+    try std.testing.expectEqual(@as(usize, 2), child.node.childNodes().length());
+
+    try parent.node.normalize();
+
+    // After: child has 1 merged text node
+    try std.testing.expectEqual(@as(usize, 1), child.node.childNodes().length());
+
+    const Text = @import("text.zig").Text;
+    const merged = child.node.first_child.?;
+    const merged_text: *Text = @fieldParentPtr("node", merged);
+    try std.testing.expectEqualStrings("AB", merged_text.data);
+}
+
+test "Node.normalize - handles document fragments" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const fragment = try doc.createDocumentFragment();
+    defer fragment.node.release();
+
+    const text1 = try doc.createTextNode("Frag");
+    const text2 = try doc.createTextNode("ment");
+    _ = try fragment.node.appendChild(&text1.node);
+    _ = try fragment.node.appendChild(&text2.node);
+
+    try std.testing.expectEqual(@as(usize, 2), fragment.node.childNodes().length());
+
+    try fragment.node.normalize();
+
+    try std.testing.expectEqual(@as(usize, 1), fragment.node.childNodes().length());
+
+    const Text = @import("text.zig").Text;
+    const merged = fragment.node.first_child.?;
+    const merged_text: *Text = @fieldParentPtr("node", merged);
+    try std.testing.expectEqualStrings("Fragment", merged_text.data);
 }

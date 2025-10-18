@@ -410,6 +410,9 @@ test "NodeList - empty list" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     const parent = try Node.init(allocator, &test_vtable, .element);
@@ -452,6 +455,9 @@ test "NodeList - with children" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     const parent = try Node.init(allocator, &test_vtable, .element);
@@ -532,6 +538,9 @@ test "NodeList - memory leak test" {
                 return error.NotSupported;
             }
         }.clone,
+        .adopting_steps = struct {
+            fn adoptingSteps(_: *Node, _: ?*Node) !void {}
+        }.adoptingSteps,
     };
 
     // Test 1: Empty list

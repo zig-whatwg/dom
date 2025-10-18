@@ -1,5 +1,35 @@
 # Documentation Standards Skill
 
+## ⚠️ CRITICAL: Generic DOM Library - Documentation Rules
+
+**THIS IS A GENERIC DOM LIBRARY** - Documentation examples MUST use generic element/attribute names.
+
+### Documentation Naming Rules
+
+✅ **ALWAYS use in examples**:
+- Elements: `element`, `container`, `item`, `node`, `component`, `widget`, `panel`, `view`, `content`, `wrapper`, `parent`, `child`, `root`
+- Attributes: `attr1`, `attr2`, `data-id`, `data-name`, `key`, `value`, `flag`
+
+❌ **NEVER use in examples**:
+- NO HTML elements: `div`, `span`, `p`, `a`, `button`, `input`, `form`, `table`, `body`, `html`
+- NO HTML attributes: `id`, `class`, `href`, `src`, `type`, `name`, `placeholder`
+
+### Example Documentation Pattern
+
+```zig
+//! ## Usage Examples
+//!
+//! ### Creating Elements
+//! ```zig
+//! // ✅ CORRECT: Generic element names
+//! const parent = try doc.createElement("container");
+//! const child = try doc.createElement("item");
+//! _ = try parent.node.appendChild(&child.node);
+//! ```
+//!
+//! ❌ **WRONG**: Using HTML element names like "div", "span"
+```
+
 ## When to use this skill
 
 Load when:
@@ -52,7 +82,10 @@ Documentation standards for the project based on the reference `/Users/bcardarel
 //! ### [Feature Category 1]
 //! [Description of feature with code example]
 //! ```zig
-//! // Example code
+//! // ✅ CORRECT: Use generic element names in examples
+//! const container = try doc.createElement("container");
+//! const item = try doc.createElement("item");
+//! _ = try container.node.appendChild(&item.node);
 //! ```
 //!
 //! ### [Feature Category 2]

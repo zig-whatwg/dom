@@ -14,6 +14,7 @@ test "compareDocumentPosition with same node returns 0" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
+    defer elem.node.release(); // Must release orphaned nodes
     const result = elem.node.compareDocumentPosition(&elem.node);
     try std.testing.expectEqual(@as(u16, 0), result);
 }
@@ -24,6 +25,7 @@ test "compareDocumentPosition: other is ancestor (CONTAINS + PRECEDING)" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const child = try doc.createElement("span");
     const grandchild = try doc.createElement("p");
 
@@ -42,6 +44,7 @@ test "compareDocumentPosition: other is descendant (CONTAINED_BY + FOLLOWING)" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const child = try doc.createElement("span");
     const grandchild = try doc.createElement("p");
 
@@ -60,6 +63,7 @@ test "compareDocumentPosition: preceding sibling" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const sibling1 = try doc.createElement("span");
     const sibling2 = try doc.createElement("p");
 
@@ -77,6 +81,7 @@ test "compareDocumentPosition: following sibling" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const sibling1 = try doc.createElement("span");
     const sibling2 = try doc.createElement("p");
 
@@ -94,7 +99,9 @@ test "compareDocumentPosition: disconnected nodes" {
     defer doc.release();
 
     const elem1 = try doc.createElement("div");
+    defer elem1.node.release(); // Must release orphaned nodes
     const elem2 = try doc.createElement("span");
+    defer elem2.node.release(); // Must release orphaned nodes
 
     // Disconnected nodes should return DISCONNECTED + IMPLEMENTATION_SPECIFIC + (PRECEDING or FOLLOWING)
     const result = elem1.node.compareDocumentPosition(&elem2.node);
@@ -115,6 +122,7 @@ test "compareDocumentPosition: parent and child" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const child = try doc.createElement("span");
 
     _ = try parent.node.appendChild(&child.node);

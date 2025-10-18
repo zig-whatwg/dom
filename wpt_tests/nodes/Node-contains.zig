@@ -14,6 +14,7 @@ test "Node.contains(null) returns false" {
     defer doc.release();
 
     const elem = try doc.createElement("div");
+    defer elem.node.release(); // Must release orphaned nodes
     try std.testing.expect(!elem.node.contains(null));
 
     // Test with document node
@@ -27,6 +28,7 @@ test "Node.contains() with parent-child relationships" {
 
     // Create a simple tree: parent -> child -> grandchild
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const child = try doc.createElement("span");
     const grandchild = try doc.createElement("p");
 
@@ -61,7 +63,9 @@ test "Node.contains() with detached nodes" {
     defer doc.release();
 
     const elem1 = try doc.createElement("div");
+    defer elem1.node.release(); // Must release orphaned nodes
     const elem2 = try doc.createElement("span");
+    defer elem2.node.release(); // Must release orphaned nodes
 
     // Detached nodes don't contain each other
     try std.testing.expect(!elem1.node.contains(&elem2.node));
@@ -78,6 +82,7 @@ test "Node.contains() with sibling nodes" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const sibling1 = try doc.createElement("span");
     const sibling2 = try doc.createElement("p");
 

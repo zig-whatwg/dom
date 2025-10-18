@@ -27,6 +27,7 @@ test "Calling insertBefore on a leaf node Text must throw HIERARCHY_REQUEST_ERR"
     defer doc.release();
 
     const text_node = try doc.createTextNode("Foo");
+    defer text_node.node.release(); // Must release orphaned nodes
     try testLeafNode(&text_node.node, doc);
 }
 
@@ -36,6 +37,7 @@ test "Calling insertBefore on a leaf node Comment must throw HIERARCHY_REQUEST_E
     defer doc.release();
 
     const comment = try doc.createComment("Foo");
+    defer comment.node.release(); // Must release orphaned nodes
     try testLeafNode(&comment.node, doc);
 }
 
@@ -45,6 +47,7 @@ test "Calling insertBefore with an inclusive ancestor must throw HIERARCHY_REQUE
     defer doc.release();
 
     const body = try doc.createElement("body");
+    defer body.node.release(); // Must release orphaned nodes
     const child = try doc.createElement("div");
     _ = try body.node.appendChild(&child.node);
 
@@ -59,6 +62,7 @@ test "insertBefore with null reference node appends at end" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const child1 = try doc.createElement("span");
     const child2 = try doc.createElement("p");
 
@@ -76,6 +80,7 @@ test "insertBefore inserts before reference node" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const child1 = try doc.createElement("span");
     const child2 = try doc.createElement("p");
     const child3 = try doc.createElement("a");
@@ -99,7 +104,9 @@ test "insertBefore moves node from old parent" {
     defer doc.release();
 
     const parent1 = try doc.createElement("div");
+    defer parent1.node.release(); // Must release orphaned nodes
     const parent2 = try doc.createElement("span");
+    defer parent2.node.release(); // Must release orphaned nodes
     const child = try doc.createElement("p");
 
     _ = try parent1.node.appendChild(&child.node);

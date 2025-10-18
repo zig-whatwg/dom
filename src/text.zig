@@ -313,6 +313,7 @@ pub const Text = struct {
         .node_value = nodeValueImpl,
         .set_node_value = setNodeValueImpl,
         .clone_node = cloneNodeImpl,
+        .adopting_steps = adoptingStepsImpl,
     };
 
     /// Creates a new Text node with the specified content.
@@ -508,6 +509,82 @@ pub const Text = struct {
         self.node.generation += 1;
     }
 
+    /// Splits this text node at the specified offset.
+    ///
+    /// Implements WHATWG DOM Text.splitText() per §4.10.1.
+    ///
+    /// ## WHATWG Specification
+    /// - **Algorithm**: https://dom.spec.whatwg.org/#dom-text-splittext
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] Text splitText(unsigned long offset);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Text.splitText(): https://developer.mozilla.org/en-US/docs/Web/API/Text/splitText
+    ///
+    /// ## Behavior
+    /// Splits the text node at the given offset, creating a new Text node containing
+    /// the text after the offset. The original node is truncated to contain only the
+    /// text before the offset.
+    ///
+    /// If the node has a parent, the new node is inserted as the next sibling of this node.
+    ///
+    /// ## Parameters
+    /// - `offset`: The offset at which to split (0 to data.length)
+    ///
+    /// ## Returns
+    /// The newly created Text node containing text after the offset
+    ///
+    /// ## Errors
+    /// - `error.IndexSizeError`: Offset is greater than data length
+    /// - `error.OutOfMemory`: Failed to allocate new text node or data
+    ///
+    /// ## Example
+    /// ```zig
+    /// const text = try doc.createTextNode("Hello World");
+    /// _ = try parent.node.appendChild(&text.node);
+    ///
+    /// const second = try text.splitText(6);
+    /// // text.data = "Hello "
+    /// // second.data = "World"
+    /// // second is now next sibling of text in parent
+    /// ```
+    ///
+    /// ## Spec Notes
+    /// The split happens BEFORE the character at offset. So splitText(0) creates
+    /// an empty node and moves all text to the new node.
+    pub fn splitText(self: *Text, offset: usize) !*Text {
+        // Step 1: Validate offset
+        if (offset > self.data.len) {
+            return error.IndexSizeError;
+        }
+
+        // Step 2: Create new text node with text after offset
+        // Text.create will dupe the content, so just pass the slice
+        const new_text = try Text.create(self.node.allocator, self.data[offset..]);
+        errdefer new_text.node.release();
+
+        // Set owner document from the original text node's document
+        // (following the same pattern as cloneNode)
+        new_text.node.owner_document = self.node.owner_document;
+
+        // Step 3: Truncate this node's data to before offset
+        const truncated = try self.node.allocator.dupe(u8, self.data[0..offset]);
+        self.node.allocator.free(self.data);
+        self.data = truncated;
+
+        // Step 4: If this node has a parent, insert new node after this one
+        if (self.node.parent_node) |parent| {
+            // Insert new_text after self
+            _ = try parent.insertBefore(&new_text.node, self.node.next_sibling);
+        }
+
+        self.node.generation += 1;
+        return new_text;
+    }
+
     /// Returns the concatenated text of all contiguous Text nodes.
     ///
     /// Implements WHATWG DOM Text.wholeText property per §4.7.
@@ -569,6 +646,13 @@ pub const Text = struct {
     }
 
     // === Private vtable implementations ===
+
+    /// Vtable implementation: adopting steps (no-op for Text)
+    ///
+    /// Text nodes own their data, so no re-interning is needed during adoption.
+    fn adoptingStepsImpl(_: *Node, _: ?*Node) !void {
+        // No-op: Text data is already owned by the node
+    }
 
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {
@@ -960,4 +1044,104 @@ test "Text - wholeText with empty text nodes" {
     defer allocator.free(whole);
 
     try std.testing.expectEqualStrings("Content", whole);
+}
+
+test "Text.splitText - basic split" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("container");
+    _ = try doc.node.appendChild(&parent.node);
+
+    const text = try doc.createTextNode("Hello World");
+    _ = try parent.node.appendChild(&text.node);
+
+    // Split at offset 6 (after "Hello ")
+    const second = try text.splitText(6);
+
+    // First part
+    try std.testing.expectEqualStrings("Hello ", text.data);
+
+    // Second part
+    try std.testing.expectEqualStrings("World", second.data);
+
+    // Both should be children of parent
+    try std.testing.expectEqual(@as(usize, 2), parent.node.childNodes().length());
+
+    // Second should be next sibling of first
+    try std.testing.expect(text.node.next_sibling == &second.node);
+}
+
+test "Text.splitText - split at boundaries" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const text1 = try doc.createTextNode("Test");
+    defer text1.node.release();
+
+    // Split at 0 - first part empty
+    const second1 = try text1.splitText(0);
+    defer second1.node.release();
+
+    try std.testing.expectEqualStrings("", text1.data);
+    try std.testing.expectEqualStrings("Test", second1.data);
+
+    const text2 = try doc.createTextNode("Test");
+    defer text2.node.release();
+
+    // Split at length - second part empty
+    const second2 = try text2.splitText(4);
+    defer second2.node.release();
+
+    try std.testing.expectEqualStrings("Test", text2.data);
+    try std.testing.expectEqualStrings("", second2.data);
+}
+
+test "Text.splitText - orphaned node" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const text = try doc.createTextNode("Orphan Text");
+    defer text.node.release();
+
+    // Split orphaned node (no parent)
+    const second = try text.splitText(7);
+    defer second.node.release();
+
+    try std.testing.expectEqualStrings("Orphan ", text.data);
+    try std.testing.expectEqualStrings("Text", second.data);
+
+    // Neither should have a parent
+    try std.testing.expect(text.node.parent_node == null);
+    try std.testing.expect(second.node.parent_node == null);
+
+    // Should not be siblings
+    try std.testing.expect(text.node.next_sibling == null);
+    try std.testing.expect(second.node.previous_sibling == null);
+}
+
+test "Text.splitText - invalid offset" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const text = try doc.createTextNode("Test");
+    defer text.node.release();
+
+    // Offset greater than length
+    try std.testing.expectError(
+        error.IndexSizeError,
+        text.splitText(100),
+    );
 }

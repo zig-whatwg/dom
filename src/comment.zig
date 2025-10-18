@@ -288,6 +288,7 @@ pub const Comment = struct {
         .node_value = nodeValueImpl,
         .set_node_value = setNodeValueImpl,
         .clone_node = cloneNodeImpl,
+        .adopting_steps = adoptingStepsImpl,
     };
 
     /// Creates a new Comment node with the specified content.
@@ -484,6 +485,13 @@ pub const Comment = struct {
     }
 
     // === Private vtable implementations ===
+
+    /// Vtable implementation: adopting steps (no-op for Comment)
+    ///
+    /// Comment nodes own their data, so no re-interning is needed during adoption.
+    fn adoptingStepsImpl(_: *Node, _: ?*Node) !void {
+        // No-op: Comment data is already owned by the node
+    }
 
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {

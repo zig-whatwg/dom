@@ -8,6 +8,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Phase 2 Complete: ParentNode Interface** ✅
+  - **ElementCollection** - Generic live collection for element children (not HTML-specific)
+    - Lightweight view (8 bytes) of parent's element children
+    - Live collection automatically reflects DOM changes
+    - Filters out non-element nodes (Text, Comment, etc.)
+    - O(n) operations with minimal memory overhead
+    - Similar to HTMLCollection but generic for any document type
+    - 6 comprehensive tests, all passing with 0 leaks
+  - **children()** - Returns live ElementCollection of element children
+    - Implements WHATWG DOM ParentNode.children property
+    - WebIDL: `[SameObject] readonly attribute HTMLCollection children;`
+    - Spec: https://dom.spec.whatwg.org/#dom-parentnode-children
+    - Available on Element, Document, and DocumentFragment (spec-compliant placement)
+    - **CORRECTED**: Initially placed on Node (wrong), moved to correct types per spec
+    - 3 comprehensive tests covering empty, filtered, and live behavior
+  - **Existing ParentNode properties** (already implemented):
+    - `firstElementChild()` - First child that is an element
+    - `lastElementChild()` - Last child that is an element
+    - `childElementCount()` - Count of element children
+  - **Total**: 422 tests passing (413 main + 9 new Phase 2), 0 leaks ✅
+
+### Fixed
+- **Text.splitText() memory leak** - Removed double allocation of split text content
+  - Root cause: splitText() allocated string with `allocator.dupe()`, then Text.create() duplicated it again
+  - Fix: Pass slice directly to Text.create(), which handles the single necessary duplication
+  - Impact: All 4 splitText tests now pass with zero memory leaks ✅
+  - Total test status: 509/509 tests passing (413 main + 92 WPT + 4 splitText), 0 leaks
+
+### Added
+- **WPT Test Coverage Expansion: Node.cloneNode()** - Comprehensive cloning behavior verification 🧬
+  - Expanded from 7 tests → 24 tests (3.4x increase, +17 tests)
+  - **DocumentFragment cloning** (3 tests): shallow copy, deep copy, mixed node types
+  - **Deep clone verification** (2 tests): grandchildren verification, sibling relationships
+  - **Clone independence** (3 tests): modifications don't cross-contaminate original/clone
+  - **Multiple attribute cloning** (2 tests): 6+ attributes, empty value preservation
+  - **Text/Comment edge cases** (4 tests): empty strings, whitespace, special characters
+  - **Element tag names** (2 tests): generic element names, custom elements
+  - **Complex structures** (1 test): nested tree with multiple levels
+  - All tests pass with zero memory leaks ✅
+  - Uses generic element names only (element, container, item, etc.)
+  - Covers: Element, Text, Comment, DocumentFragment cloning
+  - Not yet covered: DocumentType, ProcessingInstruction, Document (not implemented)
+  - **Status: COMPLETE for implemented node types**
+
+### Changed
+- **CRITICAL: Generic DOM Library Policy Enforcement** 🚨
+  - **Removed ALL HTML-specific element names** from tests and code
+  - **Clarified library scope**: Generic DOM for ANY document type (XML, custom), NOT HTML-specific
+  - **Updated all skills** with explicit HTML prohibitions and generic naming rules
+  - **Node-cloneNode tests**: Replaced HTML names (div, span, button) with generic (element, container, item)
+  - **Skills updated**: whatwg_compliance, testing_requirements, documentation_standards, AGENTS.md
+  - **New policy document**: GENERIC_DOM_POLICY.md with complete guidelines
+  - **Rationale**: This library implements WHATWG DOM interfaces, not HTML element semantics
+  - **Impact**: Prevents scope creep, clarifies use cases, maintains focus on generic DOM
+  - All 384 tests still pass after changes ✅
 - **Memory Stress Test Suite** - Long-running DOM operation simulation for memory leak detection 🔬
   - Persistent DOM stress test with 2.5M operations in 30 seconds
   - HashMap-based ElementRegistry prevents use-after-free during element removal

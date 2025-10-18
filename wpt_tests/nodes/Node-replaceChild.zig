@@ -14,8 +14,11 @@ test "If child's parent is not the context node, NotFoundError should be thrown"
     defer doc.release();
 
     const a = try doc.createElement("div");
+    defer a.node.release(); // Must release orphaned nodes
     const b = try doc.createElement("div");
+    defer b.node.release(); // Must release orphaned nodes
     const c = try doc.createElement("div");
+    defer c.node.release(); // Must release orphaned nodes
 
     // c is not a child of a
     const result = a.node.replaceChild(&b.node, &c.node);
@@ -28,9 +31,12 @@ test "If child's parent is not the context node (child in different parent)" {
     defer doc.release();
 
     const a = try doc.createElement("div");
+    defer a.node.release(); // Must release orphaned nodes
     const b = try doc.createElement("div");
     const c = try doc.createElement("div");
+    defer c.node.release(); // Must release orphaned nodes
     const d = try doc.createElement("div");
+    defer d.node.release(); // Must release orphaned nodes
 
     _ = try d.node.appendChild(&b.node);
 
@@ -47,7 +53,9 @@ test "If context node cannot contain children, HierarchyRequestError should be t
     const text_node = try doc.createTextNode("text");
     defer text_node.node.release();
     const a = try doc.createElement("div");
+    defer a.node.release(); // Must release orphaned nodes
     const b = try doc.createElement("div");
+    defer b.node.release(); // Must release orphaned nodes
 
     // Text nodes can't have children
     const result = text_node.node.replaceChild(&a.node, &b.node);
@@ -60,6 +68,7 @@ test "If node is an inclusive ancestor of context node, HierarchyRequestError sh
     defer doc.release();
 
     const a = try doc.createElement("div");
+    defer a.node.release(); // Must release orphaned nodes
     const b = try doc.createElement("div");
 
     _ = try a.node.appendChild(&b.node);
@@ -77,6 +86,7 @@ test "If node is ancestor of context node, HierarchyRequestError should be throw
     const a = try doc.createElement("div");
     const b = try doc.createElement("div");
     const c = try doc.createElement("div");
+    defer c.node.release(); // Must release orphaned nodes
 
     _ = try c.node.appendChild(&a.node);
     _ = try a.node.appendChild(&b.node);
@@ -92,6 +102,7 @@ test "replaceChild successfully replaces child" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const old_child = try doc.createElement("span");
     const new_child = try doc.createElement("p");
 
@@ -115,6 +126,7 @@ test "replaceChild maintains sibling relationships" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const child1 = try doc.createElement("a");
     const child2 = try doc.createElement("b");
     const child3 = try doc.createElement("c");
@@ -142,7 +154,9 @@ test "replaceChild removes node from old parent" {
     defer doc.release();
 
     const parent1 = try doc.createElement("div");
+    defer parent1.node.release(); // Must release orphaned nodes
     const parent2 = try doc.createElement("span");
+    defer parent2.node.release(); // Must release orphaned nodes
     const old_child = try doc.createElement("old");
     const new_child = try doc.createElement("new");
 

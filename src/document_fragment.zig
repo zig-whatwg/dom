@@ -322,6 +322,7 @@ pub const DocumentFragment = struct {
         .node_value = nodeValueImpl,
         .set_node_value = setNodeValueImpl,
         .clone_node = cloneNodeImpl,
+        .adopting_steps = adoptingStepsImpl,
     };
 
     /// Creates a new DocumentFragment node.
@@ -518,7 +519,33 @@ pub const DocumentFragment = struct {
         return try results.toOwnedSlice(allocator);
     }
 
+    /// Returns a live collection of element children.
+    ///
+    /// Implements WHATWG DOM ParentNode.children property per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [SameObject] readonly attribute HTMLCollection children;
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-children
+    /// - WebIDL: dom.idl:119
+    ///
+    /// ## Returns
+    /// Live ElementCollection of element children
+    pub fn children(self: *DocumentFragment) @import("element_collection.zig").ElementCollection {
+        return @import("element_collection.zig").ElementCollection.init(&self.node);
+    }
+
     // === Private vtable implementations ===
+
+    /// Vtable implementation: adopting steps (no-op for DocumentFragment)
+    ///
+    /// DocumentFragments don't have node-specific data to update during adoption.
+    fn adoptingStepsImpl(_: *Node, _: ?*Node) !void {
+        // No-op: DocumentFragment has no data to update
+    }
 
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {

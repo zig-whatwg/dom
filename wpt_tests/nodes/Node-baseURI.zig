@@ -12,6 +12,7 @@ test "Node.baseURI returns a string" {
     defer doc.release();
 
     const element = try doc.createElement("div");
+    defer element.node.release(); // Must release orphaned nodes
     const base_uri = element.node.baseURI();
 
     // baseURI should return a string (even if placeholder)
@@ -41,6 +42,7 @@ test "Node.baseURI for detached elements" {
     defer doc.release();
 
     const element = try doc.createElement("div");
+    defer element.node.release(); // Must release orphaned nodes
     const base_uri = element.node.baseURI();
 
     // Detached elements should still return a baseURI

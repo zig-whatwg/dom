@@ -14,8 +14,8 @@ fn testLeaf(node: *Node, desc: []const u8, doc: *Document) !void {
 
     // Pre-insert step 1: Appending to a leaf node should fail
     const text = try doc.createTextNode("fail");
-    // Note: No manual release needed - orphaned nodes are owned by document
-    // and will be freed when document is destroyed (matches browser GC semantics)
+    defer text.node.release(); // Must release orphaned nodes (not inserted into tree)
+
     const result = node.appendChild(&text.node);
     try std.testing.expectError(error.HierarchyRequestError, result);
 
@@ -30,10 +30,12 @@ test "Appending to a leaf node" {
 
     // Test text node
     const text_node = try doc.createTextNode("Foo");
+    defer text_node.node.release();
     try testLeaf(&text_node.node, "text node", doc);
 
     // Test comment
     const comment = try doc.createComment("Foo");
+    defer comment.node.release();
     try testLeaf(&comment.node, "comment", doc);
 }
 

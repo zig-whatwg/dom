@@ -1,5 +1,86 @@
 # Agent Guidelines for WHATWG DOM Implementation in Zig
 
+## ⚠️ CRITICAL: Ask Clarifying Questions When Unclear
+
+**ALWAYS ask clarifying questions when requirements are ambiguous or unclear.**
+
+### Question-Asking Protocol
+
+When you receive a request that is:
+- Ambiguous or has multiple interpretations
+- Missing key details needed for implementation
+- Unclear about expected behavior or scope
+- Could be understood in different ways
+
+**YOU MUST**:
+1. ✅ **Ask ONE clarifying question at a time**
+2. ✅ **Wait for the answer before proceeding**
+3. ✅ **Continue asking questions until you have complete understanding**
+4. ✅ **Never make assumptions when you can ask**
+
+### Examples of When to Ask
+
+❓ **Ambiguous request**: "Make tag names case-insensitive"
+- **Ask**: "Do you want tag names normalized to lowercase (so 'DIV' becomes 'div'), or should they preserve casing but match case-insensitively (so 'DIV' and 'div' are treated as the same)?"
+
+❓ **Missing details**: "Add support for custom elements"
+- **Ask**: "Should custom elements follow the Web Components spec with hyphenated names, or any arbitrary element name?"
+
+❓ **Unclear scope**: "Optimize querySelector performance"
+- **Ask**: "Which selector types should be prioritized? Simple class/ID selectors, complex descendant selectors, or attribute selectors?"
+
+❓ **Multiple interpretations**: "Add case-insensitive attributes"
+- **Ask**: "Should 'data-id' and 'DATA-ID' be treated as the same attribute (with normalization), or as separate attributes that both happen to work?"
+
+### What NOT to Do
+
+❌ **Don't make assumptions and implement something that might be wrong**
+❌ **Don't ask multiple questions in one message** (ask one, wait for answer, then ask next)
+❌ **Don't proceed with unclear requirements** hoping you guessed correctly
+❌ **Don't over-explain options** in the question (keep questions concise)
+
+### Good Question Pattern
+
+```
+"I want to make sure I understand correctly: [restate what you think they mean].
+
+Is that correct, or did you mean [alternative interpretation]?"
+```
+
+**Remember**: It's better to ask and get it right than to implement the wrong thing quickly.
+
+---
+
+## ⚠️ CRITICAL: Generic DOM Library - NO HTML Specifics
+
+**THIS IS A GENERIC DOM LIBRARY** implementing WHATWG DOM for **ANY document type** (XML, custom formats), **NOT HTML**.
+
+### Absolute Prohibitions
+
+❌ **NEVER** add HTML-specific features:
+- NO HTML element interfaces (HTMLDivElement, HTMLButtonElement, etc.)
+- NO HTML semantics (button behavior, form submission, etc.)
+- NO HTML-specific attributes (href, src, action handling)
+- NO HTML parsing (namespace normalization, case folding)
+- NO HTML-only APIs (document.forms, document.images, etc.)
+
+❌ **NEVER** use HTML element names in code/tests/docs:
+- NO: `div`, `span`, `p`, `a`, `button`, `input`, `form`, `table`, `ul`, `li`, `header`, `footer`, `section`, `article`, `nav`, `main`, `aside`, `h1`, `body`, `html`
+
+✅ **ONLY use generic element names**:
+- YES: `element`, `container`, `item`, `node`, `component`, `widget`, `panel`, `view`, `content`, `wrapper`, `parent`, `child`, `root`, `level1`, `level2`
+
+✅ **ONLY use generic attribute names**:
+- YES: `attr1`, `attr2`, `data-id`, `data-name`, `key`, `value`, `flag`
+
+### Test Location Rules
+
+- **Unit tests**: Co-located with implementation in `src/` files
+- **WPT tests**: Converted from Web Platform Tests, placed in `wpt_tests/` directory ONLY
+- **WPT conversion**: Replace ALL HTML-specific names with generic names during conversion
+
+---
+
 This project uses **Agent Skills** for specialized knowledge areas. Skills are automatically loaded when relevant to your task.
 
 ## ⚠️ CRITICAL: Memory Management Patterns
@@ -55,6 +136,52 @@ const elem = try doc.createElement("div");
 const text = try doc.createTextNode("Hello");
 _ = try elem.node.appendChild(&text.node);
 ```
+
+---
+
+## ⚠️ CRITICAL: Interface Mixins - DO NOT Put on Base Classes
+
+**WHATWG uses interface mixins to add methods to SPECIFIC types.**
+
+### ❌ WRONG: Adding to Node Base Class
+
+```zig
+pub const Node = struct {
+    pub fn children(self: *Node) ElementCollection { } // ❌ WRONG!
+    pub fn firstElementChild(self: *const Node) ?*Element { } // ❌ WRONG!
+};
+```
+
+**Problem**: Text and Comment nodes inherit these but can't have children!
+
+### ✅ CORRECT: Adding to Specific Types Only
+
+```zig
+// Element includes ParentNode mixin
+pub const Element = struct {
+    pub fn children(self: *Element) ElementCollection { } // ✅
+    pub fn firstElementChild(self: *const Element) ?*Element { } // ✅
+};
+
+// Document includes ParentNode mixin
+pub const Document = struct {
+    pub fn children(self: *Document) ElementCollection { } // ✅
+    pub fn firstElementChild(self: *const Document) ?*Element { } // ✅
+};
+
+// Text does NOT include ParentNode - no children() method
+pub const Text = struct {
+    // NO children() - Text can't have children!
+};
+```
+
+**How to verify**:
+1. Check `dom.idl` for mixin definition
+2. Check which types `includes` the mixin
+3. Implement ONLY on those specific types
+4. DO NOT put on base class (Node) for inheritance
+
+**Yes, you will duplicate code**. This is correct for type safety!
 
 ---
 
@@ -173,11 +300,32 @@ Claude automatically loads skills when relevant to your task. You don't need to 
 
 **Location:** `skills/benchmark_parity/`
 
+### 7. **communication_protocol** - Clarifying Questions ⭐
+
+**ALWAYS ACTIVE** - Applies to every interaction and task.
+
+**Core Principle:**
+When requirements are ambiguous, unclear, or could be interpreted multiple ways, **ALWAYS ask clarifying questions** before proceeding.
+
+**Provides:**
+- Question-asking protocol (one question at a time)
+- When to ask vs. when to proceed
+- Question patterns and examples
+- Anti-patterns to avoid (assuming, option overload, paralysis)
+- Decision tree for "should I ask?"
+
+**Critical Rule:** Ask ONE clarifying question at a time. Wait for answer. Repeat until understanding is complete.
+
+**Location:** `skills/communication_protocol/`
+
 ---
 
 ## Golden Rules
 
 These apply to ALL work on this project:
+
+### 0. **Ask When Unclear** ⭐ NEW
+When requirements are ambiguous or unclear, **ASK CLARIFYING QUESTIONS** before proceeding. One question at a time. Wait for answer. Never assume.
 
 ### 1. **Complete Spec Understanding** 
 Read FULL specifications from `skills/whatwg_compliance/`, not grep fragments. WebIDL AND prose MUST both be consulted.
@@ -291,6 +439,7 @@ elem.node.acquire();  // Increment ref_count before sharing
 
 ```
 skills/
+├── communication_protocol/  # ⭐ Ask clarifying questions when unclear
 ├── whatwg_compliance/       # Complete specs, WebIDL, type mappings
 ├── zig_standards/           # Zig idioms, memory patterns, errors
 ├── testing_requirements/    # Test patterns, coverage, TDD
@@ -336,12 +485,12 @@ Root:
 
 ## When in Doubt
 
-1. **Load `whatwg_compliance` skill** - Check complete WebIDL + prose spec
-2. **Load relevant skills** - Get specialized guidance
-3. Check existing code for patterns
-4. Look at existing tests
-5. Follow the Golden Rules
-6. Ask maintainer if still unclear
+1. **ASK A CLARIFYING QUESTION** ⭐ - Don't assume, just ask (one question at a time)
+2. **Load `whatwg_compliance` skill** - Check complete WebIDL + prose spec
+3. **Load relevant skills** - Get specialized guidance
+4. Check existing code for patterns
+5. Look at existing tests
+6. Follow the Golden Rules
 
 ---
 

@@ -16,6 +16,7 @@ test "Passing a detached element to removeChild should throw NOT_FOUND_ERR" {
     _ = try doc.node.appendChild(&body.node);
 
     const s = try doc.createElement("a");
+    defer s.node.release(); // Must release orphaned nodes
 
     // s is detached, attempting to remove it should fail
     const result = body.node.removeChild(&s.node);
@@ -27,16 +28,19 @@ test "Passing a non-detached element from wrong parent should throw NOT_FOUND_ER
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    // Original test structure: doc -> html -> (body, s)
+    // Where s is a sibling of body, not a child
+    const html = try doc.createElement("html");
+    _ = try doc.node.appendChild(&html.node);
 
     const body = try doc.createElement("body");
-    _ = try doc.node.appendChild(&body.node);
+    _ = try html.node.appendChild(&body.node);
 
+    // Create s and append to html (making s sibling of body, not child)
     const s = try doc.createElement("b");
-    _ = try root.node.appendChild(&s.node);
+    _ = try html.node.appendChild(&s.node);
 
-    // s is attached to root, not body
+    // s is attached to html, not body - should throw NOT_FOUND_ERR
     const result = body.node.removeChild(&s.node);
     try std.testing.expectError(error.NotFoundError, result);
 }
@@ -63,6 +67,7 @@ test "removeChild successfully removes child" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const child = try doc.createElement("span");
 
     _ = try parent.node.appendChild(&child.node);
@@ -82,6 +87,7 @@ test "removeChild returns the removed node" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const child = try doc.createElement("span");
 
     _ = try parent.node.appendChild(&child.node);
@@ -101,6 +107,7 @@ test "removeChild updates sibling links" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.node.release(); // Must release orphaned nodes
     const child1 = try doc.createElement("span");
     const child2 = try doc.createElement("p");
     const child3 = try doc.createElement("a");
