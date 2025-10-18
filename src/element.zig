@@ -469,35 +469,12 @@ pub const Element = struct {
             }
         }
 
-        // Handle class attribute changes (maintain document class map)
-        if (std.mem.eql(u8, name, "class")) {
-            // Remove old classes from class map
-            if (self.getAttribute("class")) |old_classes| {
-                if (self.node.owner_document) |owner| {
-                    if (owner.node_type == .document) {
-                        const Document = @import("document.zig").Document;
-                        const doc: *Document = @fieldParentPtr("node", owner);
-                        try self.removeFromClassMap(doc, old_classes);
-                    }
-                }
-            }
-        }
-
         // Set the attribute
         try self.attributes.set(name, value);
 
-        // Update bloom filter and class map for class attribute
+        // Update bloom filter for class attribute (Phase 3: class_map removed, bloom filter still used)
         if (std.mem.eql(u8, name, "class")) {
             self.updateClassBloom(value);
-
-            // Add new classes to class map
-            if (self.node.owner_document) |owner| {
-                if (owner.node_type == .document) {
-                    const Document = @import("document.zig").Document;
-                    const doc: *Document = @fieldParentPtr("node", owner);
-                    try self.addToClassMap(doc, value);
-                }
-            }
         }
 
         // Add new ID to document map (only if connected, and only if ID not already in use - first wins)
@@ -594,23 +571,9 @@ pub const Element = struct {
             }
         }
 
-        // Remove classes from class map before removing attribute
-        if (std.mem.eql(u8, name, "class")) {
-            if (self.getAttribute("class")) |old_classes| {
-                if (self.node.owner_document) |owner| {
-                    if (owner.node_type == .document) {
-                        const Document = @import("document.zig").Document;
-                        const doc: *Document = @fieldParentPtr("node", owner);
-                        // removeFromClassMap can't fail since we're only removing
-                        self.removeFromClassMap(doc, old_classes) catch unreachable;
-                    }
-                }
-            }
-        }
-
         const removed = self.attributes.remove(name);
 
-        // Clear bloom filter if removing class attribute
+        // Clear bloom filter if removing class attribute (Phase 3: class_map removed, bloom filter still used)
         if (removed and std.mem.eql(u8, name, "class")) {
             self.class_bloom.clear();
         }
@@ -1421,38 +1384,8 @@ pub const Element = struct {
     /// // found == button
     /// ```
     pub fn queryByClass(self: *Element, class_name: []const u8) ?*Element {
-        // Fast path: Use document class map if available
-        if (self.node.owner_document) |owner| {
-            if (owner.node_type == .document) {
-                const Document = @import("document.zig").Document;
-                const doc: *Document = @fieldParentPtr("node", owner);
-
-                // Check if any elements with this class exist
-                if (doc.class_map.get(class_name)) |list| {
-                    // Find first element that is a descendant of self
-                    for (list.items) |elem| {
-                        // Skip self (we only want descendants)
-                        if (elem == self) continue;
-
-                        // Fast case: if self is the document element, all other elements are descendants
-                        if (self == doc.documentElement()) {
-                            return elem;
-                        }
-
-                        // Verify element is descendant of self
-                        var current = elem.node.parent_node;
-                        while (current) |parent| {
-                            if (parent == &self.node) {
-                                return elem;
-                            }
-                            current = parent.parent_node;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Fallback: O(n) scan with bloom filter if no document or no elements in our subtree
+        // Phase 3: Tree traversal with bloom filter (class_map removed)
+        // Bloom filter provides O(1) fast rejection for non-matching elements
         const ElementIterator = @import("element_iterator.zig").ElementIterator;
         var iter = ElementIterator.init(&self.node);
 
@@ -1554,47 +1487,8 @@ pub const Element = struct {
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate result array
     pub fn queryAllByClass(self: *Element, allocator: Allocator, class_name: []const u8) ![]const *Element {
-        // Fast path: Use document class map if available
-        if (self.node.owner_document) |owner| {
-            if (owner.node_type == .document) {
-                const Document = @import("document.zig").Document;
-                const doc: *Document = @fieldParentPtr("node", owner);
-
-                // Check if any elements with this class exist
-                if (doc.class_map.get(class_name)) |list| {
-                    var results = std.ArrayList(*Element){};
-                    defer results.deinit(allocator);
-
-                    for (list.items) |elem| {
-                        // Skip self (we only want descendants)
-                        if (elem == self) continue;
-
-                        // Fast case: if self is the document element, all other elements are descendants
-                        if (self == doc.documentElement()) {
-                            try results.append(allocator, elem);
-                            continue;
-                        }
-
-                        // Verify element is descendant of self
-                        var current = elem.node.parent_node;
-                        while (current) |parent| {
-                            if (parent == &self.node) {
-                                try results.append(allocator, elem);
-                                break;
-                            }
-                            current = parent.parent_node;
-                        }
-                    }
-
-                    return try results.toOwnedSlice(allocator);
-                }
-
-                // No elements with this class
-                return &[_]*Element{};
-            }
-        }
-
-        // Fallback: O(n) scan with bloom filter
+        // Phase 3: Tree traversal with bloom filter (class_map removed)
+        // Bloom filter provides O(1) fast rejection for non-matching elements
         const ElementIterator = @import("element_iterator.zig").ElementIterator;
         var results = std.ArrayList(*Element){};
         defer results.deinit(allocator);
@@ -2567,39 +2461,8 @@ pub const Element = struct {
         }
     }
 
-    /// Adds element to class map for all classes in the class_value string
-    fn addToClassMap(self: *Element, doc: anytype, class_value: []const u8) !void {
-        var iter = std.mem.splitSequence(u8, class_value, " ");
-        while (iter.next()) |class| {
-            if (class.len == 0) continue;
-
-            const result = try doc.class_map.getOrPut(class);
-            if (!result.found_existing) {
-                result.value_ptr.* = std.ArrayList(*Element){};
-                // Pre-allocate capacity to avoid repeated reallocations
-                try result.value_ptr.ensureTotalCapacity(doc.node.allocator, 128);
-            }
-            try result.value_ptr.append(doc.node.allocator, self);
-        }
-    }
-
-    /// Removes element from class map for all classes in the class_value string
-    fn removeFromClassMap(self: *Element, doc: anytype, class_value: []const u8) !void {
-        var iter = std.mem.splitSequence(u8, class_value, " ");
-        while (iter.next()) |class| {
-            if (class.len == 0) continue;
-
-            if (doc.class_map.getPtr(class)) |list_ptr| {
-                // Find and remove this element from the list
-                for (list_ptr.items, 0..) |item, i| {
-                    if (item == self) {
-                        _ = list_ptr.swapRemove(i);
-                        break;
-                    }
-                }
-            }
-        }
-    }
+    // NOTE: Phase 3 - addToClassMap and removeFromClassMap removed
+    // getElementsByClassName now uses tree traversal with bloom filters instead of class_map
 
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {
@@ -2623,11 +2486,7 @@ pub const Element = struct {
                     }
                 }
 
-                // Remove from class map
-                if (elem.getAttribute("class")) |classes| {
-                    // removeFromClassMap can't fail since we're only removing
-                    elem.removeFromClassMap(doc, classes) catch unreachable;
-                }
+                // NOTE: Phase 3 - class_map removed, no cleanup needed
 
                 doc.releaseNodeRef();
             }
@@ -2719,10 +2578,7 @@ pub const Element = struct {
                     }
                 }
 
-                // Remove from old class map
-                if (elem.getAttribute("class")) |classes| {
-                    elem.removeFromClassMap(old_doc_ptr, classes) catch {};
-                }
+                // NOTE: Phase 3 - class_map removed, no cleanup needed
 
                 // Remove from old id map
                 if (elem.getAttribute("id")) |id| {
@@ -2749,10 +2605,7 @@ pub const Element = struct {
                 }
                 try gop.value_ptr.append(new_doc_ptr.node.allocator, elem);
 
-                // Add to new class map
-                if (elem.getAttribute("class")) |classes| {
-                    try elem.addToClassMap(new_doc_ptr, classes);
-                }
+                // NOTE: Phase 3 - class_map removed, no need to add classes
 
                 // Add to new id map (only if ID not already in use - first wins)
                 if (elem.getAttribute("id")) |id| {

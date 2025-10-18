@@ -498,9 +498,9 @@ pub const Document = struct {
     tag_map: std.StringHashMap(std.ArrayList(*Element)),
 
     /// Class map for O(k) getElementsByClassName lookups
-    /// Maps class names to lists of elements with that class
-    /// k = number of matching elements
-    class_map: std.StringHashMap(std.ArrayList(*Element)),
+    // NOTE: class_map removed in Phase 3
+    // getElementsByClassName now uses tree traversal with bloom filters (like browsers)
+    // This matches browser behavior where class queries don't maintain a separate map
 
     /// Single-entry cache for getElementById optimization
     /// Caches the last looked-up ID for O(1) repeated lookups
@@ -570,9 +570,7 @@ pub const Document = struct {
         var tag_map = std.StringHashMap(std.ArrayList(*Element)).init(allocator);
         errdefer tag_map.deinit();
 
-        // Initialize class map
-        var class_map = std.StringHashMap(std.ArrayList(*Element)).init(allocator);
-        errdefer class_map.deinit();
+        // NOTE: class_map removed in Phase 3 - no longer needed
 
         // Initialize base Node
         doc.node = .{
@@ -600,7 +598,7 @@ pub const Document = struct {
         doc.selector_cache = selector_cache;
         doc.id_map = id_map;
         doc.tag_map = tag_map;
-        doc.class_map = class_map;
+        // NOTE: class_map removed in Phase 3
         doc.next_node_id = 1; // 0 reserved for document itself
         doc.is_destroying = false;
 
@@ -1192,15 +1190,17 @@ pub const Document = struct {
     /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:519
     ///
     /// ## Note
-    /// This returns a live collection backed by Document's internal class_map.
+    /// This returns a live collection using tree traversal with bloom filter optimization.
     /// Changes to the DOM automatically reflect in the collection.
     /// Only supports single class name lookup (not space-separated list yet).
+    ///
+    /// ## Implementation
+    /// Phase 3: Uses tree traversal instead of class_map (removed for browser alignment).
+    /// Bloom filters in Element provide O(1) fast rejection for non-matching elements.
     pub fn getElementsByClassName(self: *const Document, class_name: []const u8) HTMLCollection {
-        if (self.class_map.getPtr(class_name)) |list_ptr| {
-            return HTMLCollection.initDocumentTagged(list_ptr);
-        }
-        // No elements with this class - return empty collection
-        return HTMLCollection.initDocumentTagged(null);
+        // Use HTMLCollection's document-level class traversal
+        // This traverses the entire document tree, using bloom filters for fast rejection
+        return HTMLCollection.initDocumentByClassName(&self.node, class_name);
     }
 
     // ========================================================================
@@ -1635,15 +1635,9 @@ pub const Document = struct {
         }
         self.tag_map.deinit();
 
-        // Clean up class map - Free ArrayList values before deiniting the HashMap
-        // IMPORTANT: Must deinit class_map BEFORE string_pool because class_map keys are string pointers
-        var class_it = self.class_map.valueIterator();
-        while (class_it.next()) |list_ptr| {
-            list_ptr.*.deinit(self.node.allocator);
-        }
-        self.class_map.deinit();
+        // NOTE: class_map removed in Phase 3 - no cleanup needed
 
-        // Clean up string pool (must be AFTER tag_map and class_map)
+        // Clean up string pool (must be AFTER tag_map)
         self.string_pool.deinit();
 
         // Deinit arena allocator (frees all nodes at once - 100-200x faster than individual frees)

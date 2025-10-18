@@ -44,8 +44,9 @@
 //! HTMLCollection supports three different backing strategies:
 //!
 //! 1. **children** property - filters Element nodes from parent's child list
-//! 2. **Document.getElementsBy*** - views Document's tag_map/class_map (O(1) access)
-//! 3. **Element.getElementsBy*** - scoped subtree search with filtering
+//! 2. **Document.getElementsByTagName** - views Document's tag_map (O(1) access)
+//! 3. **Document.getElementsByClassName** - document-wide tree traversal with bloom filters (Phase 3)
+//! 4. **Element.getElementsBy*** - scoped subtree search with filtering
 //!
 //! ### Elements Only
 //! Unlike NodeList (which includes all node types), HTMLCollection only includes Element nodes:
@@ -74,8 +75,9 @@
 //!
 //! HTMLCollection is a lightweight view using a tagged union for different backing strategies:
 //! - **children**: Pointer to parent node (filters Element nodes)
-//! - **document_tagged**: Pointer to Document's ArrayList (tag_map or class_map)
+//! - **document_tagged**: Pointer to Document's ArrayList (tag_map only, Phase 3)
 //! - **element_scoped**: Root element + filter (tag or class name)
+//! - **document_scoped**: Document node + filter (for getElementsByClassName, Phase 3)
 //!
 //! Size: 16-24 bytes (depends on union variant)
 //!
@@ -223,7 +225,7 @@ pub const HTMLCollection = struct {
         /// For ParentNode.children - filters Element nodes from parent's child list
         children: *Node,
 
-        /// For Document.getElementsBy* - backed by tag_map/class_map (fast O(1) access)
+        /// For Document.getElementsByTagName - backed by tag_map (fast O(1) access)
         document_tagged: struct {
             elements: ?*const std.ArrayList(*Element),
         },
@@ -231,6 +233,13 @@ pub const HTMLCollection = struct {
         /// For Element.getElementsBy* - scoped subtree search with filter
         element_scoped: struct {
             root: *Element,
+            filter: Filter,
+        },
+
+        /// For Document.getElementsByClassName - document-wide tree traversal with filter
+        /// (Phase 3: class_map removed, uses tree traversal with bloom filters)
+        document_scoped: struct {
+            document: *const Node, // Document node
             filter: Filter,
         },
     };
@@ -299,6 +308,27 @@ pub const HTMLCollection = struct {
         };
     }
 
+    /// Creates a collection for Document.getElementsByClassName (document-wide search).
+    ///
+    /// Phase 3: Uses tree traversal with bloom filters instead of class_map.
+    ///
+    /// ## Parameters
+    /// - `document`: Document node to search from
+    /// - `class_name`: Class name to filter by
+    ///
+    /// ## Returns
+    /// HTMLCollection filtering all document elements by class name
+    pub fn initDocumentByClassName(document: *const Node, class_name: []const u8) HTMLCollection {
+        return .{
+            .impl = .{
+                .document_scoped = .{
+                    .document = document,
+                    .filter = .{ .class_name = class_name },
+                },
+            },
+        };
+    }
+
     /// Returns the number of elements in the collection.
     ///
     /// Implements WHATWG DOM HTMLCollection.length property.
@@ -329,15 +359,19 @@ pub const HTMLCollection = struct {
                 return count;
             },
             .document_tagged => |tagged| {
-                // Fast path: ArrayList backed by Document map
+                // Fast path: ArrayList backed by Document map (for tag lookups)
                 if (tagged.elements) |list| {
                     return list.items.len;
                 }
                 return 0;
             },
             .element_scoped => |scoped| {
-                // Count matching descendants
+                // Count matching descendants in subtree
                 return countMatchingDescendants(scoped.root, &scoped.filter);
+            },
+            .document_scoped => |scoped| {
+                // Count matching elements in entire document
+                return countMatchingInDocument(scoped.document, &scoped.filter);
             },
         }
     }
@@ -386,7 +420,7 @@ pub const HTMLCollection = struct {
                 return null;
             },
             .document_tagged => |tagged| {
-                // Fast path: ArrayList backed by Document map
+                // Fast path: ArrayList backed by Document map (for tags)
                 if (tagged.elements) |list| {
                     if (index >= list.items.len) {
                         return null;
@@ -396,8 +430,12 @@ pub const HTMLCollection = struct {
                 return null;
             },
             .element_scoped => |scoped| {
-                // Find nth matching descendant
+                // Find nth matching descendant in subtree
                 return findMatchingDescendant(scoped.root, &scoped.filter, index);
+            },
+            .document_scoped => |scoped| {
+                // Find nth matching element in document
+                return findMatchingInDocument(scoped.document, &scoped.filter, index);
             },
         }
     }
@@ -523,6 +561,39 @@ pub const HTMLCollection = struct {
                 return false;
             },
         }
+    }
+
+    // Document-wide search helpers (Phase 3: for document_scoped variant)
+
+    /// Counts matching elements in entire document (for document_scoped).
+    fn countMatchingInDocument(document: *const Node, filter: *const Filter) usize {
+        var count: usize = 0;
+        // Traverse all elements in document tree
+        const ElementIterator = @import("element_iterator.zig").ElementIterator;
+        var iter = ElementIterator.init(@constCast(document));
+        while (iter.next()) |elem| {
+            if (matchesFilter(elem, filter)) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    /// Finds the nth element matching filter in document (for document_scoped).
+    fn findMatchingInDocument(document: *const Node, filter: *const Filter, target_index: usize) ?*Element {
+        var current_index: usize = 0;
+        // Traverse all elements in document tree
+        const ElementIterator = @import("element_iterator.zig").ElementIterator;
+        var iter = ElementIterator.init(@constCast(document));
+        while (iter.next()) |elem| {
+            if (matchesFilter(elem, filter)) {
+                if (current_index == target_index) {
+                    return elem;
+                }
+                current_index += 1;
+            }
+        }
+        return null;
     }
 };
 
