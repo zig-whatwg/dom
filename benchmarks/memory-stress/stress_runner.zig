@@ -179,7 +179,9 @@ fn saveResults(
     try writer.print("      \"nodes_created\": {d},\n", .{results.operation_breakdown.nodes_created});
     try writer.print("      \"nodes_deleted\": {d},\n", .{results.operation_breakdown.nodes_deleted});
     try writer.print("      \"reads\": {d},\n", .{results.operation_breakdown.reads});
-    try writer.print("      \"updates\": {d}\n", .{results.operation_breakdown.updates});
+    try writer.print("      \"updates\": {d},\n", .{results.operation_breakdown.updates});
+    try writer.print("      \"attribute_ops\": {d},\n", .{results.operation_breakdown.attribute_ops});
+    try writer.print("      \"complex_queries\": {d}\n", .{results.operation_breakdown.complex_queries});
     try writer.writeAll("    }\n");
     try writer.writeAll("  }\n");
 

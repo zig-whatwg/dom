@@ -217,9 +217,20 @@ function generateHTML(results) {
           final_state.operation_breakdown.nodes_created + 
           final_state.operation_breakdown.nodes_deleted +
           final_state.operation_breakdown.reads +
-          final_state.operation_breakdown.updates
+          final_state.operation_breakdown.updates +
+          (final_state.operation_breakdown.attribute_ops || 0) +
+          (final_state.operation_breakdown.complex_queries || 0)
         )}</div>
-        <div class="subvalue">${formatNumber(final_state.operation_breakdown.nodes_created)} created / ${formatNumber(final_state.operation_breakdown.nodes_deleted)} deleted</div>
+        <div class="subvalue">${formatNumber(final_state.operation_breakdown.reads)} reads / ${formatNumber(final_state.operation_breakdown.updates)} updates</div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="label">Advanced Operations</div>
+        <div class="value">${formatNumber(
+          (final_state.operation_breakdown.attribute_ops || 0) +
+          (final_state.operation_breakdown.complex_queries || 0)
+        )}</div>
+        <div class="subvalue">${formatNumber(final_state.operation_breakdown.attribute_ops || 0)} attributes / ${formatNumber(final_state.operation_breakdown.complex_queries || 0)} queries</div>
       </div>
     </div>
     
@@ -232,18 +243,19 @@ function generateHTML(results) {
     
     <div class="info-box">
       <h2>🔍 Test Methodology</h2>
-      <p>This stress test uses a <strong>Document-per-cycle</strong> approach to detect memory leaks:</p>
+      <p>This stress test uses a <strong>Persistent Document</strong> approach to detect memory leaks in long-running applications:</p>
       <ol style="margin-left: 20px; color: #666; line-height: 1.8;">
-        <li>Create a fresh Document (with new ArenaAllocator)</li>
-        <li>Add ${formatNumber(config.nodes_per_cycle)} DOM nodes to the document</li>
-        <li>Perform ${formatNumber(config.operations_per_node)} read/update operations</li>
-        <li>Destroy the Document (calls <code>arena.deinit()</code>)</li>
-        <li>Measure memory - should return to baseline</li>
-        <li>Repeat for test duration</li>
+        <li>Create a single Document that persists for the entire test duration</li>
+        <li>Continuously add/remove nodes to maintain steady-state DOM (500-1000 nodes)</li>
+        <li>Perform read operations (getElementsByTagName, getElementsByClassName)</li>
+        <li>Perform complex queries (querySelector/querySelectorAll with various selectors)</li>
+        <li>Perform attribute operations (get/set/has/remove attributes)</li>
+        <li>Update text content with bounded growth</li>
+        <li>Measure memory every ${config.sample_interval_ms / 1000}s</li>
       </ol>
       <div class="highlight">
-        <strong>Key Insight:</strong> Because each cycle creates and destroys the Document's Arena, 
-        ALL memory MUST be returned. Any growth indicates a leak in Document cleanup.
+        <strong>Key Insight:</strong> Memory should stabilize after initial HashMap capacity growth. 
+        Continuous growth indicates a leak. Stable memory (±${formatBytes(5000)}/cycle) indicates proper cleanup.
       </div>
     </div>
     
