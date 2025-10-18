@@ -458,6 +458,27 @@ pub const SelectorCache = struct {
     }
 };
 
+/// Factory function configuration for Document (enables extensibility).
+///
+/// HTML/XML libraries can provide custom factory functions to create
+/// HTMLElement, XMLElement, etc. instead of generic Element/Text/Comment.
+///
+/// ## Example (HTML Document)
+/// ```zig
+/// const factories = Document.FactoryConfig{
+///     .element_factory = HTMLElement.createForDocument,
+///     .text_factory = null, // Use default Text.create
+///     .comment_factory = null, // Use default Comment.create
+/// };
+/// const doc = try Document.initWithFactories(allocator, factories);
+/// const elem = try doc.createElement("div"); // Returns HTMLElement!
+/// ```
+pub const FactoryConfig = struct {
+    element_factory: ?*const fn (Allocator, []const u8) anyerror!*Element = null,
+    text_factory: ?*const fn (Allocator, []const u8) anyerror!*Text = null,
+    comment_factory: ?*const fn (Allocator, []const u8) anyerror!*Comment = null,
+};
+
 /// Document node - root of the DOM tree.
 ///
 /// Uses dual reference counting to handle two types of ownership:
@@ -514,6 +535,12 @@ pub const Document = struct {
     /// When true, releaseNodeRef() should not trigger deinitInternal()
     is_destroying: bool,
 
+    /// Factory functions for custom node creation (enables HTML/XML extensibility)
+    /// If null, uses default factories (Element.create, Text.create, etc.)
+    element_factory: ?*const fn (Allocator, []const u8) anyerror!*Element = null,
+    text_factory: ?*const fn (Allocator, []const u8) anyerror!*Text = null,
+    comment_factory: ?*const fn (Allocator, []const u8) anyerror!*Comment = null,
+
     /// Vtable for Document nodes.
     const vtable = NodeVTable{
         .deinit = deinitImpl,
@@ -547,13 +574,46 @@ pub const Document = struct {
     /// defer elem.prototype.release();
     /// ```
     pub fn init(allocator: Allocator) !*Document {
-        return initWithVTable(allocator, &vtable);
+        return initWithFactories(allocator, .{});
+    }
+
+    /// Initializes a document with custom factory functions (enables HTML/XML extensibility).
+    ///
+    /// Factory functions allow HTML/XML libraries to return custom element types
+    /// from Document.createElement(), createTextNode(), etc.
+    ///
+    /// ## Parameters
+    /// - `allocator`: Memory allocator
+    /// - `factories`: Factory configuration (null uses defaults)
+    ///
+    /// ## Example (HTML Document)
+    /// ```zig
+    /// const factories = Document.FactoryConfig{
+    ///     .element_factory = HTMLElement.createForDocument,
+    /// };
+    /// const doc = try Document.initWithFactories(allocator, factories);
+    /// const elem = try doc.createElement("div"); // Returns HTMLElement
+    /// ```
+    pub fn initWithFactories(
+        allocator: Allocator,
+        factories: FactoryConfig,
+    ) !*Document {
+        return initWithVTableAndFactories(allocator, &vtable, factories);
     }
 
     /// Initializes a document with a custom vtable (enables extensibility).
     pub fn initWithVTable(
         allocator: Allocator,
         node_vtable: *const NodeVTable,
+    ) !*Document {
+        return initWithVTableAndFactories(allocator, node_vtable, .{});
+    }
+
+    /// Full initialization with both vtable and factories (maximum extensibility).
+    fn initWithVTableAndFactories(
+        allocator: Allocator,
+        node_vtable: *const NodeVTable,
+        factories: FactoryConfig,
     ) !*Document {
         const doc = try allocator.create(Document);
         errdefer allocator.destroy(doc);
@@ -612,6 +672,11 @@ pub const Document = struct {
         // NOTE: class_map removed in Phase 3
         doc.next_node_id = 1; // 0 reserved for document itself
         doc.is_destroying = false;
+
+        // Initialize factory functions
+        doc.element_factory = factories.element_factory;
+        doc.text_factory = factories.text_factory;
+        doc.comment_factory = factories.comment_factory;
 
         return doc;
     }
@@ -694,9 +759,11 @@ pub const Document = struct {
         // Intern tag name via string pool
         const interned_tag = try self.string_pool.intern(tag_name);
 
-        // Create element using general-purpose allocator (required for cross-document adoption)
-        // NOTE: Cannot use arena allocator because nodes may be adopted to other documents
-        const elem = try Element.create(self.prototype.allocator, interned_tag);
+        // Create element using factory (if provided) or default
+        const elem = if (self.element_factory) |factory|
+            try factory(self.prototype.allocator, interned_tag)
+        else
+            try Element.create(self.prototype.allocator, interned_tag);
         errdefer elem.prototype.release();
 
         // Set owner document and assign node ID
@@ -724,7 +791,10 @@ pub const Document = struct {
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate text node
     pub fn createTextNode(self: *Document, data: []const u8) !*Text {
-        const text = try Text.create(self.prototype.allocator, data);
+        const text = if (self.text_factory) |factory|
+            try factory(self.prototype.allocator, data)
+        else
+            try Text.create(self.prototype.allocator, data);
         errdefer text.prototype.release();
 
         // Set owner document and assign node ID
@@ -748,7 +818,10 @@ pub const Document = struct {
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate comment node
     pub fn createComment(self: *Document, data: []const u8) !*Comment {
-        const comment = try Comment.create(self.prototype.allocator, data);
+        const comment = if (self.comment_factory) |factory|
+            try factory(self.prototype.allocator, data)
+        else
+            try Comment.create(self.prototype.allocator, data);
         errdefer comment.prototype.release();
 
         // Set owner document and assign node ID
