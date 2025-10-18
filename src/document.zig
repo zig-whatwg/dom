@@ -614,23 +614,34 @@ pub const Document = struct {
 
     /// Decrements the external reference count.
     ///
-    /// When external_ref_count reaches 0:
-    /// - If node_ref_count=0: Document is destroyed
-    /// - If node_ref_count>0: Internal references cleared, awaiting node cleanup
+    /// When external_ref_count reaches 0, the document is destroyed immediately.
+    /// All nodes (including orphaned nodes) are freed via arena deallocation.
+    /// This matches browser GC semantics where document destruction frees all associated nodes.
     pub fn release(self: *Document) void {
         const old = self.external_ref_count.fetchSub(1, .monotonic);
 
         if (old == 1) {
-            // External refs reached 0
-            const node_refs = self.node_ref_count.load(.monotonic);
+            // External refs reached 0 - document is "closed"
+            // Destroy immediately, freeing all nodes (tree + orphaned)
+            self.is_destroying = true;
 
-            if (node_refs == 0) {
-                // No internal refs either, destroy now
-                self.deinitInternal();
-            } else {
-                // Internal refs exist, clear references and wait for nodes to clean up
-                self.clearInternalReferences();
+            // Release tree nodes cleanly (calls their deinit hooks)
+            var current = self.node.first_child;
+            while (current) |child| {
+                const next = child.next_sibling;
+                child.parent_node = null;
+                child.setHasParent(false);
+                child.release();
+                current = next;
             }
+
+            // Clear child pointers
+            self.node.first_child = null;
+            self.node.last_child = null;
+
+            // Force cleanup regardless of node_ref_count
+            // Orphaned nodes (created but never inserted) are freed by arena.deinit()
+            self.deinitInternal();
         }
     }
 
@@ -646,20 +657,14 @@ pub const Document = struct {
     ///
     /// Called when a node with ownerDocument=this is destroyed.
     /// PUBLIC for nodes to call during cleanup.
+    ///
+    /// Note: This only tracks refs, it does NOT trigger document destruction.
+    /// Document destruction is controlled solely by external_ref_count reaching 0.
     pub fn releaseNodeRef(self: *Document) void {
-        const old = self.node_ref_count.fetchSub(1, .monotonic);
-
-        if (old == 1) {
-            // Internal refs reached 0
-            const external_refs = self.external_ref_count.load(.monotonic);
-
-            // Only destroy if not already in the middle of destruction
-            // (prevents reentrant destruction during clearInternalReferences)
-            if (external_refs == 0 and !self.is_destroying) {
-                // No external refs either, destroy now
-                self.deinitInternal();
-            }
-        }
+        // Just decrement the counter
+        // Document destruction happens when external_ref_count reaches 0,
+        // not when node_ref_count reaches 0
+        _ = self.node_ref_count.fetchSub(1, .monotonic);
     }
 
     /// Creates a new element with the specified tag name.
@@ -1220,41 +1225,7 @@ pub const Document = struct {
         return id;
     }
 
-    /// Clears internal references when external refs reach 0 but nodes still exist.
-    fn clearInternalReferences(self: *Document) void {
-        // External refs reached 0, but internal node refs still exist.
-        // Destroy all children to trigger their releaseNodeRef() calls.
-
-        // Set flag to prevent reentrant destruction
-        self.is_destroying = true;
-
-        // Release all children (this will trigger deinit which calls releaseNodeRef)
-        // NOTE: We DON'T clear owner_document before releasing because Element.deinitImpl
-        // needs to see owner_document to call releaseNodeRef(). The circular reference
-        // is handled by the dual ref counting system.
-        var current = self.node.first_child;
-        while (current) |child| {
-            const next = child.next_sibling;
-            child.parent_node = null;
-            child.setHasParent(false);
-            // Release will decrement ref_count, trigger deinit, which calls releaseNodeRef
-            child.release();
-            current = next;
-        }
-
-        // Clear child pointers so deinitInternal doesn't try to free them again
-        self.node.first_child = null;
-        self.node.last_child = null;
-
-        // All children released. Now check if we should destroy the document.
-        const node_refs = self.node_ref_count.load(.monotonic);
-        if (node_refs == 0) {
-            // All nodes released, safe to destroy
-            self.deinitInternal();
-        }
-    }
-
-    /// Internal cleanup (called when both ref counts reach 0).
+    /// Internal cleanup.
     /// Recursively clears owner_document for node and all descendants.
     /// Used during document destruction to prevent circular references.
     fn clearOwnerDocumentRecursive(node: *Node) void {
