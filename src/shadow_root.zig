@@ -367,6 +367,9 @@ pub const ShadowRoot = struct {
 
         // Initialize base Node with shadow_root type
         shadow.prototype = .{
+            .prototype = .{
+                .vtable = &node_mod.eventtarget_vtable,
+            },
             .vtable = &vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .shadow_root,

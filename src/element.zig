@@ -376,6 +376,9 @@ pub const Element = struct {
 
         // Initialize base Node
         elem.prototype = .{
+            .prototype = .{
+                .vtable = &node_mod.eventtarget_vtable,
+            },
             .vtable = &vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .element,

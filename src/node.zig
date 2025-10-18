@@ -349,6 +349,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const NodeRareData = @import("rare_data.zig").NodeRareData;
 const Event = @import("event.zig").Event;
+const EventTarget = @import("event_target.zig").EventTarget;
+const EventTargetVTable = @import("event_target.zig").EventTargetVTable;
 const EventTargetMixin = @import("event_target.zig").EventTargetMixin;
 
 /// Node types per WHATWG DOM specification.
@@ -399,6 +401,34 @@ pub const NodeVTable = struct {
     adopting_steps: *const fn (*Node, oldDocument: ?*Node) anyerror!void,
 };
 
+// === EventTarget VTable Implementation for Node ===
+
+/// EventTarget deinit implementation for Node (calls Node.release())
+fn eventtargetDeinitImpl(et: *EventTarget) void {
+    const node: *Node = @fieldParentPtr("prototype", et);
+    node.release();
+}
+
+/// EventTarget getAllocator implementation for Node
+fn eventtargetGetAllocatorImpl(et: *const EventTarget) Allocator {
+    const node: *const Node = @fieldParentPtr("prototype", et);
+    return node.allocator;
+}
+
+/// EventTarget ensureRareData implementation for Node
+fn eventtargetEnsureRareDataImpl(et: *EventTarget) anyerror!*anyopaque {
+    const node: *Node = @fieldParentPtr("prototype", et);
+    const rare = try node.ensureRareData();
+    return @ptrCast(rare);
+}
+
+/// EventTarget vtable for Node type
+pub const eventtarget_vtable = EventTargetVTable{
+    .deinit = eventtargetDeinitImpl,
+    .get_allocator = eventtargetGetAllocatorImpl,
+    .ensure_rare_data = eventtargetEnsureRareDataImpl,
+};
+
 /// Core DOM Node structure.
 ///
 /// Memory layout optimized for size (target: ≤96 bytes).
@@ -419,7 +449,12 @@ pub const NodeVTable = struct {
 /// defer node.release(); // Release shared ownership
 /// ```
 pub const Node = struct {
-    /// Virtual table for polymorphic dispatch (8 bytes)
+    /// EventTarget prototype (MUST be first field for proper inheritance)
+    /// Per WHATWG: interface Node : EventTarget
+    /// 8 bytes (vtable pointer)
+    prototype: EventTarget,
+
+    /// Virtual table for Node-specific polymorphic dispatch (8 bytes)
     vtable: *const NodeVTable,
 
     /// PACKED: 31-bit ref_count + 1-bit has_parent flag (4 bytes)
@@ -482,10 +517,12 @@ pub const Node = struct {
     rare_data: ?*NodeRareData,
 
     // === Size Verification ===
+    // Node = EventTarget (8) + Node fields (96) = 104 bytes
+    // This is acceptable for the prototype chain architecture
     comptime {
         const size = @sizeOf(Node);
-        if (size > 96) {
-            const msg = std.fmt.comptimePrint("Node size ({d} bytes) exceeded 96 byte limit! Keep it small.", .{size});
+        if (size > 104) {
+            const msg = std.fmt.comptimePrint("Node size ({d} bytes) exceeded 104 byte limit!", .{size});
             @compileError(msg);
         }
     }
@@ -529,6 +566,9 @@ pub const Node = struct {
     ) Allocator.Error!*Node {
         const node = try allocator.create(Node);
         node.* = .{
+            .prototype = .{
+                .vtable = &eventtarget_vtable,
+            },
             .vtable = vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1), // ref_count=1, has_parent=0
             .node_type = node_type,
@@ -2348,10 +2388,10 @@ fn replace(
 
 test "Node - size constraint" {
     const size = @sizeOf(Node);
-    try std.testing.expect(size <= 96);
+    try std.testing.expect(size <= 104); // Node now includes EventTarget prototype (8 bytes)
 
     // Print actual size for documentation
-    std.debug.print("\nNode size: {d} bytes (target: ≤96)\n", .{size});
+    std.debug.print("\nNode size: {d} bytes (target: ≤104 with EventTarget)\n", .{size});
 }
 
 test "Node - packed ref_count and has_parent" {
