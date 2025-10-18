@@ -15,28 +15,38 @@ pub const BenchmarkResult = struct {
     total_ns: u64,
     ns_per_op: u64,
     ops_per_sec: u64,
+    bytes_allocated: u64,
+    bytes_per_op: u64,
+    peak_memory: u64,
 };
 
 /// Run a benchmark function multiple times and collect statistics
 pub fn benchmarkFn(
-    allocator: std.mem.Allocator,
+    _: std.mem.Allocator,
     comptime name: []const u8,
     iterations: usize,
     func: *const fn (std.mem.Allocator) anyerror!void,
 ) !BenchmarkResult {
+    // Create tracking allocator to measure memory (enable_memory_limit to get total_requested_bytes)
+    var tracking_allocator = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
+    defer _ = tracking_allocator.deinit();
+    const tracked_alloc = tracking_allocator.allocator();
+
     // Warmup
     var i: usize = 0;
     while (i < 10) : (i += 1) {
-        try func(allocator);
+        try func(tracked_alloc);
     }
 
     // Actual benchmark
     const start = std.time.nanoTimestamp();
+    const mem_start = tracking_allocator.total_requested_bytes;
     i = 0;
     while (i < iterations) : (i += 1) {
-        try func(allocator);
+        try func(tracked_alloc);
     }
     const end = std.time.nanoTimestamp();
+    const mem_end = tracking_allocator.total_requested_bytes;
 
     const total_ns: u64 = @intCast(end - start);
     const ns_per_op = total_ns / iterations;
@@ -45,12 +55,19 @@ pub fn benchmarkFn(
     else
         0;
 
+    // Handle memory measurement (can be 0 if no allocation, or if warmup already allocated)
+    const bytes_allocated: u64 = if (mem_end >= mem_start) mem_end - mem_start else 0;
+    const bytes_per_op: u64 = if (bytes_allocated > 0) bytes_allocated / iterations else 0;
+
     return BenchmarkResult{
         .name = name,
         .operations = iterations,
         .total_ns = total_ns,
         .ns_per_op = ns_per_op,
         .ops_per_sec = ops_per_sec,
+        .bytes_allocated = bytes_allocated,
+        .bytes_per_op = bytes_per_op,
+        .peak_memory = tracking_allocator.total_requested_bytes,
     };
 }
 
@@ -58,14 +75,19 @@ pub fn benchmarkFn(
 /// This is useful for benchmarks where you want to build the DOM once and then
 /// measure just the query operations.
 pub fn benchmarkWithSetup(
-    allocator: std.mem.Allocator,
+    _: std.mem.Allocator,
     comptime name: []const u8,
     iterations: usize,
     setup: *const fn (std.mem.Allocator) anyerror!*Document,
     func: *const fn (*Document) anyerror!void,
 ) !BenchmarkResult {
+    // Create tracking allocator to measure memory (enable_memory_limit to get total_requested_bytes)
+    var tracking_allocator = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true }){};
+    defer _ = tracking_allocator.deinit();
+    const tracked_alloc = tracking_allocator.allocator();
+
     // Setup: build DOM once
-    const doc = try setup(allocator);
+    const doc = try setup(tracked_alloc);
     defer doc.release();
 
     // Warmup
@@ -76,11 +98,13 @@ pub fn benchmarkWithSetup(
 
     // Actual benchmark: only measure the func execution
     const start = std.time.nanoTimestamp();
+    const mem_start = tracking_allocator.total_requested_bytes;
     i = 0;
     while (i < iterations) : (i += 1) {
         try func(doc);
     }
     const end = std.time.nanoTimestamp();
+    const mem_end = tracking_allocator.total_requested_bytes;
 
     const total_ns: u64 = @intCast(end - start);
     const ns_per_op = total_ns / iterations;
@@ -89,12 +113,19 @@ pub fn benchmarkWithSetup(
     else
         0;
 
+    // Handle memory measurement (can be 0 if no allocation, or if warmup already allocated)
+    const bytes_allocated: u64 = if (mem_end >= mem_start) mem_end - mem_start else 0;
+    const bytes_per_op: u64 = if (bytes_allocated > 0) bytes_allocated / iterations else 0;
+
     return BenchmarkResult{
         .name = name,
         .operations = iterations,
         .total_ns = total_ns,
         .ns_per_op = ns_per_op,
         .ops_per_sec = ops_per_sec,
+        .bytes_allocated = bytes_allocated,
+        .bytes_per_op = bytes_per_op,
+        .peak_memory = tracking_allocator.total_requested_bytes,
     };
 }
 

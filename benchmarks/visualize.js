@@ -159,7 +159,7 @@ function generateHTML(groupedResults, browserResults) {
         )
     };
     
-    // Generate chart data for each category
+    // Generate chart data for each category (timing)
     const chartDataSets = Object.entries(categories).map(([categoryName, benchmarks]) => {
         return {
             category: categoryName,
@@ -168,6 +168,20 @@ function generateHTML(groupedResults, browserResults) {
                 data: implementations.map(impl => {
                     const result = bench.implementations[impl];
                     return result ? result.nsPerOp : null;
+                })
+            }))
+        };
+    });
+    
+    // Generate chart data for memory usage
+    const memoryDataSets = Object.entries(categories).map(([categoryName, benchmarks]) => {
+        return {
+            category: categoryName,
+            benchmarks: benchmarks.map(bench => ({
+                name: bench.name,
+                data: implementations.map(impl => {
+                    const result = bench.implementations[impl];
+                    return result && result.bytesPerOp ? result.bytesPerOp : null;
                 })
             }))
         };
@@ -395,6 +409,74 @@ function generateHTML(groupedResults, browserResults) {
             </div>
             `;
         }).join('')}
+        
+        <div class="category">
+            <h1 style="margin-bottom: 30px;">💾 Memory Usage Rankings</h1>
+            <p class="subtitle" style="margin-bottom: 30px;">Lower is better - bytes allocated per operation</p>
+            
+            ${Object.entries(categories).map(([categoryName, benchmarks], index) => {
+                if (benchmarks.length === 0) return '';
+                
+                // Filter out benchmarks with no memory data
+                const benchmarksWithMemory = benchmarks.filter(bench => {
+                    return Object.values(bench.implementations).some(impl => impl && impl.bytesPerOp > 0);
+                });
+                
+                if (benchmarksWithMemory.length === 0) return '';
+                
+                return `
+                <div style="margin-bottom: 40px;">
+                    <h2>${categoryName}</h2>
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>Benchmark</th>
+                                ${implementations.map(impl => `<th>${impl}</th>`).join('')}
+                                <th>Winner (Lowest Memory)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${benchmarksWithMemory.map(bench => {
+                                const values = implementations.map(impl => {
+                                    const result = bench.implementations[impl];
+                                    return result && result.bytesPerOp ? result.bytesPerOp : Infinity;
+                                });
+                                const minValue = Math.min(...values.filter(v => v !== Infinity && v > 0));
+                                const winnerIndex = values.indexOf(minValue);
+                                const winner = minValue !== Infinity ? implementations[winnerIndex] : 'N/A';
+                                
+                                return `
+                                <tr>
+                                    <td><strong>${bench.name}</strong></td>
+                                    ${implementations.map((impl, i) => {
+                                        const result = bench.implementations[impl];
+                                        if (!result || !result.bytesPerOp || result.bytesPerOp === 0) return '<td>-</td>';
+                                        
+                                        const bytes = result.bytesPerOp;
+                                        let display;
+                                        if (bytes < 1024) {
+                                            display = `${bytes}B`;
+                                        } else if (bytes < 1024 * 1024) {
+                                            display = `${Math.round(bytes / 1024)}KB`;
+                                        } else {
+                                            display = `${Math.round(bytes / (1024 * 1024))}MB`;
+                                        }
+                                        
+                                        const ratio = bytes / minValue;
+                                        const ratioText = ratio > 1 ? ` (${ratio.toFixed(1)}x more)` : '';
+                                        
+                                        return `<td>${display}<span class="speedup">${ratioText}</span></td>`;
+                                    }).join('')}
+                                    <td class="winner">${winner}</td>
+                                </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                `;
+            }).join('')}
+        </div>
         
         <footer>
             <p>Generated: ${new Date().toLocaleString()}</p>

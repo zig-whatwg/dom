@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Memory Usage Benchmarks** - Track and compare memory consumption across implementations 💾
+  - Added memory tracking to all benchmarks (bytes allocated, bytes per operation, peak memory)
+  - Zig uses GPA with `enable_memory_limit` for precise memory measurement
+  - JavaScript uses `performance.memory` API (Chromium-based browsers)
+  - Separate rankings for timing and memory in HTML visualization
+  - Memory metrics displayed in console output: `time/op | memory/op | ops/sec`
+  - Results show Zig's arena allocator strategy: minimal per-operation allocation
+  - Query operations: 0B/op (working with pre-allocated structures)
+  - DOM construction: efficient reuse of arena memory pools
+  - See HTML report for complete memory comparison charts
 - **Complex Selector Benchmarks & Analysis** - Comprehensive performance validation ⭐
   - Added 6 complex selector benchmarks (child, descendant, sibling, compound, attribute, multi-component)
   - Full benchmark parity: Zig and JavaScript both have 44 benchmarks (up from 38/30)

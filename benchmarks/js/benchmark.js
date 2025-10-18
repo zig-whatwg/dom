@@ -49,17 +49,21 @@ function getOpaqueValue() {
 // ===================================================================
 
 class BenchmarkResult {
-    constructor(name, operations, totalMs, msPerOp, opsPerSec) {
+    constructor(name, operations, totalMs, msPerOp, opsPerSec, bytesAllocated = 0, bytesPerOp = 0, peakMemory = 0) {
         this.name = name;
         this.operations = operations;
         this.totalMs = totalMs;
         this.msPerOp = msPerOp;
         this.opsPerSec = opsPerSec;
+        this.nsPerOp = Math.round(msPerOp * 1000000); // Convert to nanoseconds for consistency with Zig
+        this.bytesAllocated = bytesAllocated;
+        this.bytesPerOp = bytesPerOp;
+        this.peakMemory = peakMemory;
     }
 }
 
 /**
- * Run benchmark with anti-optimization measures
+ * Run benchmark with anti-optimization measures and memory tracking
  */
 function benchmarkFn(name, iterations, func) {
     // Warmup with variable iterations (prevents profiling predictability)
@@ -76,6 +80,12 @@ function benchmarkFn(name, iterations, func) {
     // Clear result accumulator
     resultAccumulator = [];
     
+    // Measure memory before (if available)
+    let memStart = 0;
+    if (performance.memory) {
+        memStart = performance.memory.usedJSHeapSize;
+    }
+    
     // Actual benchmark with unpredictable iteration count
     // Add small random offset to prevent JIT from unrolling
     const actualIterations = iterations + (Date.now() % 10);
@@ -86,18 +96,29 @@ function benchmarkFn(name, iterations, func) {
     }
     const end = performance.now();
     
+    // Measure memory after (if available)
+    let memEnd = 0;
+    let peakMemory = 0;
+    if (performance.memory) {
+        memEnd = performance.memory.usedJSHeapSize;
+        peakMemory = performance.memory.totalJSHeapSize;
+    }
+    
     const totalMs = end - start;
     const msPerOp = totalMs / actualIterations;
     const opsPerSec = msPerOp > 0 ? Math.floor(1000 / msPerOp) : 0;
     
+    const bytesAllocated = Math.max(0, memEnd - memStart);
+    const bytesPerOp = Math.floor(bytesAllocated / actualIterations);
+    
     // Use results (prevents elimination)
     blackHole(resultAccumulator);
     
-    return new BenchmarkResult(name, actualIterations, totalMs, msPerOp, opsPerSec);
+    return new BenchmarkResult(name, actualIterations, totalMs, msPerOp, opsPerSec, bytesAllocated, bytesPerOp, peakMemory);
 }
 
 /**
- * Run benchmark with setup phase
+ * Run benchmark with setup phase and memory tracking
  */
 function benchmarkWithSetup(name, iterations, setup, func) {
     // Setup: build DOM once
@@ -117,6 +138,12 @@ function benchmarkWithSetup(name, iterations, setup, func) {
     // Clear result accumulator
     resultAccumulator = [];
     
+    // Measure memory before (if available)
+    let memStart = 0;
+    if (performance.memory) {
+        memStart = performance.memory.usedJSHeapSize;
+    }
+    
     // Actual benchmark with unpredictable iteration count
     const actualIterations = iterations + (Date.now() % 10);
     
@@ -126,9 +153,20 @@ function benchmarkWithSetup(name, iterations, setup, func) {
     }
     const end = performance.now();
     
+    // Measure memory after (if available)
+    let memEnd = 0;
+    let peakMemory = 0;
+    if (performance.memory) {
+        memEnd = performance.memory.usedJSHeapSize;
+        peakMemory = performance.memory.totalJSHeapSize;
+    }
+    
     const totalMs = end - start;
     const msPerOp = totalMs / actualIterations;
     const opsPerSec = msPerOp > 0 ? Math.floor(1000 / msPerOp) : 0;
+    
+    const bytesAllocated = Math.max(0, memEnd - memStart);
+    const bytesPerOp = Math.floor(bytesAllocated / actualIterations);
     
     // Use results (prevents elimination)
     blackHole(resultAccumulator);
@@ -138,7 +176,7 @@ function benchmarkWithSetup(name, iterations, setup, func) {
         context.cleanup();
     }
     
-    return new BenchmarkResult(name, actualIterations, totalMs, msPerOp, opsPerSec);
+    return new BenchmarkResult(name, actualIterations, totalMs, msPerOp, opsPerSec, bytesAllocated, bytesPerOp, peakMemory);
 }
 
 // ===================================================================
@@ -806,7 +844,10 @@ function exportResults(results) {
         totalMs: result.totalMs,
         msPerOp: result.msPerOp,
         opsPerSec: result.opsPerSec,
-        nsPerOp: result.msPerOp * 1000000  // Convert to nanoseconds for comparison with Zig
+        nsPerOp: result.nsPerOp || Math.round(result.msPerOp * 1000000),  // Convert to nanoseconds for comparison with Zig
+        bytesAllocated: result.bytesAllocated || 0,
+        bytesPerOp: result.bytesPerOp || 0,
+        peakMemory: result.peakMemory || 0
     }));
 }
 

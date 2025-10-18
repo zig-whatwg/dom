@@ -60,13 +60,37 @@ pub fn main() !void {
         }
 
         const ns = result.ns_per_op;
-        if (ns < 1000) {
-            std.debug.print("{s}: {d}ns/op ({d} ops/sec)\n", .{ result.name, ns, result.ops_per_sec });
-        } else if (ns < 1_000_000) {
-            std.debug.print("{s}: {d}µs/op ({d} ops/sec)\n", .{ result.name, ns / 1000, result.ops_per_sec });
-        } else {
-            std.debug.print("{s}: {d}ms/op ({d} ops/sec)\n", .{ result.name, ns / 1_000_000, result.ops_per_sec });
-        }
+        const bytes = result.bytes_per_op;
+
+        // Format time
+        const time_str = if (ns < 1000)
+            "ns"
+        else if (ns < 1_000_000)
+            "µs"
+        else
+            "ms";
+        const time_val = if (ns < 1000)
+            ns
+        else if (ns < 1_000_000)
+            ns / 1000
+        else
+            ns / 1_000_000;
+
+        // Format memory
+        const mem_str = if (bytes < 1024)
+            "B"
+        else if (bytes < 1024 * 1024)
+            "KB"
+        else
+            "MB";
+        const mem_val = if (bytes < 1024)
+            bytes
+        else if (bytes < 1024 * 1024)
+            bytes / 1024
+        else
+            bytes / (1024 * 1024);
+
+        std.debug.print("{s}: {d}{s}/op | {d}{s}/op | {d} ops/sec\n", .{ result.name, time_val, time_str, mem_val, mem_str, result.ops_per_sec });
     }
 
     std.debug.print("\nBenchmark complete!\n", .{});
