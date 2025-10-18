@@ -347,6 +347,11 @@ pub const Event = struct {
     /// Initialized flag - set when event is properly initialized
     initialized_flag: bool = false,
 
+    /// Event path - computed during dispatch for composedPath()
+    /// Per WHATWG §2.9: The event path is a list of objects on which listeners will be invoked
+    /// This is populated during dispatch and exposed via composedPath()
+    event_path: ?std.ArrayList(*anyopaque) = null,
+
     /// Event phase constants (WHATWG DOM §2.2)
     pub const EventPhase = enum(u16) {
         none = 0,
@@ -455,6 +460,80 @@ pub const Event = struct {
     /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:47
     pub fn defaultPrevented(self: *const Event) bool {
         return self.canceled_flag;
+    }
+
+    /// Returns the event's path (list of objects on which listeners will be invoked).
+    ///
+    /// Implements WHATWG DOM Event.composedPath() per §2.9.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// sequence<EventTarget> composedPath();
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §2.9)
+    /// 1. Let composedPath be an empty list
+    /// 2. Let path be event's path (computed during dispatch)
+    /// 3. If path is empty, return composedPath
+    /// 4. Let currentTarget be event's currentTarget
+    /// 5. Append objects from path to composedPath, respecting shadow boundaries
+    /// 6. Return composedPath
+    ///
+    /// ## Shadow DOM Behavior
+    /// - If event.composed = false, shadow roots act as barriers
+    /// - Nodes inside closed shadow roots are hidden from external listeners
+    /// - The path is adjusted based on where the listener is attached
+    ///
+    /// ## Parameters
+    /// - `allocator`: Allocator for the returned path array
+    ///
+    /// ## Returns
+    /// ArrayList of EventTarget pointers representing the event path.
+    /// Caller owns the returned ArrayList and must call deinit().
+    ///
+    /// ## Example
+    /// ```zig
+    /// var event = Event.init("click", .{ .bubbles = true, .composed = true });
+    /// // ... dispatch event ...
+    /// const path = try event.composedPath(allocator);
+    /// defer path.deinit();
+    /// for (path.items) |target| {
+    ///     // Process each target in the path
+    /// }
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-event-composedpath
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:48
+    pub fn composedPath(self: *const Event, allocator: Allocator) !std.ArrayList(*anyopaque) {
+        var result = std.ArrayList(*anyopaque).init(allocator);
+        errdefer result.deinit();
+
+        // If no event path was computed (event not dispatched), return empty
+        if (self.event_path == null) {
+            return result;
+        }
+
+        // For Phase 4 initial implementation: Return full event path
+        // Future: Implement shadow DOM boundary filtering based on:
+        // - event.composed flag
+        // - currentTarget position relative to shadow roots
+        // - Shadow root mode (open vs closed)
+        const path = self.event_path.?;
+        try result.appendSlice(path.items);
+
+        return result;
+    }
+
+    /// Cleans up event path (called after dispatch completes).
+    ///
+    /// Internal method - not part of WebIDL interface.
+    /// Should be called by dispatchEvent() after event propagation completes.
+    pub fn clearEventPath(self: *Event) void {
+        if (self.event_path) |*path| {
+            path.deinit();
+            self.event_path = null;
+        }
     }
 };
 

@@ -233,3 +233,34 @@ test "EventTarget mixin - passive listener flag set during dispatch" {
     var event = Event.init("test", .{ .cancelable = true });
     _ = try target.dispatchEvent(&event);
 }
+
+test "Event.composedPath - basic functionality" {
+    const allocator = std.testing.allocator;
+
+    var target = MockEventTarget.init(allocator);
+    defer target.deinit();
+
+    // Create and dispatch event
+    var event = Event.init("click", .{ .bubbles = true, .cancelable = true, .composed = false });
+
+    _ = try target.dispatchEvent(&event);
+
+    // Get composed path
+    const path = try event.composedPath(allocator);
+    defer path.deinit();
+
+    // Should have the target in the path
+    try std.testing.expectEqual(@as(usize, 1), path.items.len);
+}
+
+test "Event.composedPath - empty when not dispatched" {
+    const allocator = std.testing.allocator;
+
+    var event = Event.init("click", .{ .bubbles = true, .cancelable = false, .composed = false });
+
+    const path = try event.composedPath(allocator);
+    defer path.deinit();
+
+    // Should be empty since event was never dispatched
+    try std.testing.expectEqual(@as(usize, 0), path.items.len);
+}
