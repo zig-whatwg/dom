@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Phase 2 Complete: NonDocumentTypeChildNode Mixin** ✅
+  - Implemented element sibling navigation for Element, Text, and Comment
+  - **previousElementSibling()** - Returns previous sibling that is an element
+    - Traverses backward through siblings, skipping non-element nodes
+    - WebIDL: `readonly attribute Element? previousElementSibling;`
+    - Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
+    - Available on Element, Text, Comment (spec-compliant per CharacterData mixin)
+  - **nextElementSibling()** - Returns next sibling that is an element
+    - Traverses forward through siblings, skipping non-element nodes
+    - WebIDL: `readonly attribute Element? nextElementSibling;`
+    - Spec: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
+    - Available on Element, Text, Comment (spec-compliant per CharacterData mixin)
+  - **Type Safety**: Methods only on types that can have element siblings
+  - **WebIDL Compliance**: `Element includes NonDocumentTypeChildNode` ✓
+  - **WebIDL Compliance**: `CharacterData includes NonDocumentTypeChildNode` ✓ (implemented on Text/Comment)
+  - **Test Count**: 407/407 tests passing, 0 leaks ✅
+  - **Spec Reference**: https://dom.spec.whatwg.org/#nondocumenttypechildnode (lines 137-142 in dom.idl)
+
 ### Fixed
 - **CRITICAL: ParentNode Mixin Placement Correction** 🚨
   - **Problem**: 6 ParentNode methods incorrectly on Node base class

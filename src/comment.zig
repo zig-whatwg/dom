@@ -484,6 +484,98 @@ pub const Comment = struct {
         self.node.generation += 1;
     }
 
+    // ========================================================================
+    // NonDocumentTypeChildNode Mixin (WHATWG DOM §4.2.7)
+    // ========================================================================
+
+    /// Returns the previous sibling that is an element.
+    ///
+    /// Implements WHATWG DOM NonDocumentTypeChildNode.previousElementSibling property.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute Element? previousElementSibling;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - previousElementSibling: https://developer.mozilla.org/en-US/docs/Web/API/CharacterData/previousElementSibling
+    ///
+    /// ## Algorithm (from spec §4.2.7)
+    /// Return the first preceding sibling of this that is an element, or null if there is no such sibling.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
+    /// - WebIDL: dom.idl:138
+    ///
+    /// ## Returns
+    /// Previous element sibling or null
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const elem = try doc.createElement("child");
+    /// _ = try parent.node.appendChild(&elem.node);
+    /// const comment = try doc.createComment("note");
+    /// _ = try parent.node.appendChild(&comment.node);
+    ///
+    /// // comment.previousElementSibling() returns elem
+    /// try std.testing.expect(comment.previousElementSibling() == elem);
+    /// ```
+    pub fn previousElementSibling(self: *const Comment) ?*@import("element.zig").Element {
+        var current = self.node.previous_sibling;
+        while (current) |sibling| {
+            if (sibling.node_type == .element) {
+                return @fieldParentPtr("node", sibling);
+            }
+            current = sibling.previous_sibling;
+        }
+        return null;
+    }
+
+    /// Returns the next sibling that is an element.
+    ///
+    /// Implements WHATWG DOM NonDocumentTypeChildNode.nextElementSibling property.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute Element? nextElementSibling;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - nextElementSibling: https://developer.mozilla.org/en-US/docs/Web/API/CharacterData/nextElementSibling
+    ///
+    /// ## Algorithm (from spec §4.2.7)
+    /// Return the first following sibling of this that is an element, or null if there is no such sibling.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
+    /// - WebIDL: dom.idl:139
+    ///
+    /// ## Returns
+    /// Next element sibling or null
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const comment = try doc.createComment("note");
+    /// _ = try parent.node.appendChild(&comment.node);
+    /// const elem = try doc.createElement("child");
+    /// _ = try parent.node.appendChild(&elem.node);
+    ///
+    /// // comment.nextElementSibling() returns elem
+    /// try std.testing.expect(comment.nextElementSibling() == elem);
+    /// ```
+    pub fn nextElementSibling(self: *const Comment) ?*@import("element.zig").Element {
+        var current = self.node.next_sibling;
+        while (current) |sibling| {
+            if (sibling.node_type == .element) {
+                return @fieldParentPtr("node", sibling);
+            }
+            current = sibling.next_sibling;
+        }
+        return null;
+    }
+
     // === Private vtable implementations ===
 
     /// Vtable implementation: adopting steps (no-op for Comment)

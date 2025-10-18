@@ -2072,6 +2072,102 @@ pub const Element = struct {
         };
     }
 
+    // ========================================================================
+    // NonDocumentTypeChildNode Mixin (WHATWG DOM §4.2.7)
+    // ========================================================================
+
+    /// Returns the previous sibling that is an element.
+    ///
+    /// Implements WHATWG DOM NonDocumentTypeChildNode.previousElementSibling property.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute Element? previousElementSibling;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - previousElementSibling: https://developer.mozilla.org/en-US/docs/Web/API/Element/previousElementSibling
+    ///
+    /// ## Algorithm (from spec §4.2.7)
+    /// Return the first preceding sibling of this that is an element, or null if there is no such sibling.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
+    /// - WebIDL: dom.idl:138
+    ///
+    /// ## Returns
+    /// Previous element sibling or null
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const elem1 = try doc.createElement("child1");
+    /// _ = try parent.node.appendChild(&elem1.node);
+    /// const text = try doc.createTextNode("text");
+    /// _ = try parent.node.appendChild(&text.node);
+    /// const elem2 = try doc.createElement("child2");
+    /// _ = try parent.node.appendChild(&elem2.node);
+    ///
+    /// // elem2.previousElementSibling() skips text node, returns elem1
+    /// try std.testing.expect(elem2.previousElementSibling() == elem1);
+    /// ```
+    pub fn previousElementSibling(self: *const Element) ?*Element {
+        var current = self.node.previous_sibling;
+        while (current) |sibling| {
+            if (sibling.node_type == .element) {
+                return @fieldParentPtr("node", sibling);
+            }
+            current = sibling.previous_sibling;
+        }
+        return null;
+    }
+
+    /// Returns the next sibling that is an element.
+    ///
+    /// Implements WHATWG DOM NonDocumentTypeChildNode.nextElementSibling property.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute Element? nextElementSibling;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - nextElementSibling: https://developer.mozilla.org/en-US/docs/Web/API/Element/nextElementSibling
+    ///
+    /// ## Algorithm (from spec §4.2.7)
+    /// Return the first following sibling of this that is an element, or null if there is no such sibling.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
+    /// - WebIDL: dom.idl:139
+    ///
+    /// ## Returns
+    /// Next element sibling or null
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const elem1 = try doc.createElement("child1");
+    /// _ = try parent.node.appendChild(&elem1.node);
+    /// const text = try doc.createTextNode("text");
+    /// _ = try parent.node.appendChild(&text.node);
+    /// const elem2 = try doc.createElement("child2");
+    /// _ = try parent.node.appendChild(&elem2.node);
+    ///
+    /// // elem1.nextElementSibling() skips text node, returns elem2
+    /// try std.testing.expect(elem1.nextElementSibling() == elem2);
+    /// ```
+    pub fn nextElementSibling(self: *const Element) ?*Element {
+        var current = self.node.next_sibling;
+        while (current) |sibling| {
+            if (sibling.node_type == .element) {
+                return @fieldParentPtr("node", sibling);
+            }
+            current = sibling.next_sibling;
+        }
+        return null;
+    }
+
     // === Private implementation ===
 
     /// Updates the bloom filter from a class attribute value.
