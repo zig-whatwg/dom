@@ -345,6 +345,14 @@ pub const DocumentFragment = struct {
     /// defer fragment.prototype.release();
     /// ```
     pub fn create(allocator: Allocator) !*DocumentFragment {
+        return createWithVTable(allocator, &vtable);
+    }
+
+    /// Creates a document fragment with a custom vtable (enables extensibility).
+    pub fn createWithVTable(
+        allocator: Allocator,
+        node_vtable: *const NodeVTable,
+    ) !*DocumentFragment {
         const fragment = try allocator.create(DocumentFragment);
         errdefer allocator.destroy(fragment);
 
@@ -353,7 +361,7 @@ pub const DocumentFragment = struct {
             .prototype = .{
                 .vtable = &node_mod.eventtarget_vtable,
             },
-            .vtable = &vtable,
+            .vtable = node_vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .document_fragment,
             .flags = 0,

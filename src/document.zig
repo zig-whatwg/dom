@@ -547,6 +547,14 @@ pub const Document = struct {
     /// defer elem.prototype.release();
     /// ```
     pub fn init(allocator: Allocator) !*Document {
+        return initWithVTable(allocator, &vtable);
+    }
+
+    /// Initializes a document with a custom vtable (enables extensibility).
+    pub fn initWithVTable(
+        allocator: Allocator,
+        node_vtable: *const NodeVTable,
+    ) !*Document {
         const doc = try allocator.create(Document);
         errdefer allocator.destroy(doc);
 
@@ -577,7 +585,7 @@ pub const Document = struct {
             .prototype = .{
                 .vtable = &node_mod.eventtarget_vtable,
             },
-            .vtable = &vtable,
+            .vtable = node_vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .document,
             .flags = Node.FLAG_IS_CONNECTED, // Document is always connected

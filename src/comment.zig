@@ -313,6 +313,15 @@ pub const Comment = struct {
     /// defer comment.prototype.release();
     /// ```
     pub fn create(allocator: Allocator, content: []const u8) !*Comment {
+        return createWithVTable(allocator, content, &vtable);
+    }
+
+    /// Creates a comment node with a custom vtable (enables extensibility).
+    pub fn createWithVTable(
+        allocator: Allocator,
+        content: []const u8,
+        node_vtable: *const NodeVTable,
+    ) !*Comment {
         const comment = try allocator.create(Comment);
         errdefer allocator.destroy(comment);
 
@@ -325,7 +334,7 @@ pub const Comment = struct {
             .prototype = .{
                 .vtable = &node_mod.eventtarget_vtable,
             },
-            .vtable = &vtable,
+            .vtable = node_vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .comment,
             .flags = 0,

@@ -371,6 +371,52 @@ pub const Element = struct {
     ///
     /// See: https://dom.spec.whatwg.org/#dom-document-createelement
     pub fn create(allocator: Allocator, tag_name: []const u8) !*Element {
+        return createWithVTable(allocator, tag_name, &vtable);
+    }
+
+    /// Creates an element with a custom vtable (enables extensibility).
+    ///
+    /// This is the extensibility point for HTML/XML libraries to inject custom behavior.
+    /// The default `create()` method calls this with the default vtable.
+    ///
+    /// ## Parameters
+    ///
+    /// - `allocator`: Memory allocator
+    /// - `tag_name`: Element tag name (e.g., "div", "custom-element")
+    /// - `node_vtable`: Custom NodeVTable for polymorphic behavior
+    ///
+    /// ## Returns
+    ///
+    /// Element pointer with custom vtable installed
+    ///
+    /// ## Errors
+    ///
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Example (HTMLElement extending Element)
+    ///
+    /// ```zig
+    /// const HTMLElement = struct {
+    ///     element: Element,
+    ///
+    ///     const html_vtable = NodeVTable{
+    ///         .deinit = htmlDeinit,
+    ///         // ... custom implementations
+    ///     };
+    ///
+    ///     pub fn create(allocator: Allocator, tag_name: []const u8) !*HTMLElement {
+    ///         const elem = try Element.createWithVTable(allocator, tag_name, &html_vtable);
+    ///         const html_elem = @fieldParentPtr(HTMLElement, "element", elem);
+    ///         // Initialize HTMLElement-specific fields
+    ///         return html_elem;
+    ///     }
+    /// };
+    /// ```
+    pub fn createWithVTable(
+        allocator: Allocator,
+        tag_name: []const u8,
+        node_vtable: *const NodeVTable,
+    ) !*Element {
         const elem = try allocator.create(Element);
         errdefer allocator.destroy(elem);
 
@@ -379,7 +425,7 @@ pub const Element = struct {
             .prototype = .{
                 .vtable = &node_mod.eventtarget_vtable,
             },
-            .vtable = &vtable,
+            .vtable = node_vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .element,
             .flags = 0,

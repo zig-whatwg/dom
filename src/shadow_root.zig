@@ -362,6 +362,16 @@ pub const ShadowRoot = struct {
     /// defer shadow.prototype.release();
     /// ```
     pub fn create(allocator: Allocator, host_elem: *Element, init: ShadowRootInit) !*ShadowRoot {
+        return createWithVTable(allocator, host_elem, init, &vtable);
+    }
+
+    /// Creates a shadow root with a custom vtable (enables extensibility).
+    pub fn createWithVTable(
+        allocator: Allocator,
+        host_elem: *Element,
+        init: ShadowRootInit,
+        node_vtable: *const NodeVTable,
+    ) !*ShadowRoot {
         const shadow = try allocator.create(ShadowRoot);
         errdefer allocator.destroy(shadow);
 
@@ -370,7 +380,7 @@ pub const ShadowRoot = struct {
             .prototype = .{
                 .vtable = &node_mod.eventtarget_vtable,
             },
-            .vtable = &vtable,
+            .vtable = node_vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .shadow_root,
             .flags = 0,

@@ -338,6 +338,23 @@ pub const Text = struct {
     /// defer text.prototype.release();
     /// ```
     pub fn create(allocator: Allocator, content: []const u8) !*Text {
+        return createWithVTable(allocator, content, &vtable);
+    }
+
+    /// Creates a text node with a custom vtable (enables extensibility).
+    ///
+    /// ## Parameters
+    /// - `allocator`: Memory allocator
+    /// - `content`: Text content
+    /// - `node_vtable`: Custom NodeVTable for polymorphic behavior
+    ///
+    /// ## Returns
+    /// Text pointer with custom vtable installed
+    pub fn createWithVTable(
+        allocator: Allocator,
+        content: []const u8,
+        node_vtable: *const NodeVTable,
+    ) !*Text {
         const text = try allocator.create(Text);
         errdefer allocator.destroy(text);
 
@@ -350,7 +367,7 @@ pub const Text = struct {
             .prototype = .{
                 .vtable = &node_mod.eventtarget_vtable,
             },
-            .vtable = &vtable,
+            .vtable = node_vtable,
             .ref_count_and_parent = std.atomic.Value(u32).init(1),
             .node_type = .text,
             .flags = 0,
