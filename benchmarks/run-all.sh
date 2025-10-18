@@ -26,7 +26,7 @@ echo ""
 echo -e "${YELLOW}Step 1/3: Running Zig benchmarks...${NC}"
 echo ""
 cd "$(dirname "$0")/.."
-zig build bench -Doptimize=ReleaseFast > benchmark_results/phase4_release_fast.txt 2>&1
+zig build bench -Doptimize=ReleaseFast > benchmark_results/zig_benchmarks_latest.txt 2>&1
 echo -e "${GREEN}✓ Zig benchmarks complete${NC}"
 echo ""
 
@@ -71,7 +71,7 @@ echo -e "${GREEN}  All benchmarks complete!${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
 echo "Results:"
-echo "  - Zig results:     benchmark_results/phase4_release_fast.txt"
+echo "  - Zig results:     benchmark_results/zig_benchmarks_latest.txt"
 echo "  - Browser results: benchmark_results/browser_benchmarks_latest.json"
 echo "  - HTML report:     benchmark_results/benchmark_report.html"
 echo ""

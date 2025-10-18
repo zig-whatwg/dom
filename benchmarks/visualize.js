@@ -15,7 +15,7 @@ const OUTPUT_FILE = path.join(RESULTS_DIR, 'benchmark_report.html');
  * Load Zig benchmark results
  */
 async function loadZigResults() {
-    const zigFile = path.join(RESULTS_DIR, 'phase4_release_fast.txt');
+    const zigFile = path.join(RESULTS_DIR, 'zig_benchmarks_latest.txt');
     
     try {
         const content = await fs.readFile(zigFile, 'utf-8');
@@ -24,13 +24,43 @@ async function loadZigResults() {
         // Parse Zig benchmark output
         const lines = content.split('\n');
         for (const line of lines) {
-            // Match lines like: "Pure query: getElementById (100 elem): 5ns/op (200000000 ops/sec)"
-            const match = line.match(/^(.+?):\s+(\d+(?:\.\d+)?)(ns|µs|ms)\/op\s+\((\d+)\s+ops\/sec\)/);
-            if (match) {
-                const name = match[1].trim();
-                let value = parseFloat(match[2]);
-                const unit = match[3];
-                const opsPerSec = parseInt(match[4]);
+            // Match lines like: "Pure query: getElementById (100 elem): 5ns/op | 128B/op | 200000000 ops/sec"
+            // New format with memory tracking
+            const matchWithMemory = line.match(/^(.+?):\s+(\d+(?:\.\d+)?)(ns|µs|ms)\/op\s+\|\s+(\d+)(B|KB|MB)\/op\s+\|\s+(\d+)\s+ops\/sec/);
+            if (matchWithMemory) {
+                const name = matchWithMemory[1].trim();
+                let timeValue = parseFloat(matchWithMemory[2]);
+                const timeUnit = matchWithMemory[3];
+                let memValue = parseFloat(matchWithMemory[4]);
+                const memUnit = matchWithMemory[5];
+                const opsPerSec = parseInt(matchWithMemory[6]);
+                
+                // Convert time to nanoseconds
+                if (timeUnit === 'µs') timeValue *= 1000;
+                if (timeUnit === 'ms') timeValue *= 1000000;
+                
+                // Convert memory to bytes
+                if (memUnit === 'KB') memValue *= 1024;
+                if (memUnit === 'MB') memValue *= 1024 * 1024;
+                
+                results.push({
+                    name,
+                    nsPerOp: timeValue,
+                    opsPerSec,
+                    bytesPerOp: memValue,
+                    bytesAllocated: memValue, // For compatibility
+                    peakMemory: 0  // Not tracked per-operation
+                });
+                continue;
+            }
+            
+            // Fallback: Match old format without memory: "Pure query: getElementById (100 elem): 5ns/op (200000000 ops/sec)"
+            const matchOld = line.match(/^(.+?):\s+(\d+(?:\.\d+)?)(ns|µs|ms)\/op\s+\((\d+)\s+ops\/sec\)/);
+            if (matchOld) {
+                const name = matchOld[1].trim();
+                let value = parseFloat(matchOld[2]);
+                const unit = matchOld[3];
+                const opsPerSec = parseInt(matchOld[4]);
                 
                 // Convert everything to nanoseconds
                 if (unit === 'µs') value *= 1000;
@@ -39,7 +69,10 @@ async function loadZigResults() {
                 results.push({
                     name,
                     nsPerOp: value,
-                    opsPerSec
+                    opsPerSec,
+                    bytesPerOp: 0,
+                    bytesAllocated: 0,
+                    peakMemory: 0
                 });
             }
         }
