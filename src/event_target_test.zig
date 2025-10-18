@@ -246,8 +246,8 @@ test "Event.composedPath - basic functionality" {
     _ = try target.dispatchEvent(&event);
 
     // Get composed path
-    const path = try event.composedPath(allocator);
-    defer path.deinit();
+    var path = try event.composedPath(allocator);
+    defer path.deinit(allocator);
 
     // Should have the target in the path
     try std.testing.expectEqual(@as(usize, 1), path.items.len);
@@ -258,8 +258,8 @@ test "Event.composedPath - empty when not dispatched" {
 
     var event = Event.init("click", .{ .bubbles = true, .cancelable = false, .composed = false });
 
-    const path = try event.composedPath(allocator);
-    defer path.deinit();
+    var path = try event.composedPath(allocator);
+    defer path.deinit(allocator);
 
     // Should be empty since event was never dispatched
     try std.testing.expectEqual(@as(usize, 0), path.items.len);

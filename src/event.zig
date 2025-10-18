@@ -506,8 +506,8 @@ pub const Event = struct {
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-event-composedpath
     /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:48
     pub fn composedPath(self: *const Event, allocator: Allocator) !std.ArrayList(*anyopaque) {
-        var result = std.ArrayList(*anyopaque).init(allocator);
-        errdefer result.deinit();
+        var result = std.ArrayList(*anyopaque){};
+        errdefer result.deinit(allocator);
 
         // If no event path was computed (event not dispatched), return empty
         if (self.event_path == null) {
@@ -520,7 +520,7 @@ pub const Event = struct {
         // - currentTarget position relative to shadow roots
         // - Shadow root mode (open vs closed)
         const path = self.event_path.?;
-        try result.appendSlice(path.items);
+        try result.appendSlice(allocator, path.items);
 
         return result;
     }
@@ -529,9 +529,9 @@ pub const Event = struct {
     ///
     /// Internal method - not part of WebIDL interface.
     /// Should be called by dispatchEvent() after event propagation completes.
-    pub fn clearEventPath(self: *Event) void {
+    pub fn clearEventPath(self: *Event, allocator: Allocator) void {
         if (self.event_path) |*path| {
-            path.deinit();
+            path.deinit(allocator);
             self.event_path = null;
         }
     }

@@ -634,9 +634,9 @@ pub const EventTarget = struct {
         // Build event path for composedPath() (Phase 4)
         // For now, just the target itself. Full tree traversal in future phases.
         const allocator = self.getAllocator();
-        event.event_path = std.ArrayList(*anyopaque).init(allocator);
-        try event.event_path.?.append(@ptrCast(self));
-        defer event.clearEventPath(); // Clean up after dispatch
+        event.event_path = std.ArrayList(*anyopaque){};
+        try event.event_path.?.append(allocator, @ptrCast(self));
+        defer event.clearEventPath(allocator); // Clean up after dispatch
 
         // Step 4: Invoke listeners on target
         const rare_data_ptr = self.ensureRareData() catch {

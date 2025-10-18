@@ -1951,9 +1951,157 @@ pub const Node = struct {
     ///     // Event was canceled
     /// }
     /// ```
+
+    // === Event Dispatch Helper Functions ===
+
+    /// Builds the event path from target to root, accounting for shadow DOM boundaries.
+    ///
+    /// Per WHATWG §2.9: The event path is the list of objects participating in event dispatch.
+    /// - Index 0: target node
+    /// - Index 1..n: ancestors up to root
+    /// - Crosses shadow boundaries if event.composed = true
+    fn buildEventPath(allocator: Allocator, target: *Node, event: *Event) !void {
+        // Initialize event path directly
+        event.event_path = std.ArrayList(*anyopaque){};
+        var path = &event.event_path.?;
+
+        // Add target
+        try path.append(allocator, @ptrCast(target));
+
+        // Walk up to root, crossing shadow boundaries if composed
+        var current: ?*Node = target;
+        while (current) |node| {
+            // Get parent (may cross shadow boundary)
+            const parent = if (event.composed and node.node_type == .shadow_root) blk: {
+                // Cross shadow boundary - get host element
+                const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
+                const shadow: *ShadowRoot = @fieldParentPtr("prototype", node);
+                break :blk &shadow.host_element.prototype;
+            } else node.parent_node;
+
+            if (parent) |p| {
+                try path.append(allocator, @ptrCast(p));
+                current = p;
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Invokes event listeners on a node for the current phase.
+    ///
+    /// ## Parameters
+    /// - `node`: Node whose listeners to invoke
+    /// - `event`: Event being dispatched
+    /// - `capture`: true for capture phase listeners, false for bubble phase
+    fn invokeListeners(node: *Node, event: *Event, capture: bool) !void {
+        if (node.rare_data == null) return;
+        const rare = node.rare_data.?;
+
+        if (!rare.hasEventListeners(event.event_type)) return;
+
+        const listeners = rare.getEventListeners(event.event_type);
+
+        for (listeners) |listener| {
+            // Only invoke listeners matching the current phase
+            if (listener.capture != capture) continue;
+
+            // Check stopImmediatePropagation
+            if (event.stop_immediate_propagation_flag) break;
+
+            // Handle "once" listeners - remove before invoking
+            if (listener.once) {
+                node.removeEventListener(
+                    listener.event_type,
+                    listener.callback,
+                    listener.capture,
+                );
+            }
+
+            // Set passive listener flag
+            const prev_passive = event.in_passive_listener_flag;
+            if (listener.passive) {
+                event.in_passive_listener_flag = true;
+            }
+
+            // Invoke callback
+            listener.callback(event, listener.context);
+
+            // Unset passive listener flag
+            event.in_passive_listener_flag = prev_passive;
+        }
+    }
+
     pub fn dispatchEvent(self: *Node, event: *Event) !bool {
-        const Mixin = EventTargetMixin(Node);
-        return Mixin.dispatchEvent(self, event);
+        // Validate event state
+        if (event.dispatch_flag) {
+            return error.InvalidStateError;
+        }
+        if (!event.initialized_flag) {
+            return error.InvalidStateError;
+        }
+
+        // Set flags
+        event.is_trusted = false;
+        event.dispatch_flag = true;
+
+        // Build event path (capture phase ancestors + target + bubble phase ancestors)
+        try buildEventPath(self.allocator, self, event);
+        defer event.clearEventPath(self.allocator);
+
+        const event_path = event.event_path.?;
+
+        // Original target (never changes)
+        event.target = @ptrCast(self);
+
+        // Phase 1: CAPTURING_PHASE - Walk down from root to target
+        event.event_phase = .capturing_phase;
+        var i: usize = event_path.items.len;
+        while (i > 1) {
+            i -= 1;
+            const current_node = @as(*Node, @ptrCast(@alignCast(event_path.items[i])));
+
+            // Skip target itself (will be handled in AT_TARGET phase)
+            if (current_node == self) continue;
+
+            event.current_target = @ptrCast(current_node);
+            try invokeListeners(current_node, event, true); // capture = true
+
+            if (event.stop_propagation_flag) break;
+        }
+
+        // Phase 2: AT_TARGET - Fire listeners on target
+        if (!event.stop_propagation_flag) {
+            event.event_phase = .at_target;
+            event.current_target = @ptrCast(self);
+
+            // Fire both capture and bubble listeners at target
+            try invokeListeners(self, event, true); // capture listeners
+            if (!event.stop_propagation_flag) {
+                try invokeListeners(self, event, false); // bubble listeners
+            }
+        }
+
+        // Phase 3: BUBBLING_PHASE - Walk up from target to root (if bubbles)
+        if (event.bubbles and !event.stop_propagation_flag) {
+            event.event_phase = .bubbling_phase;
+            i = 1; // Start from parent (index 1 is parent of target at index 0)
+            while (i < event_path.items.len) : (i += 1) {
+                const current_node = @as(*Node, @ptrCast(@alignCast(event_path.items[i])));
+
+                event.current_target = @ptrCast(current_node);
+                try invokeListeners(current_node, event, false); // capture = false
+
+                if (event.stop_propagation_flag) break;
+            }
+        }
+
+        // Cleanup
+        event.event_phase = .none;
+        event.current_target = null;
+        event.dispatch_flag = false;
+
+        return !event.canceled_flag;
     }
 };
 
