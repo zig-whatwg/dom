@@ -23,10 +23,16 @@ test {
     _ = @import("nodes/Node-textContent.zig");
 }
 
+// CharacterData tests
+test {
+    _ = @import("nodes/CharacterData-data.zig");
+}
+
 // Element tests
 test {
     _ = @import("nodes/Element-hasAttribute.zig");
     _ = @import("nodes/Element-setAttribute.zig");
+    _ = @import("nodes/Element-tagName.zig");
 }
 
 // Document tests
