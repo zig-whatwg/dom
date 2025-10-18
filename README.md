@@ -1,7 +1,7 @@
 # DOM - WHATWG DOM Implementation in Zig
 
 [![Zig](https://img.shields.io/badge/zig-0.15.1-orange.svg)](https://ziglang.org/)
-[![Tests](https://img.shields.io/badge/tests-267%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-471%20passing-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A production-ready implementation of the [WHATWG DOM Standard](https://dom.spec.whatwg.org/) in Zig, designed for headless browsers and JavaScript engines.
@@ -12,9 +12,33 @@ A production-ready implementation of the [WHATWG DOM Standard](https://dom.spec.
 - **WebKit-Style Memory Management** - Reference counting with weak parent pointers
 - **Zero Memory Leaks** - Verified by comprehensive test suite
 - **Highly Optimized** - O(1) querySelector for IDs, tags, and classes (~5-15ns). Cross-browser benchmarks included
+- **Fully Extensible** - Clean prototype chain with vtable injection and factory patterns for HTML/XML extensions
 - **Comptime Event Target Mixin** - Reusable EventTarget pattern with zero overhead for any type
 - **Production Ready** - Extensively tested and documented
 - **JavaScript Bindings Ready** - See [JS_BINDINGS.md](JS_BINDINGS.md) for integration guide
+
+### Extensibility
+
+This is a **generic DOM library** that can be extended for HTML, XML, or custom document types:
+
+```zig
+// Extend Element with custom behavior via vtable
+const html_vtable = NodeVTable{
+    .deinit = htmlDeinit,
+    // ... custom implementations
+};
+
+// Inject factory so Document.createElement returns your custom type
+const factories = Document.FactoryConfig{
+    .element_factory = HTMLElement.createForDocument,
+};
+const doc = try Document.initWithFactories(allocator, factories);
+
+// Now createElement returns HTMLElement!
+const elem = try doc.createElement("div");
+```
+
+**See [EXTENSIBILITY.md](EXTENSIBILITY.md) for complete guide**
 
 ## Quick Start
 
