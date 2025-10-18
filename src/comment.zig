@@ -539,6 +539,10 @@ pub const Comment = struct {
 
         // Create new comment with same content
         const cloned = try Comment.create(node.allocator, comment.data);
+
+        // Preserve owner document (WHATWG DOM §4.5.1 Clone algorithm)
+        cloned.node.owner_document = comment.node.owner_document;
+
         return &cloned.node;
     }
 };

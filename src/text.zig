@@ -624,6 +624,10 @@ pub const Text = struct {
 
         // Create new text with same content
         const cloned = try Text.create(node.allocator, text.data);
+
+        // Preserve owner document (WHATWG DOM §4.5.1 Clone algorithm)
+        cloned.node.owner_document = text.node.owner_document;
+
         return &cloned.node;
     }
 };

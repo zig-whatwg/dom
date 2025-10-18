@@ -915,8 +915,8 @@ pub const Node = struct {
     /// try std.testing.expect(parent.node.contains(&parent.node)); // true (inclusive)
     /// ```
     pub fn contains(self: *const Node, other: ?*const Node) bool {
-        // Per spec: if other is null, return true
-        if (other == null) return true;
+        // Per spec: if other is null, return false
+        if (other == null) return false;
 
         const other_node = other.?;
 

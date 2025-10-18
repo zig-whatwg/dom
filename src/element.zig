@@ -1688,14 +1688,26 @@ pub const Element = struct {
         const cloned = try Element.create(elem.node.allocator, elem.tag_name);
         errdefer cloned.node.release();
 
+        // Preserve owner document (WHATWG DOM §4.5.1 Clone algorithm)
+        cloned.node.owner_document = elem.node.owner_document;
+
         // Copy attributes
         var attr_iter = elem.attributes.map.iterator();
         while (attr_iter.next()) |entry| {
             try cloned.setAttribute(entry.key_ptr.*, entry.value_ptr.*);
         }
 
-        // TODO: Deep clone children when deep=true
-        _ = deep;
+        // Deep clone children if requested
+        if (deep) {
+            var child = elem.node.first_child;
+            while (child) |child_node| {
+                const child_clone = try child_node.cloneNode(true);
+                errdefer child_clone.release();
+                _ = try cloned.node.appendChild(child_clone);
+                child_clone.release(); // appendChild takes ownership
+                child = child_node.next_sibling;
+            }
+        }
 
         return &cloned.node;
     }
