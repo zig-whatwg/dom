@@ -1119,12 +1119,18 @@ pub const Document = struct {
     /// ## Note
     /// This returns a live collection backed by Document's internal tag_map.
     /// Changes to the DOM automatically reflect in the collection.
-    pub fn getElementsByTagName(self: *const Document, tag_name: []const u8) HTMLCollection {
-        if (self.tag_map.getPtr(tag_name)) |list_ptr| {
-            return HTMLCollection.initDocumentTagged(list_ptr);
+    pub fn getElementsByTagName(self: *Document, tag_name: []const u8) HTMLCollection {
+        // IMPORTANT: Ensure the tag exists in tag_map (even if empty) so HTMLCollection
+        // gets a stable pointer. This makes the collection truly "live" - it will
+        // reflect additions/removals even if called before any elements exist.
+        const result = self.tag_map.getOrPut(tag_name) catch {
+            // If allocation fails, return empty collection
+            return HTMLCollection.initDocumentTagged(null);
+        };
+        if (!result.found_existing) {
+            result.value_ptr.* = .{};
         }
-        // No elements with this tag - return empty collection
-        return HTMLCollection.initDocumentTagged(null);
+        return HTMLCollection.initDocumentTagged(result.value_ptr);
     }
 
     /// Returns all elements with the specified class name (O(k) lookup).

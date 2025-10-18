@@ -258,4 +258,6 @@ test {
     // Fast path optimizations
     _ = @import("fast_path.zig");
     _ = @import("element_iterator.zig");
+    // Phase 2 verification tests
+    _ = @import("getElementsByTagName_test.zig");
 }
