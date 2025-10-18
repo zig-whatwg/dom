@@ -359,6 +359,7 @@ pub const NodeType = enum(u8) {
     document = 9,
     document_type = 10,
     document_fragment = 11,
+    shadow_root = 12,
     processing_instruction = 7,
 
     /// Returns the numeric value used in the DOM API.

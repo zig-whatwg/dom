@@ -885,6 +885,139 @@ pub const Element = struct {
     }
 
     // ========================================================================
+    // Shadow DOM
+    // ========================================================================
+
+    /// Attaches a shadow root to this element.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.8 Attach a shadow root**: https://dom.spec.whatwg.org/#dom-element-attachshadow
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// ShadowRoot attachShadow(ShadowRootInit init);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Element.attachShadow(): https://developer.mozilla.org/en-US/docs/Web/API/Element/attachShadow
+    ///
+    /// ## Parameters
+    /// - `init`: Shadow root configuration (mode, delegates_focus, etc.)
+    ///
+    /// ## Returns
+    /// The created ShadowRoot (stored in element's RareData)
+    ///
+    /// ## Errors
+    /// - `error.NotSupportedError`: Element already has a shadow root
+    /// - `error.OutOfMemory`: Failed to allocate shadow root or RareData
+    ///
+    /// ## Example
+    /// ```zig
+    /// const elem = try doc.createElement("container");
+    /// defer elem.node.release();
+    ///
+    /// // Attach open shadow root
+    /// const shadow = try elem.attachShadow(.{
+    ///     .mode = .open,
+    ///     .delegates_focus = false,
+    /// });
+    ///
+    /// // Add content to shadow tree
+    /// const content = try doc.createElement("content");
+    /// _ = try shadow.node.appendChild(&content.node);
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// const element = document.createElement('div');
+    /// const shadow = element.attachShadow({ mode: 'open' });
+    /// // Returns: ShadowRoot
+    /// ```
+    pub fn attachShadow(self: *Element, init: @import("shadow_root.zig").ShadowRootInit) !*@import("shadow_root.zig").ShadowRoot {
+        const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
+
+        // Ensure RareData exists
+        const rare_data = try self.node.ensureRareData();
+
+        // Check if shadow root already exists
+        if (rare_data.shadow_root != null) {
+            return error.NotSupportedError;
+        }
+
+        // Create shadow root
+        const shadow = try ShadowRoot.create(self.node.allocator, self, init);
+
+        // Store in RareData (OWNING pointer)
+        rare_data.shadow_root = @ptrCast(shadow);
+
+        return shadow;
+    }
+
+    /// Returns the shadow root attached to this element, or null.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.8 Interface Element**: https://dom.spec.whatwg.org/#dom-element-shadowroot
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute ShadowRoot? shadowRoot;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - Element.shadowRoot: https://developer.mozilla.org/en-US/docs/Web/API/Element/shadowRoot
+    ///
+    /// ## Returns
+    /// ShadowRoot if attached and mode is `open`, null otherwise
+    ///
+    /// ## Mode Enforcement
+    /// - **open mode**: Returns the shadow root
+    /// - **closed mode**: Returns null (hides shadow root from JavaScript)
+    ///
+    /// ## Example
+    /// ```zig
+    /// // Open mode
+    /// const shadow_open = try elem.attachShadow(.{ .mode = .open });
+    /// const retrieved = elem.shadowRoot();
+    /// // retrieved == shadow_open
+    ///
+    /// // Closed mode
+    /// const elem2 = try doc.createElement("widget");
+    /// _ = try elem2.attachShadow(.{ .mode = .closed });
+    /// const hidden = elem2.shadowRoot();
+    /// // hidden == null (shadow root exists but is hidden)
+    /// ```
+    ///
+    /// ## JavaScript Binding
+    /// ```javascript
+    /// const element = document.createElement('div');
+    /// element.attachShadow({ mode: 'open' });
+    /// const shadow = element.shadowRoot; // Returns ShadowRoot
+    ///
+    /// const closed = document.createElement('div');
+    /// closed.attachShadow({ mode: 'closed' });
+    /// const hidden = closed.shadowRoot; // Returns null
+    /// ```
+    pub fn shadowRoot(self: *const Element) ?*@import("shadow_root.zig").ShadowRoot {
+        const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
+
+        // Check if RareData exists
+        const rare_data = self.node.rare_data orelse return null;
+
+        // Check if shadow root exists
+        const shadow_ptr = rare_data.shadow_root orelse return null;
+
+        // Cast to ShadowRoot
+        const shadow: *ShadowRoot = @ptrCast(@alignCast(shadow_ptr));
+
+        // Mode enforcement: closed mode returns null
+        if (shadow.mode == .closed) {
+            return null;
+        }
+
+        return shadow;
+    }
+
+    // ========================================================================
     // ParentNode Mixin - Query Selector
     // ========================================================================
 

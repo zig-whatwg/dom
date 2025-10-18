@@ -224,9 +224,10 @@ pub fn ensurePreInsertValidity(
     parent: *Node,
     child: ?*Node,
 ) DOMError!void {
-    // Step 1: Parent must be Document, DocumentFragment, or Element
+    // Step 1: Parent must be Document, DocumentFragment, ShadowRoot, or Element
     if (parent.node_type != .document and
         parent.node_type != .document_fragment and
+        parent.node_type != .shadow_root and
         parent.node_type != .element)
     {
         return error.HierarchyRequestError;
@@ -283,9 +284,10 @@ pub fn ensureReplaceValidity(
     child: *Node,
     parent: *Node,
 ) DOMError!void {
-    // Step 1: Parent must be Document, DocumentFragment, or Element
+    // Step 1: Parent must be Document, DocumentFragment, ShadowRoot, or Element
     if (parent.node_type != .document and
         parent.node_type != .document_fragment and
+        parent.node_type != .shadow_root and
         parent.node_type != .element)
     {
         return error.HierarchyRequestError;

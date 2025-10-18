@@ -263,6 +263,11 @@ pub const NodeRareData = struct {
     /// Opaque pointer to animation state/timeline
     animation_data: ?*anyopaque,
 
+    /// Shadow root (allocated for elements with attached shadow DOM)
+    /// OWNING pointer - Element owns ShadowRoot via RareData
+    /// ShadowRoot freed when Element is released
+    shadow_root: ?*anyopaque,
+
     /// Creates a new RareData structure.
     ///
     /// All fields initialized to null (allocated on first use).
@@ -274,6 +279,7 @@ pub const NodeRareData = struct {
             .user_data = null,
             .custom_element_data = null,
             .animation_data = null,
+            .shadow_root = null,
         };
     }
 
@@ -296,6 +302,13 @@ pub const NodeRareData = struct {
         // Clean up user data
         if (self.user_data) |*data| {
             data.deinit();
+        }
+
+        // Clean up shadow root (OWNING pointer)
+        if (self.shadow_root) |shadow_ptr| {
+            const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
+            const shadow: *ShadowRoot = @ptrCast(@alignCast(shadow_ptr));
+            shadow.node.release();
         }
 
         // Note: custom_element_data and animation_data are opaque pointers
