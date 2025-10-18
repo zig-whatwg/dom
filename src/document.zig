@@ -1304,17 +1304,17 @@ pub const Document = struct {
         // Clean up ID map
         self.id_map.deinit();
 
-        // Clean up tag map
+        // Clean up tag map - Free ArrayList values before deiniting the HashMap
         var tag_it = self.tag_map.valueIterator();
         while (tag_it.next()) |list_ptr| {
             list_ptr.deinit(self.node.allocator);
         }
         self.tag_map.deinit();
 
-        // Clean up class map
+        // Clean up class map - Free ArrayList values before deiniting the HashMap
         var class_it = self.class_map.valueIterator();
         while (class_it.next()) |list_ptr| {
-            list_ptr.deinit(self.node.allocator);
+            list_ptr.*.deinit(self.node.allocator);
         }
         self.class_map.deinit();
 

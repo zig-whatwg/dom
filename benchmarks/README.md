@@ -1,6 +1,6 @@
 # DOM Benchmarks
 
-Cross-platform performance benchmarking suite comparing Zig DOM implementation with browser implementations.
+Cross-platform performance benchmarking and memory stress testing suite for the Zig DOM implementation.
 
 ## Quick Start
 
@@ -38,20 +38,39 @@ This will:
 
 ---
 
+## Benchmark Types
+
+This suite includes two types of testing:
+
+### 1. Performance Benchmarks (Cross-Platform Comparison)
+Compare Zig DOM against browser implementations for query operations.
+
+### 2. Memory Stress Test (Zig-Only)
+Long-running CRUD operations to test memory management and stability.
+
+---
+
 ## Output Files
 
 After running, you'll find:
 
 ```
 benchmark_results/
-├── phase4_release_fast.txt           # Zig benchmark results (text)
-├── browser_benchmarks_latest.json     # Browser results (JSON)
-└── benchmark_report.html              # 🎨 Interactive visualization (OPEN THIS!)
+├── phase4_release_fast.txt              # Zig performance results (text)
+├── browser_benchmarks_latest.json       # Browser results (JSON)
+├── benchmark_report.html                # 🎨 Performance visualization (OPEN THIS!)
+└── memory_stress/
+    ├── memory_samples_*.json            # Raw memory test data
+    └── memory_report_latest.html        # 🧪 Memory visualization (OPEN THIS!)
 ```
 
-**Open the HTML report:**
+**Open the HTML reports:**
 ```bash
+# Performance comparison
 open benchmark_results/benchmark_report.html
+
+# Memory stress test
+open benchmark_results/memory_stress/memory_report_latest.html
 ```
 
 ---
@@ -214,6 +233,63 @@ zig build benchmark-all
 
 ---
 
+## Memory Stress Test
+
+A comprehensive memory stress test that performs extensive CRUD operations to verify memory management.
+
+### Quick Start
+
+```bash
+# Quick 5-second test
+zig build memory-stress -Doptimize=ReleaseFast -- --duration 5
+
+# Standard 30-second test
+zig build memory-stress -Doptimize=ReleaseFast -- --duration 30
+
+# Production 20-minute test
+zig build memory-stress -Doptimize=ReleaseFast -- --duration 1200
+```
+
+### What It Tests
+
+- **CREATE**: Adds elements (small/medium/large fragments) - 30% of operations
+- **UPDATE**: Modifies text and reparents elements - 40% of operations
+- **READ**: Queries with getElementById, getElementsByTagName, querySelector - 20% of operations
+- **DELETE**: Removes nodes from tree - 10% of operations
+
+### Output
+
+The test generates:
+- JSON file with memory samples every 10 seconds
+- Interactive HTML report with Chart.js visualizations:
+  - Memory usage over time (line chart)
+  - Operations per second (performance chart)
+  - Operation breakdown (pie chart)
+  - Detailed statistics table
+
+### Options
+
+```bash
+# Reproducible test with seed
+zig build memory-stress -Doptimize=ReleaseFast -- --duration 30 --seed 42
+
+# Custom output directory
+zig build memory-stress -Doptimize=ReleaseFast -- --duration 30 --output-dir my_results
+
+# Help
+zig build memory-stress -Doptimize=ReleaseFast -- --help
+```
+
+### Documentation
+
+See `benchmarks/memory-stress/README.md` for complete documentation including:
+- Detailed operation descriptions
+- Memory tracking methodology
+- Result interpretation guide
+- Troubleshooting tips
+
+---
+
 ## File Structure
 
 ```
@@ -226,8 +302,13 @@ benchmarks/
 │   ├── playwright-runner.js   # Automated browser testing
 │   ├── package.json           # Playwright dependency
 │   └── node_modules/          # (created by npm install)
+├── memory-stress/
+│   ├── stress_test.zig        # Core stress test logic
+│   ├── stress_runner.zig      # CLI executable
+│   ├── visualize_memory.js    # HTML report generator
+│   └── README.md              # Memory test documentation
 ├── run-all.sh                 # Pipeline orchestration
-├── visualize.js               # HTML report generator
+├── visualize.js               # Performance report generator
 └── README.md                  # This file
 ```
 

@@ -179,4 +179,42 @@ pub fn build(b: *std.Build) void {
     });
     bench_all_script.setCwd(b.path("."));
     bench_all_step.dependOn(&bench_all_script.step);
+
+    // Memory stress test executable
+    const stress_exe = b.addExecutable(.{
+        .name = "memory-stress",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("benchmarks/memory-stress/stress_runner.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "dom", .module = mod },
+                .{ .name = "stress_test", .module = b.createModule(.{
+                    .root_source_file = b.path("benchmarks/memory-stress/stress_test.zig"),
+                    .target = target,
+                    .imports = &.{
+                        .{ .name = "dom", .module = mod },
+                    },
+                }) },
+            },
+        }),
+    });
+
+    const stress_step = b.step("memory-stress", "Run memory stress test (use -Doptimize=ReleaseFast)");
+    const stress_run = b.addRunArtifact(stress_exe);
+
+    // Allow passing command-line args
+    if (b.args) |args| {
+        stress_run.addArgs(args);
+    }
+
+    stress_step.dependOn(&stress_run.step);
+
+    // Chain with visualization
+    const stress_visualize = b.addSystemCommand(&.{
+        "node",
+        "benchmarks/memory-stress/visualize_memory.js",
+    });
+    stress_visualize.step.dependOn(&stress_run.step);
+    stress_step.dependOn(&stress_visualize.step);
 }

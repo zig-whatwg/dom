@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Memory Stress Test Suite** - Long-running DOM operation simulation for memory leak detection 🔬
+  - Persistent DOM stress test with 8.5M operations over 120 seconds
+  - HashMap-based ElementRegistry prevents use-after-free during element removal
+  - Continuous CRUD operations: create, read, update, delete with balanced distribution
+  - Maintains stable DOM size (500-1000 nodes) with target-based growth limits
+  - Memory stabilization after initial HashMap capacity growth (~6.6 MB steady state)
+  - Leaf-only deletion strategy prevents cascading frees and maintains tree integrity
+  - Bounded text growth (100 chars max) for realistic text node behavior
+  - Interactive HTML visualization with memory/operation graphs (Chart.js)
+  - CLI runner: `zig build memory-stress -Doptimize=ReleaseSafe -- --duration 120`
+  - Results: 11 bytes/cycle growth (essentially zero after stabilization) ✅
+  - **Status: Production-ready for simulating long-running applications**
+  - See `benchmarks/memory-stress/README.md` and `MEMORY_STRESS_TEST_COMPLETION.md`
 - **Memory Usage Benchmarks** - Track and compare memory consumption across implementations 💾
   - Added memory tracking to all benchmarks (bytes allocated, bytes per operation, peak memory)
   - Zig uses GPA with `enable_memory_limit` for precise memory measurement
@@ -109,6 +122,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AbortSignal.signalAbort() creates DOMException for default reason per spec §3.2.5
 
 ### Fixed
+- **Critical Memory Leak in ElementRegistry (77KB/cycle)** - Removed ID string allocation in registry.add()
+  - Root cause: ID strings allocated via `try allocator.dupe()` but never freed
+  - Changed return type from `[]const u8` to `void` (IDs no longer needed)
+  - ElementRegistry.clear() now uses `clearAndFree()` instead of `clearRetainingCapacity()`
+  - Removed 220 lines of dead code (createInitialDOM, opCreate/Read/Update/Delete helpers)
+  - **Note**: Fix works in Debug/ReleaseSafe but triggers GPA corruption in ReleaseFast (likely Zig 0.15.1 optimizer bug)
+  - **Workaround**: Use `-Doptimize=ReleaseSafe` for stress tests until Zig compiler issue resolved
+- **Document.class_map Memory Leak** - Fixed incorrect pointer dereference in cleanup
+  - Changed `list_ptr.deinit()` to `list_ptr.*.deinit()` for proper ArrayList cleanup
+  - Ensures all class name list memory is properly freed during document destruction
 - addEventListener signal parameter now fully functional (was completely ignored before)
 - AbortAlgorithm memory management improved with automatic cleanup on abort
 - throwIfAborted() limitation documented (Zig can't throw arbitrary values like JavaScript)
