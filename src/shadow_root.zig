@@ -1268,3 +1268,383 @@ test "ShadowRoot - host relationship" {
     try std.testing.expect(shadow.host() == elem);
     try std.testing.expect(elem.shadowRoot() == shadow);
 }
+
+test "Node.getRootNode() - without shadow root (composed=false)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("container");
+    _ = try doc.node.appendChild(&elem.node);
+
+    const child = try doc.createElement("child");
+    _ = try elem.node.appendChild(&child.node);
+
+    // getRootNode without shadow roots returns document
+    const root = child.node.getRootNode(false);
+    try std.testing.expect(root == &doc.node);
+}
+
+test "Node.getRootNode() - shadow tree (composed=false)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    defer host.node.release();
+
+    // Attach shadow root
+    const shadow = try host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // Add child to shadow tree
+    const shadow_child = try doc.createElement("shadow-child");
+    _ = try shadow.node.appendChild(&shadow_child.node);
+
+    // composed=false: stops at shadow boundary
+    const root = shadow_child.node.getRootNode(false);
+    try std.testing.expect(root == &shadow.node);
+    try std.testing.expect(root.node_type == .shadow_root);
+}
+
+test "Node.getRootNode() - shadow tree (composed=true)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    _ = try doc.node.appendChild(&host.node);
+
+    // Attach shadow root
+    const shadow = try host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // Add child to shadow tree
+    const shadow_child = try doc.createElement("shadow-child");
+    _ = try shadow.node.appendChild(&shadow_child.node);
+
+    // composed=true: pierces shadow boundary
+    const root = shadow_child.node.getRootNode(true);
+    try std.testing.expect(root == &doc.node);
+    try std.testing.expect(root.node_type == .document);
+}
+
+test "Node.getRootNode() - nested shadow roots (composed=false)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Create outer host with shadow root
+    const outer_host = try doc.createElement("outer-host");
+    _ = try doc.node.appendChild(&outer_host.node);
+
+    const outer_shadow = try outer_host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // Create inner host inside outer shadow
+    const inner_host = try doc.createElement("inner-host");
+    _ = try outer_shadow.node.appendChild(&inner_host.node);
+
+    const inner_shadow = try inner_host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // Add child to inner shadow tree
+    const inner_child = try doc.createElement("inner-child");
+    _ = try inner_shadow.node.appendChild(&inner_child.node);
+
+    // composed=false: stops at inner shadow root
+    const root = inner_child.node.getRootNode(false);
+    try std.testing.expect(root == &inner_shadow.node);
+    try std.testing.expect(root.node_type == .shadow_root);
+}
+
+test "Node.getRootNode() - nested shadow roots (composed=true)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Create outer host with shadow root
+    const outer_host = try doc.createElement("outer-host");
+    _ = try doc.node.appendChild(&outer_host.node);
+
+    const outer_shadow = try outer_host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // Create inner host inside outer shadow
+    const inner_host = try doc.createElement("inner-host");
+    _ = try outer_shadow.node.appendChild(&inner_host.node);
+
+    const inner_shadow = try inner_host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // Add child to inner shadow tree
+    const inner_child = try doc.createElement("inner-child");
+    _ = try inner_shadow.node.appendChild(&inner_child.node);
+
+    // composed=true: pierces both shadow boundaries to reach document
+    const root = inner_child.node.getRootNode(true);
+    try std.testing.expect(root == &doc.node);
+    try std.testing.expect(root.node_type == .document);
+}
+
+test "Node.getRootNode() - host element in document (composed=false)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    _ = try doc.node.appendChild(&host.node);
+
+    _ = try host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // Host element is in document tree
+    const root = host.node.getRootNode(false);
+    try std.testing.expect(root == &doc.node);
+}
+
+test "Node.getRootNode() - shadow root itself (composed=false)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    defer host.node.release();
+
+    const shadow = try host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // getRootNode on shadow root itself
+    const root = shadow.node.getRootNode(false);
+    try std.testing.expect(root == &shadow.node);
+}
+
+test "Node.getRootNode() - shadow root itself (composed=true)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    _ = try doc.node.appendChild(&host.node);
+
+    const shadow = try host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // composed=true on shadow root traverses to document
+    const root = shadow.node.getRootNode(true);
+    try std.testing.expect(root == &doc.node);
+}
+
+test "Node.getRootNode() - disconnected host (composed=true)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Host not connected to document
+    const host = try doc.createElement("host");
+    defer host.node.release();
+
+    const shadow = try host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    const child = try doc.createElement("child");
+    _ = try shadow.node.appendChild(&child.node);
+
+    // composed=true traverses to disconnected host
+    const root = child.node.getRootNode(true);
+    try std.testing.expect(root == &host.node);
+}
+
+test "Node.isConnected - shadow tree child (host connected)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Host connected to document
+    const host = try doc.createElement("host");
+    _ = try doc.node.appendChild(&host.node);
+
+    // Attach shadow root
+    const shadow = try host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // Shadow root should be connected (host is connected)
+    try std.testing.expect(shadow.node.isConnected());
+
+    // Child in shadow tree should be connected
+    const child = try doc.createElement("child");
+    _ = try shadow.node.appendChild(&child.node);
+
+    try std.testing.expect(child.node.isConnected());
+}
+
+test "Node.isConnected - shadow tree child (host disconnected)" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Host NOT connected to document
+    const host = try doc.createElement("host");
+    defer host.node.release();
+
+    // Attach shadow root
+    const shadow = try host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // Shadow root should NOT be connected (host is disconnected)
+    try std.testing.expect(!shadow.node.isConnected());
+
+    // Child in shadow tree should NOT be connected
+    const child = try doc.createElement("child");
+    _ = try shadow.node.appendChild(&child.node);
+
+    try std.testing.expect(!child.node.isConnected());
+}
+
+test "Node.isConnected - shadow tree becomes connected when host connected" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Create disconnected host
+    const host = try doc.createElement("host");
+
+    // Attach shadow root with child
+    const shadow = try host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    const child = try doc.createElement("child");
+    _ = try shadow.node.appendChild(&child.node);
+
+    // Initially disconnected
+    try std.testing.expect(!host.node.isConnected());
+    try std.testing.expect(!shadow.node.isConnected());
+    try std.testing.expect(!child.node.isConnected());
+
+    // Connect host to document
+    _ = try doc.node.appendChild(&host.node);
+
+    // Now everything should be connected
+    try std.testing.expect(host.node.isConnected());
+    try std.testing.expect(shadow.node.isConnected());
+    try std.testing.expect(child.node.isConnected());
+}
+
+test "Node.isConnected - nested shadow roots" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Outer host connected
+    const outer_host = try doc.createElement("outer");
+    _ = try doc.node.appendChild(&outer_host.node);
+
+    const outer_shadow = try outer_host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // Inner host in outer shadow
+    const inner_host = try doc.createElement("inner");
+    _ = try outer_shadow.node.appendChild(&inner_host.node);
+
+    const inner_shadow = try inner_host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    // Child in inner shadow
+    const child = try doc.createElement("child");
+    _ = try inner_shadow.node.appendChild(&child.node);
+
+    // All should be connected
+    try std.testing.expect(outer_host.node.isConnected());
+    try std.testing.expect(outer_shadow.node.isConnected());
+    try std.testing.expect(inner_host.node.isConnected());
+    try std.testing.expect(inner_shadow.node.isConnected());
+    try std.testing.expect(child.node.isConnected());
+}
+
+test "Node.isConnected - shadow root disconnection propagates" {
+    const allocator = std.testing.allocator;
+    const Document = @import("document.zig").Document;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Host connected with shadow
+    const host = try doc.createElement("host");
+    _ = try doc.node.appendChild(&host.node);
+
+    const shadow = try host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+    });
+
+    const child = try doc.createElement("child");
+    _ = try shadow.node.appendChild(&child.node);
+
+    // Initially connected
+    try std.testing.expect(child.node.isConnected());
+
+    // Remove host from document
+    const removed = try doc.node.removeChild(&host.node);
+    defer removed.release();
+
+    // Now disconnected
+    try std.testing.expect(!host.node.isConnected());
+    try std.testing.expect(!shadow.node.isConnected());
+    try std.testing.expect(!child.node.isConnected());
+}

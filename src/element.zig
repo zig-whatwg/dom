@@ -950,6 +950,11 @@ pub const Element = struct {
         // Store in RareData (OWNING pointer)
         rare_data.shadow_root = @ptrCast(shadow);
 
+        // If host is connected, shadow root should be connected too
+        if (self.node.isConnected()) {
+            shadow.node.setConnected(true);
+        }
+
         return shadow;
     }
 

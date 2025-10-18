@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Shadow DOM Phase 2 Complete: Tree Integration** ✅
+  - Implemented shadow-aware tree traversal per WHATWG DOM Standard §4.2.2 & §4.4
+  - **Node.getRootNode(composed)** - Enhanced with shadow boundary traversal
+    - WebIDL: `Node getRootNode(optional GetRootNodeOptions options = {});`
+    - Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
+    - `composed = false` (default): Stops at shadow root boundary
+    - `composed = true`: Pierces shadow boundaries to reach document
+    - Handles nested shadow roots (traverses all levels)
+    - Algorithm: Walk up parent chain, if shadow root and composed, continue from host
+  - **Node.isConnected** - Shadow-aware connection state
+    - Spec: https://dom.spec.whatwg.org/#connected
+    - Nodes in shadow tree are connected if host is connected to document
+    - Propagates through shadow boundaries automatically
+    - Updated when host connected/disconnected
+  - **Tree Helper Updates**:
+    - `setDescendantsConnected()` now propagates to shadow roots
+    - Shadow roots inherit connected state from host element
+    - Connected state synchronized across shadow boundaries
+  - **Element.attachShadow()** - Enhanced with connection state
+    - Sets shadow root `isConnected` based on host state at creation time
+    - Ensures shadow tree immediately reflects host connection state
+  - **Test Coverage**: 460/460 tests passing (+14 traversal tests), 0 leaks ✅
+    - 9 tests for `getRootNode()` with nested shadows
+    - 5 tests for `isConnected` through shadow boundaries
+  - **Next Phase**: Slot distribution (Phase 3)
+
 - **Shadow DOM Phase 1 Complete: Core Structure** ✅
   - Implemented foundational Shadow DOM interfaces per WHATWG DOM Standard §4.8
   - **ShadowRoot Interface** - Shadow tree root extending DocumentFragment

@@ -285,6 +285,27 @@ fn collectTextContent(node: *const Node, list: *std.ArrayList(u8), allocator: Al
 /// ## Spec Reference
 /// https://dom.spec.whatwg.org/#connected
 pub fn setDescendantsConnected(node: *Node, connected: bool) void {
+    // First, handle shadow root if this is an element with one
+    if (node.node_type == .element) {
+        const ElementType = @import("element.zig").Element;
+        const elem: *ElementType = @fieldParentPtr("node", node);
+
+        // Check if element has a shadow root
+        if (elem.node.rare_data) |rare_data| {
+            if (rare_data.shadow_root) |shadow_ptr| {
+                const ShadowRootType = @import("shadow_root.zig").ShadowRoot;
+                const shadow: *ShadowRootType = @ptrCast(@alignCast(shadow_ptr));
+
+                // Set shadow root connected state
+                shadow.node.setConnected(connected);
+
+                // Propagate to shadow tree descendants
+                setDescendantsConnected(&shadow.node, connected);
+            }
+        }
+    }
+
+    // Then handle regular children
     var current = node.first_child;
     while (current) |child| {
         // Save next sibling BEFORE any operations that might modify it

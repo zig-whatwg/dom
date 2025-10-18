@@ -855,8 +855,19 @@ pub const Node = struct {
     /// ## Algorithm (WHATWG DOM §4.4)
     /// 1. Let root be this
     /// 2. While root's parent is non-null, set root to root's parent
-    /// 3. If composed is true and root is a shadow root, return root's host
+    /// 3. If composed is true and root is a shadow root:
+    ///    - Set root to root's shadow host
+    ///    - Go to step 2 (continue climbing through shadow boundaries)
     /// 4. Return root
+    ///
+    /// ## Shadow DOM Behavior
+    /// - **composed = false** (default): Stops at shadow root boundary
+    ///   - Node in shadow tree → Returns shadow root
+    ///   - Node in document → Returns document
+    /// - **composed = true**: Pierces shadow boundaries
+    ///   - Node in shadow tree → Returns document (traverses through host)
+    ///   - Node in document → Returns document
+    ///   - Handles nested shadow roots (traverses all levels)
     ///
     /// ## Parameters
     /// - `composed`: If true, pierces shadow boundaries (default: false)
@@ -870,21 +881,46 @@ pub const Node = struct {
     ///
     /// ## Example
     /// ```zig
+    /// // Without shadow roots
     /// const root = node.getRootNode(false);
     /// // Returns document node for connected nodes
+    ///
+    /// // With shadow roots (composed = false)
+    /// const shadow_child = ...; // Node inside shadow tree
+    /// const root1 = shadow_child.getRootNode(false);
+    /// // Returns shadow root (stops at shadow boundary)
+    ///
+    /// // With shadow roots (composed = true)
+    /// const root2 = shadow_child.getRootNode(true);
+    /// // Returns document (traverses through shadow boundaries)
     /// ```
     pub fn getRootNode(self: *const Node, composed: bool) *Node {
-        // Step 1 & 2: Walk up to root
+        const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
+        const Element = @import("element.zig").Element;
+
+        // Step 1: Start with self
         var root: *Node = @constCast(self);
-        while (root.parent_node) |parent| {
-            root = parent;
+
+        // Step 2: Walk up to root, potentially crossing shadow boundaries
+        while (true) {
+            // Walk up parent chain within current tree
+            while (root.parent_node) |parent| {
+                root = parent;
+            }
+
+            // Step 3: If composed and root is shadow root, continue to host
+            if (composed and root.node_type == .shadow_root) {
+                const shadow: *ShadowRoot = @fieldParentPtr("node", root);
+                const host_elem: *Element = shadow.host();
+                root = &host_elem.node;
+                // Continue walking up from host
+                continue;
+            }
+
+            // Step 4: Done, return root
+            break;
         }
 
-        // Step 3: If composed and shadow root, return host
-        // (Shadow DOM not yet implemented, so this is a no-op for now)
-        _ = composed;
-
-        // Step 4: Return root
         return root;
     }
 
