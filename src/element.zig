@@ -1715,6 +1715,363 @@ pub const Element = struct {
         return @import("element_collection.zig").ElementCollection.init(&self.node);
     }
 
+    /// Returns the first child that is an element.
+    ///
+    /// Implements WHATWG DOM ParentNode.firstElementChild property per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute Element? firstElementChild;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - firstElementChild: https://developer.mozilla.org/en-US/docs/Web/API/Element/firstElementChild
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// Return the first child of this that is an element, or null if there is no such child.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-firstelementchild
+    /// - WebIDL: dom.idl:120
+    ///
+    /// ## Returns
+    /// First element child or null
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const text = try doc.createTextNode("text");
+    /// _ = try parent.node.appendChild(&text.node);
+    /// const elem = try doc.createElement("child");
+    /// _ = try parent.node.appendChild(&elem.node);
+    ///
+    /// // firstElementChild skips text node
+    /// try std.testing.expect(parent.firstElementChild() == elem);
+    /// ```
+    pub fn firstElementChild(self: *const Element) ?*Element {
+        var current = self.node.first_child;
+        while (current) |child| {
+            if (child.node_type == .element) {
+                return @fieldParentPtr("node", child);
+            }
+            current = child.next_sibling;
+        }
+        return null;
+    }
+
+    /// Returns the last child that is an element.
+    ///
+    /// Implements WHATWG DOM ParentNode.lastElementChild property per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute Element? lastElementChild;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - lastElementChild: https://developer.mozilla.org/en-US/docs/Web/API/Element/lastElementChild
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// Return the last child of this that is an element, or null if there is no such child.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-lastelementchild
+    /// - WebIDL: dom.idl:121
+    ///
+    /// ## Returns
+    /// Last element child or null
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const elem = try doc.createElement("first");
+    /// _ = try parent.node.appendChild(&elem.node);
+    /// const text = try doc.createTextNode("text");
+    /// _ = try parent.node.appendChild(&text.node);
+    ///
+    /// // lastElementChild skips text node
+    /// try std.testing.expect(parent.lastElementChild() == elem);
+    /// ```
+    pub fn lastElementChild(self: *const Element) ?*Element {
+        var current = self.node.last_child;
+        while (current) |child| {
+            if (child.node_type == .element) {
+                return @fieldParentPtr("node", child);
+            }
+            current = child.previous_sibling;
+        }
+        return null;
+    }
+
+    /// Returns the number of children that are elements.
+    ///
+    /// Implements WHATWG DOM ParentNode.childElementCount property per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute unsigned long childElementCount;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - childElementCount: https://developer.mozilla.org/en-US/docs/Web/API/Element/childElementCount
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// Return the number of children of this that are elements.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-childelementcount
+    /// - WebIDL: dom.idl:122
+    ///
+    /// ## Returns
+    /// Count of element children (0 if none)
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// _ = try parent.node.appendChild(&(try doc.createElement("child1")).node);
+    /// _ = try parent.node.appendChild(&(try doc.createTextNode("text")).node);
+    /// _ = try parent.node.appendChild(&(try doc.createElement("child2")).node);
+    ///
+    /// // Count = 2 (excludes text node)
+    /// try std.testing.expectEqual(@as(u32, 2), parent.childElementCount());
+    /// ```
+    pub fn childElementCount(self: *const Element) u32 {
+        var count: u32 = 0;
+        var current = self.node.first_child;
+        while (current) |child| {
+            if (child.node_type == .element) {
+                count += 1;
+            }
+            current = child.next_sibling;
+        }
+        return count;
+    }
+
+    /// NodeOrString union for ParentNode variadic methods.
+    ///
+    /// Represents the WebIDL `(Node or DOMString)` union type.
+    pub const NodeOrString = union(enum) {
+        node: *Node,
+        string: []const u8,
+    };
+
+    /// Inserts nodes or strings before the first child.
+    ///
+    /// Implements WHATWG DOM ParentNode.prepend() per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined prepend((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - prepend(): https://developer.mozilla.org/en-US/docs/Web/API/Element/prepend
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// 1. Let node be the result of converting nodes into a node given this's node document
+    /// 2. Pre-insert node into this before this's first child
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-prepend
+    /// - WebIDL: dom.idl:124
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to prepend
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate
+    /// - `error.HierarchyRequestError`: Invalid tree structure
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const existing = try doc.createElement("existing");
+    /// _ = try parent.node.appendChild(&existing.node);
+    ///
+    /// const child = try doc.createElement("child");
+    /// try parent.prepend(&[_]Element.NodeOrString{
+    ///     .{ .node = &child.node },
+    ///     .{ .string = "text" },
+    /// });
+    /// // Order: child, text, existing
+    /// ```
+    pub fn prepend(self: *Element, nodes: []const NodeOrString) !void {
+        const result = try convertNodesToNode(&self.node, nodes);
+        if (result == null) return;
+
+        const node_to_insert = result.?.node;
+        const should_release = result.?.should_release_after_insert;
+
+        const returned_node = try self.node.insertBefore(node_to_insert, self.node.first_child);
+
+        if (should_release) {
+            returned_node.release();
+        }
+    }
+
+    /// Inserts nodes or strings after the last child.
+    ///
+    /// Implements WHATWG DOM ParentNode.append() per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined append((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - append(): https://developer.mozilla.org/en-US/docs/Web/API/Element/append
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// 1. Let node be the result of converting nodes into a node given this's node document
+    /// 2. Append node to this
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-append
+    /// - WebIDL: dom.idl:125
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to append
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate
+    /// - `error.HierarchyRequestError`: Invalid tree structure
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const child = try doc.createElement("child");
+    /// try parent.append(&[_]Element.NodeOrString{
+    ///     .{ .node = &child.node },
+    ///     .{ .string = "text" },
+    /// });
+    /// ```
+    pub fn append(self: *Element, nodes: []const NodeOrString) !void {
+        const result = try convertNodesToNode(&self.node, nodes);
+        if (result == null) return;
+
+        const node_to_insert = result.?.node;
+        const should_release = result.?.should_release_after_insert;
+
+        const returned_node = try self.node.appendChild(node_to_insert);
+
+        if (should_release) {
+            returned_node.release();
+        }
+    }
+
+    /// Replaces all children with new nodes or strings.
+    ///
+    /// Implements WHATWG DOM ParentNode.replaceChildren() per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined replaceChildren((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - replaceChildren(): https://developer.mozilla.org/en-US/docs/Web/API/Element/replaceChildren
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// 1. Let node be the result of converting nodes into a node given this's node document
+    /// 2. Ensure pre-replace validity of node
+    /// 3. Replace all children of this with node
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-replacechildren
+    /// - WebIDL: dom.idl:126
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to replace children with
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate
+    /// - `error.HierarchyRequestError`: Invalid tree structure
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// _ = try parent.node.appendChild(&(try doc.createElement("old")).node);
+    ///
+    /// const new_child = try doc.createElement("new");
+    /// try parent.replaceChildren(&[_]Element.NodeOrString{
+    ///     .{ .node = &new_child.node },
+    /// });
+    /// ```
+    pub fn replaceChildren(self: *Element, nodes: []const NodeOrString) !void {
+        const result = try convertNodesToNode(&self.node, nodes);
+
+        while (self.node.first_child) |child| {
+            const removed = try self.node.removeChild(child);
+            removed.release();
+        }
+
+        if (result) |r| {
+            const returned_node = try self.node.appendChild(r.node);
+            if (r.should_release_after_insert) {
+                returned_node.release();
+            }
+        }
+    }
+
+    /// Result of converting nodes/strings
+    const ConvertResult = struct {
+        node: *Node,
+        should_release_after_insert: bool,
+    };
+
+    /// Helper: Convert slice of nodes/strings into a single node.
+    fn convertNodesToNode(parent: *Node, items: []const NodeOrString) !?ConvertResult {
+        if (items.len == 0) return null;
+
+        const owner_doc = parent.owner_document orelse {
+            return error.InvalidStateError;
+        };
+
+        const Document = @import("document.zig").Document;
+        if (owner_doc.node_type != .document) {
+            return error.InvalidStateError;
+        }
+        const doc: *Document = @fieldParentPtr("node", owner_doc);
+
+        if (items.len == 1) {
+            switch (items[0]) {
+                .node => |n| {
+                    return ConvertResult{
+                        .node = n,
+                        .should_release_after_insert = false,
+                    };
+                },
+                .string => |s| {
+                    const text = try doc.createTextNode(s);
+                    return ConvertResult{
+                        .node = &text.node,
+                        .should_release_after_insert = false,
+                    };
+                },
+            }
+        }
+
+        const fragment = try doc.createDocumentFragment();
+        errdefer fragment.node.release();
+
+        for (items) |item| {
+            switch (item) {
+                .node => |n| {
+                    _ = try fragment.node.appendChild(n);
+                },
+                .string => |s| {
+                    const text = try doc.createTextNode(s);
+                    _ = try fragment.node.appendChild(&text.node);
+                },
+            }
+        }
+
+        return ConvertResult{
+            .node = &fragment.node,
+            .should_release_after_insert = true,
+        };
+    }
+
     // === Private implementation ===
 
     /// Updates the bloom filter from a class attribute value.

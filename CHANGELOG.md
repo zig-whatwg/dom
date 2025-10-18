@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **CRITICAL: ParentNode Mixin Placement Correction** 🚨
+  - **Problem**: 6 ParentNode methods incorrectly on Node base class
+  - **Impact**: Text and Comment would inherit methods they shouldn't have (e.g., `text.firstElementChild()`)
+  - **Fix**: Moved all 6 ParentNode methods to correct types per WebIDL spec
+    - `firstElementChild()` - Now only on Element, Document, DocumentFragment
+    - `lastElementChild()` - Now only on Element, Document, DocumentFragment
+    - `childElementCount()` - Now only on Element, Document, DocumentFragment
+    - `prepend()` - Now only on Element, Document, DocumentFragment
+    - `append()` - Now only on Element, Document, DocumentFragment
+    - `replaceChildren()` - Now only on Element, Document, DocumentFragment
+  - **Why This Matters**: ParentNode is a mixin only for types that can have element children
+  - **Type Safety**: `text.firstElementChild()` is now a compile error (correct!)
+  - **WebIDL Compliance**: Interface mixin placement now matches `dom.idl` exactly
+  - **Code Duplication**: Methods duplicated across 3 types (intentional for type safety)
+  - **Test Count**: 411/411 tests passing (was 422, removed 11 invalid tests from Node)
+  - **Spec Reference**: https://dom.spec.whatwg.org/#parentnode (see `includes` declarations)
+
 ### Added
 - **Phase 2 Complete: ParentNode Interface** ✅
   - **ElementCollection** - Generic live collection for element children (not HTML-specific)
