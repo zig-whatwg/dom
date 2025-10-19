@@ -9,6 +9,179 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Named Slot Assignment Algorithms** 🎉
+  - **Complete WHATWG Slot Assignment (DOM §4.2.2.3-4)**
+    - `Element.findSlot()` - Find the slot a slottable should be assigned to
+      - Matches slottable's `slot` attribute to slot's `name` attribute
+      - Returns first matching slot in tree order
+      - Supports default slot (empty name matches empty/missing slot attribute)
+      - Works with both open and closed shadow roots (internally)
+    - `Element.findSlottables()` - Find all nodes that should be assigned to a slot
+      - In named mode: matches by `slot` attribute
+      - In manual mode: returns manually assigned nodes
+      - Returns only slottables (Element and Text nodes)
+    - `Element.assignSlottables()` - Update slot assignments
+      - Finds all matching slottables for a slot
+      - Updates slot's assigned nodes list
+      - Updates each slottable's assigned slot pointer
+  - **Shadow DOM Slot Modes**
+    - Named mode (automatic matching via attributes)
+    - Manual mode (explicit assignment via assign())
+    - Mode controlled by `ShadowRootInit.slot_assignment`
+  - **Slottable Support**
+    - Element nodes with `slot` attribute
+    - Text nodes (always match default slot)
+    - Default slot matches nodes without slot attribute
+  - **Test Coverage**: 31 slot tests (15 new), all passing, 0 leaks ✅
+  - **Spec References**:
+    - WHATWG DOM §4.2.2.3: Finding slots and slottables
+    - WHATWG DOM §4.2.2.4: Assigning slottables and slots
+    - MDN: HTMLSlotElement, slot and name attributes
+
+- **CharacterData Shared Utilities** 🎉
+  - **Complete CharacterData Helper Module (WHATWG DOM §4.6)**
+    - Implemented shared utility functions for Text and Comment nodes
+    - Architecture: Helper functions (not inheritance) for CharacterData operations
+    - `substringData()` - Extract substring from character data
+    - `appendData()` - Append string to end of data
+    - `insertData()` - Insert string at offset
+    - `deleteData()` - Delete range of characters
+    - `replaceData()` - Replace range with string
+  - **Error Handling**
+    - `IndexSizeError` - Offset out of bounds
+    - `OutOfMemory` - Allocation failure
+  - **Test Coverage**: 14 unit tests, all passing, 0 leaks ✅
+  - **Spec References**:
+    - WHATWG DOM §4.6: CharacterData interface
+    - MDN: CharacterData methods
+
+- **DOMTokenList Implementation** 🎉
+  - **Complete Token List Management (WHATWG DOM §4.2.5)**
+    - Live collection wrapper around element's class attribute
+    - `add()` - Add one or more tokens
+    - `remove()` - Remove one or more tokens
+    - `toggle()` - Toggle token presence
+    - `replace()` - Replace old token with new token
+    - `contains()` - Check if token exists
+    - `item()` - Get token at index
+    - `length` - Number of tokens
+    - Iterator support with `next()`
+  - **Element.classList() Integration**
+    - Added `Element.classList()` method returning DOMTokenList
+    - Automatic parsing and serialization of class attribute
+    - Token validation per spec (no whitespace allowed)
+  - **Error Handling**
+    - `InvalidCharacterError` - Token contains whitespace
+    - `SyntaxError` - Empty token string
+  - **Test Coverage**: Comprehensive unit tests, all passing, 0 leaks ✅
+  - **Spec References**:
+    - WHATWG DOM §4.2.5: DOMTokenList interface
+    - MDN: Element.classList
+
+- **DOMTokenList Iterator Support** 🎉
+  - **Implemented iterable<DOMString> per WebIDL**
+    - Added `next()` method for token iteration
+    - Maintains internal iterator_index state
+    - Returns borrowed string slices (no allocation)
+    - Supports standard Zig while-loop pattern
+  - **Test Coverage**: 3 iterator tests, all passing ✅
+  - **Usage Example**:
+    ```zig
+    var iter = elem.classList();
+    while (iter.next()) |token| {
+        // Process each token
+    }
+    ```
+
+- **DOMTokenList WPT Tests** 🎉
+  - **38 Comprehensive WPT Tests for Element.classList**
+    - Basic properties (live collection behavior)
+    - `add()` method (single/multiple tokens, duplicates, validation)
+    - `remove()` method (single/multiple tokens, idempotence)
+    - `contains()` method (presence check, case-sensitivity)
+    - `toggle()` method (add/remove toggle, force parameter)
+    - `replace()` method (token replacement, order preservation)
+    - `item()` method (index access, out of bounds)
+    - `length` property (count tracking)
+    - `next()` iterator method (3 tests: sequential, while-loop, empty)
+    - Edge cases (whitespace normalization, empty attributes)
+  - **Test Coverage**: 38 tests, all passing, 0 leaks ✅
+  - **File**: `tests/wpt/nodes/DOMTokenList-classList.zig`
+
+- **DocumentType Node Implementation** 🎉
+  - **Complete DocumentType Interface (WHATWG DOM §4.10)**
+    - Represents the document's DTD (Document Type Declaration)
+    - Implements the `<!DOCTYPE>` declaration node
+    - Three readonly properties: `name`, `publicId`, `systemId`
+  - **Document.createDocumentType()** - Factory method for creating doctypes
+    - Accepts name, publicId, systemId parameters
+    - Automatically interns strings via Document.string_pool
+    - Returns DocumentType with ref_count=1
+    - Example: `try doc.createDocumentType("html", "", "")` for HTML5
+  - **Document.doctype()** - Returns the document's doctype node
+    - Searches document children for DocumentType node
+    - Returns first DocumentType child, or null if none
+    - O(n) where n = number of document children (typically 1-3)
+  - **Memory Management**
+    - Conditional string cleanup: frees strings only if created standalone
+    - When created via Document, strings are interned (no individual free)
+    - Proper ref counting with owner_document tracking
+  - **Test Coverage**: 11 tests (6 DocumentType + 5 Document), all passing ✅
+  - **Spec References**:
+    - DocumentType: https://dom.spec.whatwg.org/#documenttype
+    - Document.doctype: https://dom.spec.whatwg.org/#dom-document-doctype
+    - DOMImplementation.createDocumentType: https://dom.spec.whatwg.org/#dom-domimplementation-createdocumenttype
+  - **Usage Example**:
+    ```zig
+    const doc = try Document.init(allocator);
+    defer doc.release();
+    
+    // HTML5 doctype
+    const doctype = try doc.createDocumentType("html", "", "");
+    _ = try doc.prototype.appendChild(&doctype.prototype);
+    
+    // Access via doctype()
+    const dt = doc.doctype();
+    // dt.name == "html"
+    ```
+
+- **Shadow DOM Slot Element Methods** 🎉
+  - **Slot.assignedNodes()** - Returns nodes assigned to a slot
+    - Filters slottable children based on assigned slot
+    - Supports flatten option (placeholder for future)
+    - Returns owned slice (caller must free)
+  - **Slot.assignedElements()** - Returns only element nodes assigned to slot
+    - Convenience wrapper around assignedNodes()
+    - Filters to Element nodes only
+    - Returns owned slice (caller must free)
+  - **Slot.assign()** - Manually assigns nodes to slot
+    - For manual slot assignment mode
+    - Accepts array of Element or Text nodes
+    - Clears previous assignments for the slot
+    - Returns InvalidNodeType error if called on non-slot element
+  - **Implementation Details**:
+    - Slots identified by tag name "slot" (generic, not HTML-specific)
+    - Walks up to shadow root to find host element
+    - Iterates host's children to find assigned nodes
+    - Supports both Element and Text nodes (per Slottable mixin)
+  - **Test Coverage**: 5 slot method tests, all passing ✅
+  - **Spec References**:
+    - HTMLSlotElement.assignedNodes(): https://html.spec.whatwg.org/multipage/scripting.html#dom-slot-assignednodes
+    - HTMLSlotElement.assignedElements(): https://html.spec.whatwg.org/multipage/scripting.html#dom-slot-assignedelements
+    - HTMLSlotElement.assign(): https://html.spec.whatwg.org/multipage/scripting.html#dom-slot-assign
+
+- **DOMTokenList Bug Fixes**
+  - Fixed string interning issue in `add()`, `remove()`, `replace()`
+  - All token list modifications now properly intern strings via Document.string_pool
+  - Fixed method signatures to accept `DOMTokenList` by value (not pointer)
+  - Updated `item()` to return borrowed string (not owned copy)
+  - Fixed ArrayList API for Zig 0.15.1 compatibility
+
+- **Benchmark Fixes**
+  - Fixed benchmark code to use `.prototype` field instead of deprecated `.node` field
+  - Updated ~70 occurrences throughout `benchmarks/zig/benchmark.zig`
+  - All benchmarks now compile and run successfully
+
 - **Shadow DOM Phase 4: Event Dispatch with Shadow Boundaries** 🎉
   - **Complete Event Dispatch Algorithm (WHATWG DOM §2.10)**
     - Implemented full three-phase event dispatch in Node.dispatchEvent()
