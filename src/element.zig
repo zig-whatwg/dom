@@ -2620,6 +2620,39 @@ pub const Element = struct {
         return null;
     }
 
+    /// Legacy alias for matches().
+    ///
+    /// Implements WHATWG DOM Element.webkitMatchesSelector() (legacy).
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// boolean webkitMatchesSelector(DOMString selectors); // legacy alias of .matches
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - webkitMatchesSelector: https://developer.mozilla.org/en-US/docs/Web/API/Element/webkitMatchesSelector
+    ///
+    /// ## Spec References
+    /// - WebIDL: dom.idl:399
+    ///
+    /// ## Note
+    /// This is a legacy alias for compatibility. New code should use matches() instead.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const elem = try doc.createElement("div");
+    /// elem.setAttribute("class", "container");
+    ///
+    /// // Legacy API (avoid in new code)
+    /// try std.testing.expect(try elem.webkitMatchesSelector(allocator, ".container"));
+    ///
+    /// // Prefer modern API
+    /// try std.testing.expect(try elem.matches(allocator, ".container"));
+    /// ```
+    pub fn webkitMatchesSelector(self: *Element, allocator: Allocator, selectors: []const u8) !bool {
+        return self.matches(allocator, selectors);
+    }
+
     /// Returns a live collection of element children.
     ///
     /// Implements WHATWG DOM ParentNode.children property per §4.2.6.

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 13: Legacy API Support (Quick Wins)** 🎉
+  - **Element.webkitMatchesSelector() (WHATWG DOM §4.10)** ✅ NEW
+    - `webkitMatchesSelector(selectors)` - Legacy alias for matches()
+    - Provided for compatibility with older code
+    - Delegates directly to matches() implementation
+    - Full CSS selector support
+  - **Note**: CustomEvent skipped - requires `any` type not available in Zig
+  - **Spec References**:
+    - webkitMatchesSelector: https://dom.spec.whatwg.org/#dom-element-webkitmatchesselector
+    - WebIDL: dom.idl:399
+
 - **Phase 12: Text & Element Enhancement Methods** 🎉
   - **Text.wholeText Property (WHATWG DOM §4.7)** ✅ NEW
     - `wholeText(allocator)` - Returns combined text of all adjacent text nodes
