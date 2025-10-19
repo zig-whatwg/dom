@@ -432,20 +432,3 @@ pub fn getNextNodeInTree(node: *const Node, boundary: *const Node) ?*Node {
         current = parent;
     }
 }
-
-// ============================================================================
-// TESTS
-// ============================================================================
-
-const Element = @import("element.zig").Element;
-const Text = @import("text.zig").Text;
-const Document = @import("document.zig").Document;
-
-
-
-
-
-
-
-
-

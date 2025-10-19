@@ -837,16 +837,3 @@ fn matchesNthPattern(index: usize, pattern: NthPattern) bool {
     if (@mod(diff, pattern.a) != 0) return false;
     return true;
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-const testing = std.testing;
-const Tokenizer = @import("tokenizer.zig").Tokenizer;
-const Parser = parser.Parser;
-
-
-
-
-

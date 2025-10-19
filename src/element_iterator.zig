@@ -69,12 +69,3 @@ pub const ElementIterator = struct {
         self.current = self.root.first_child;
     }
 };
-
-// Tests
-const testing = std.testing;
-const Document = @import("document.zig").Document;
-const Text = @import("text.zig").Text;
-
-
-
-

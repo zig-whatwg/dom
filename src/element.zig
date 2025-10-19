@@ -553,6 +553,9 @@ pub const Element = struct {
     /// See: https://dom.spec.whatwg.org/#dom-element-setattribute
     /// See: https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttribute
     pub fn setAttribute(self: *Element, name: []const u8, value: []const u8) !void {
+        // Capture old value for mutation observers (before modification)
+        const old_value = self.getAttribute(name);
+
         // Handle ID attribute changes (maintain document ID map)
         // Only update id_map if element is connected to the document tree
         // Per browser behavior: disconnected elements don't participate in getElementById
@@ -641,6 +644,19 @@ pub const Element = struct {
             // Run assign a slot for element
             assignASlot(self.prototype.allocator, &self.prototype) catch {};
         }
+
+        // Queue mutation record for attributes
+        node_mod.queueMutationRecord(
+            &self.prototype,
+            "attributes",
+            null, // added_nodes
+            null, // removed_nodes
+            null, // previous_sibling
+            null, // next_sibling
+            name, // attribute_name
+            null, // attribute_namespace
+            old_value, // old_value
+        ) catch {}; // Best effort
     }
 
     /// Gets an attribute value from the element.
@@ -682,6 +698,9 @@ pub const Element = struct {
     /// ## Parameters
     /// - `name`: Attribute name to remove
     pub fn removeAttribute(self: *Element, name: []const u8) void {
+        // Capture old value for mutation observers (before removal)
+        const old_value = self.getAttribute(name);
+
         // Remove ID from document map before removing attribute (only if connected and this element is mapped)
         if (std.mem.eql(u8, name, "id")) {
             if (self.prototype.isConnected()) {
@@ -750,6 +769,21 @@ pub const Element = struct {
             }
             // Run assign a slot for element (will now match default slot)
             assignASlot(self.prototype.allocator, &self.prototype) catch {};
+        }
+
+        // Queue mutation record for attributes (only if attribute was actually removed)
+        if (removed) {
+            node_mod.queueMutationRecord(
+                &self.prototype,
+                "attributes",
+                null, // added_nodes
+                null, // removed_nodes
+                null, // previous_sibling
+                null, // next_sibling
+                name, // attribute_name
+                null, // attribute_namespace
+                old_value, // old_value
+            ) catch {}; // Best effort
         }
     }
 
@@ -844,6 +878,9 @@ pub const Element = struct {
         const validation = @import("validation.zig");
         const components = try validation.validateAndExtract(namespace, qualified_name);
 
+        // Capture old value for mutation observers (before modification)
+        const old_value = self.getAttributeNS(namespace, components.local_name);
+
         // Intern the strings via document's string pool if we have an owner document
         const interned_local = if (self.prototype.owner_document) |owner| blk: {
             if (owner.node_type == .document) {
@@ -876,6 +913,19 @@ pub const Element = struct {
 
         // Step 2: Set attribute value with namespace
         try self.attributes.array.set(interned_local, interned_ns, interned_value);
+
+        // Queue mutation record for attributes
+        node_mod.queueMutationRecord(
+            &self.prototype,
+            "attributes",
+            null, // added_nodes
+            null, // removed_nodes
+            null, // previous_sibling
+            null, // next_sibling
+            components.local_name, // attribute_name (local name)
+            components.namespace, // attribute_namespace
+            old_value, // old_value
+        ) catch {}; // Best effort
     }
 
     /// Removes an attribute by namespace and local name.
@@ -913,7 +963,25 @@ pub const Element = struct {
         namespace: ?[]const u8,
         local_name: []const u8,
     ) void {
-        _ = self.attributes.array.remove(local_name, namespace);
+        // Capture old value for mutation observers (before removal)
+        const old_value = self.getAttributeNS(namespace, local_name);
+
+        const removed = self.attributes.array.remove(local_name, namespace);
+
+        // Queue mutation record for attributes (only if attribute was actually removed)
+        if (removed) {
+            node_mod.queueMutationRecord(
+                &self.prototype,
+                "attributes",
+                null, // added_nodes
+                null, // removed_nodes
+                null, // previous_sibling
+                null, // next_sibling
+                local_name, // attribute_name
+                namespace, // attribute_namespace
+                old_value, // old_value
+            ) catch {}; // Best effort
+        }
     }
 
     /// Checks if element has an attribute with given namespace and local name.

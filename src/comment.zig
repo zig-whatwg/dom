@@ -400,6 +400,10 @@ pub const Comment = struct {
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate new string
     pub fn appendData(self: *Comment, text_to_append: []const u8) !void {
+        // Capture old value for mutation observers (before modification)
+        const old_value = try self.prototype.allocator.dupe(u8, self.data);
+        defer self.prototype.allocator.free(old_value);
+
         const new_data = try std.mem.concat(
             self.prototype.allocator,
             u8,
@@ -409,6 +413,19 @@ pub const Comment = struct {
         self.prototype.allocator.free(self.data);
         self.data = new_data;
         self.prototype.generation += 1;
+
+        // Queue mutation record for characterData
+        node_mod.queueMutationRecord(
+            &self.prototype,
+            "characterData",
+            null, // added_nodes
+            null, // removed_nodes
+            null, // previous_sibling
+            null, // next_sibling
+            null, // attribute_name
+            null, // attribute_namespace
+            old_value, // old_value
+        ) catch {}; // Best effort
     }
 
     /// Inserts text at the specified offset.
@@ -425,6 +442,10 @@ pub const Comment = struct {
             return error.IndexOutOfBounds;
         }
 
+        // Capture old value for mutation observers (before modification)
+        const old_value = try self.prototype.allocator.dupe(u8, self.data);
+        defer self.prototype.allocator.free(old_value);
+
         const new_data = try std.mem.concat(
             self.prototype.allocator,
             u8,
@@ -434,6 +455,19 @@ pub const Comment = struct {
         self.prototype.allocator.free(self.data);
         self.data = new_data;
         self.prototype.generation += 1;
+
+        // Queue mutation record for characterData
+        node_mod.queueMutationRecord(
+            &self.prototype,
+            "characterData",
+            null, // added_nodes
+            null, // removed_nodes
+            null, // previous_sibling
+            null, // next_sibling
+            null, // attribute_name
+            null, // attribute_namespace
+            old_value, // old_value
+        ) catch {}; // Best effort
     }
 
     /// Deletes text at the specified offset.
@@ -450,6 +484,10 @@ pub const Comment = struct {
             return error.IndexOutOfBounds;
         }
 
+        // Capture old value for mutation observers (before modification)
+        const old_value = try self.prototype.allocator.dupe(u8, self.data);
+        defer self.prototype.allocator.free(old_value);
+
         const end = @min(offset + count, self.data.len);
 
         const new_data = try std.mem.concat(
@@ -461,6 +499,19 @@ pub const Comment = struct {
         self.prototype.allocator.free(self.data);
         self.data = new_data;
         self.prototype.generation += 1;
+
+        // Queue mutation record for characterData
+        node_mod.queueMutationRecord(
+            &self.prototype,
+            "characterData",
+            null, // added_nodes
+            null, // removed_nodes
+            null, // previous_sibling
+            null, // next_sibling
+            null, // attribute_name
+            null, // attribute_namespace
+            old_value, // old_value
+        ) catch {}; // Best effort
     }
 
     /// Replaces text at the specified offset.
@@ -485,6 +536,10 @@ pub const Comment = struct {
 
         const end = @min(offset + count, self.data.len);
 
+        // Capture old value for mutation observers (before modification)
+        const old_value = try self.prototype.allocator.dupe(u8, self.data);
+        defer self.prototype.allocator.free(old_value);
+
         const new_data = try std.mem.concat(
             self.prototype.allocator,
             u8,
@@ -494,6 +549,19 @@ pub const Comment = struct {
         self.prototype.allocator.free(self.data);
         self.data = new_data;
         self.prototype.generation += 1;
+
+        // Queue mutation record for characterData
+        node_mod.queueMutationRecord(
+            &self.prototype,
+            "characterData",
+            null, // added_nodes
+            null, // removed_nodes
+            null, // previous_sibling
+            null, // next_sibling
+            null, // attribute_name
+            null, // attribute_namespace
+            old_value, // old_value
+        ) catch {}; // Best effort
     }
 
     // ========================================================================
@@ -866,7 +934,3 @@ pub const Comment = struct {
         return &cloned.prototype;
     }
 };
-
-// ============================================================================
-// TESTS
-// ============================================================================

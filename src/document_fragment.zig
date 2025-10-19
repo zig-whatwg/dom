@@ -925,5 +925,3 @@ pub const DocumentFragment = struct {
         return &new_fragment.prototype;
     }
 };
-
-// === Tests ===

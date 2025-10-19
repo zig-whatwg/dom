@@ -1,7 +1,7 @@
 # DOM - WHATWG DOM Implementation in Zig
 
 [![Zig](https://img.shields.io/badge/zig-0.15.1-orange.svg)](https://ziglang.org/)
-[![Tests](https://img.shields.io/badge/tests-867%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-911%20passing-brightgreen.svg)]()
 [![WPT Coverage](https://img.shields.io/badge/WPT%20coverage-25.1%25-yellow.svg)](tests/wpt/COVERAGE.md)
 [![DOM Coverage](https://img.shields.io/badge/DOM%20Core-65%25-green.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -483,11 +483,17 @@ The following WHATWG DOM features require HTML Standard infrastructure:
 
 **Phase 5 Complete**: CharacterData interface and classList fully implemented per WHATWG DOM!
 
-### Phase 6 - Advanced Features (Future)
+### Phase 6 - Advanced Features
+
+**Completed**:
+- ✅ `MutationObserver` - Observe DOM mutations (Phase 17)
+  - Full WHATWG DOM §4.3 compliance
+  - childList, attributes, characterData observation
+  - Subtree observation, attribute filters, old value tracking
+  - 24 comprehensive tests, zero memory leaks
 
 **Planned APIs**:
 - `DocumentType` - Document type interface
-- `MutationObserver` - Observe DOM mutations
 - `Range` - Text selection and manipulation
 - `TreeWalker` / `NodeIterator` - Advanced tree traversal
 

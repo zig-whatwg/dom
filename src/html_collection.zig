@@ -596,24 +596,3 @@ pub const HTMLCollection = struct {
         return null;
     }
 };
-
-// ============================================================================
-// TESTS
-// ============================================================================
-
-const testing = std.testing;
-const Document = @import("document.zig").Document;
-const Comment = @import("comment.zig").Comment;
-
-
-
-
-
-
-
-
-
-
-
-
-

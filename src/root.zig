@@ -208,9 +208,23 @@ pub const DocumentFragment = @import("document_fragment.zig").DocumentFragment;
 // Export rare data modules
 pub const NodeRareData = @import("rare_data.zig").NodeRareData;
 pub const EventListener = @import("rare_data.zig").EventListener;
-pub const MutationObserver = @import("rare_data.zig").MutationObserver;
 pub const EventCallback = @import("rare_data.zig").EventCallback;
-pub const MutationCallback = @import("rare_data.zig").MutationCallback;
+
+// Export mutation observer (Phase 17)
+pub const MutationObserver = @import("mutation_observer.zig").MutationObserver;
+pub const MutationRecord = @import("mutation_observer.zig").MutationRecord;
+pub const MutationObserverInit = @import("mutation_observer.zig").MutationObserverInit;
+pub const MutationCallback = @import("mutation_observer.zig").MutationCallback;
+pub const MutationObserverRegistration = @import("mutation_observer.zig").MutationObserverRegistration;
+
+// Export range (Phase 18)
+pub const AbstractRange = @import("range.zig").AbstractRange;
+pub const Range = @import("range.zig").Range;
+pub const BoundaryPointComparison = @import("range.zig").BoundaryPointComparison;
+
+// Export static range (Phase 19)
+pub const StaticRange = @import("static_range.zig").StaticRange;
+pub const StaticRangeInit = @import("static_range.zig").StaticRangeInit;
 
 // Export collections
 pub const NodeList = @import("node_list.zig").NodeList;

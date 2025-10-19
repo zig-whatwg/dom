@@ -891,6 +891,55 @@ pub const Document = struct {
         return fragment;
     }
 
+    /// Creates a new Range object.
+    ///
+    /// Implements WHATWG DOM Document.createRange() per §5.2.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] Range createRange();
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §5.2)
+    /// Create a new Range with start and end both set to (document, 0).
+    ///
+    /// ## Memory Management
+    /// Returns Range allocated on heap. Caller MUST call `range.deinit()`.
+    ///
+    /// ## Returns
+    /// New collapsed range at document start
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-createrange
+    /// - Interface: https://dom.spec.whatwg.org/#interface-range
+    ///
+    /// ## MDN
+    /// - Document.createRange(): https://developer.mozilla.org/en-US/docs/Web/API/Document/createRange
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const range = try doc.createRange();
+    /// defer range.deinit();
+    ///
+    /// // Range is initially collapsed at document start
+    /// try std.testing.expect(range.collapsed());
+    ///
+    /// // Set range boundaries
+    /// const text = try doc.createTextNode("Hello");
+    /// try range.setStart(&text.prototype, 0);
+    /// try range.setEnd(&text.prototype, 5);
+    /// ```
+    pub fn createRange(self: *Document) !*@import("range.zig").Range {
+        const Range = @import("range.zig").Range;
+        return Range.init(self.prototype.allocator, self);
+    }
+
     /// Creates a new Attr node with the specified name.
     ///
     /// Implements WHATWG DOM Document.createAttribute() per §4.10.
@@ -1910,6 +1959,71 @@ pub const Document = struct {
                 returned_node.release();
             }
         }
+    }
+
+    // ========================================================================
+    // MUTATION OBSERVER DELIVERY (Phase 17)
+    // ========================================================================
+
+    /// Access pending mutation records (caller-driven delivery).
+    ///
+    /// In a headless DOM environment, there's no automatic event loop or microtask queue.
+    /// Instead, mutation records are accumulated in each MutationObserver's internal queue.
+    ///
+    /// ## Usage Pattern
+    ///
+    /// **Option 1: Manual polling with takeRecords()**
+    /// ```zig
+    /// const observer = try MutationObserver.init(allocator, callback, null);
+    /// defer observer.deinit();
+    ///
+    /// try observer.observe(&element.prototype, .{ .attributes = true });
+    /// try element.setAttribute("id", "main");
+    ///
+    /// // Manually retrieve and process records
+    /// const records = observer.takeRecords();
+    /// defer {
+    ///     for (records) |record| record.deinit();
+    ///     allocator.free(records);
+    /// }
+    /// // Process records...
+    /// ```
+    ///
+    /// **Option 2: Explicit callback invocation**
+    /// ```zig
+    /// fn myCallback(records: []const *MutationRecord, observer: *MutationObserver, ctx: ?*anyopaque) void {
+    ///     for (records) |record| {
+    ///         std.debug.print("Mutation: {s}\n", .{record.type});
+    ///     }
+    /// }
+    ///
+    /// const observer = try MutationObserver.init(allocator, myCallback, null);
+    /// try observer.observe(&element.prototype, .{ .attributes = true });
+    /// try element.setAttribute("id", "main");
+    ///
+    /// // Trigger callback with pending records
+    /// const records = observer.takeRecords();
+    /// defer {
+    ///     for (records) |record| record.deinit();
+    ///     allocator.free(records);
+    /// }
+    /// if (records.len > 0) {
+    ///     observer.callback(records, observer, observer.context);
+    /// }
+    /// ```
+    ///
+    /// ## Notes
+    ///
+    /// This is a non-standard method for headless DOM usage.
+    /// In browsers, callbacks are triggered automatically via the microtask queue.
+    /// Here, the application has full control over when records are processed.
+    ///
+    /// Future enhancement: Track observers at document level for batch processing.
+    pub fn processMutationObservers(self: *Document) void {
+        // Note: Currently a no-op. Observers accumulate records internally.
+        // Use observer.takeRecords() to retrieve them, or call observer.callback manually.
+        // Future: Implement document-level observer tracking for batch delivery.
+        _ = self;
     }
 
     // === Private implementation ===

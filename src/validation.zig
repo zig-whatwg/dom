@@ -205,6 +205,7 @@ pub const DOMError = error{
     NotFoundError,
     InUseAttributeError,
     InvalidCharacterError,
+    InvalidStateError,
     NamespaceError,
 };
 
@@ -800,10 +801,3 @@ fn elementIsPreceding(node: *Node) bool {
     }
     return false;
 }
-
-// ============================================================================
-// TESTS
-// ============================================================================
-
-const Element = @import("element.zig").Element;
-const Document = @import("document.zig").Document;

@@ -83,63 +83,8 @@ test "NodeRareData - event listeners" {
     try std.testing.expect(listeners3[0].capture); // Only capture phase remains
 }
 
-test "NodeRareData - mutation observers" {
-    const allocator = std.testing.allocator;
-
-    var rare_data = NodeRareData.init(allocator);
-    defer rare_data.deinit();
-
-    // Test context
-    var ctx: u32 = 42;
-    const callback = struct {
-        fn cb(context: *anyopaque) void {
-            const val: *u32 = @ptrCast(@alignCast(context));
-            _ = val;
-        }
-    }.cb;
-
-    // Initially no observers
-    try std.testing.expect(!rare_data.hasMutationObservers());
-    try std.testing.expectEqual(@as(usize, 0), rare_data.getMutationObservers().len);
-
-    // Add mutation observer
-    try rare_data.addMutationObserver(.{
-        .callback = callback,
-        .context = @ptrCast(&ctx),
-        .observe_children = true,
-        .observe_attributes = true,
-        .observe_character_data = false,
-        .observe_subtree = false,
-    });
-
-    // Verify observer was added
-    try std.testing.expect(rare_data.hasMutationObservers());
-
-    const observers = rare_data.getMutationObservers();
-    try std.testing.expectEqual(@as(usize, 1), observers.len);
-    try std.testing.expectEqual(callback, observers[0].callback);
-    try std.testing.expect(observers[0].observe_children);
-    try std.testing.expect(observers[0].observe_attributes);
-    try std.testing.expect(!observers[0].observe_character_data);
-
-    // Add another observer
-    try rare_data.addMutationObserver(.{
-        .callback = callback,
-        .context = @ptrCast(&ctx),
-        .observe_children = false,
-        .observe_attributes = false,
-        .observe_character_data = true,
-        .observe_subtree = true,
-    });
-
-    try std.testing.expectEqual(@as(usize, 2), rare_data.getMutationObservers().len);
-
-    // Remove observer
-    const removed = rare_data.removeMutationObserver(callback, @ptrCast(&ctx));
-    try std.testing.expect(removed);
-
-    try std.testing.expectEqual(@as(usize, 1), rare_data.getMutationObservers().len);
-}
+// NOTE: Mutation observer tests moved to mutation_observer_test.zig
+// Mutation observers are now managed via MutationObserver class, not NodeRareData directly
 
 test "NodeRareData - user data" {
     const allocator = std.testing.allocator;
@@ -273,27 +218,7 @@ test "NodeRareData - memory leak test" {
         });
     }
 
-    // Test 3: With mutation observers
-    {
-        var rare_data = NodeRareData.init(allocator);
-        defer rare_data.deinit();
-
-        var ctx: u32 = 42;
-        const callback = struct {
-            fn cb(_: *anyopaque) void {}
-        }.cb;
-
-        try rare_data.addMutationObserver(.{
-            .callback = callback,
-            .context = @ptrCast(&ctx),
-            .observe_children = true,
-            .observe_attributes = true,
-            .observe_character_data = false,
-            .observe_subtree = false,
-        });
-    }
-
-    // Test 4: With user data
+    // Test 3: With user data
     {
         var rare_data = NodeRareData.init(allocator);
         defer rare_data.deinit();
@@ -319,19 +244,6 @@ test "NodeRareData - memory leak test" {
             .capture = false,
             .once = false,
             .passive = false,
-        });
-
-        const mut_callback = struct {
-            fn cb(_: *anyopaque) void {}
-        }.cb;
-
-        try rare_data.addMutationObserver(.{
-            .callback = mut_callback,
-            .context = @ptrCast(&ctx),
-            .observe_children = true,
-            .observe_attributes = false,
-            .observe_character_data = false,
-            .observe_subtree = false,
         });
 
         try rare_data.setUserData("key", @ptrCast(&ctx));
@@ -371,27 +283,10 @@ test "NodeRareData - lazy allocation" {
     try std.testing.expect(rare_data.user_data == null); // Still null
 
     // Add user data - now user_data allocated
-    try rare_data.setUserData("key", @ptrCast(&ctx));
+    var value: u32 = 100;
+    try rare_data.setUserData("key", @ptrCast(&value));
 
     try std.testing.expect(rare_data.event_listeners != null);
-    try std.testing.expect(rare_data.mutation_observers == null); // Still null
-    try std.testing.expect(rare_data.user_data != null);
-
-    // Add mutation observer - now everything allocated
-    const mut_callback2 = struct {
-        fn cb(_: *anyopaque) void {}
-    }.cb;
-
-    try rare_data.addMutationObserver(.{
-        .callback = mut_callback2,
-        .context = @ptrCast(&ctx),
-        .observe_children = true,
-        .observe_attributes = false,
-        .observe_character_data = false,
-        .observe_subtree = false,
-    });
-
-    try std.testing.expect(rare_data.event_listeners != null);
-    try std.testing.expect(rare_data.mutation_observers != null);
+    try std.testing.expect(rare_data.mutation_observers == null); // Still null (managed by MutationObserver now)
     try std.testing.expect(rare_data.user_data != null);
 }

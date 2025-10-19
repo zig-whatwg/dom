@@ -51,9 +51,9 @@
 //! RareData holds optional node features:
 //! ```zig
 //! pub const NodeRareData = struct {
-//!     event_listeners: ArrayList(EventListener),  // EventTarget feature
-//!     mutation_observers: ArrayList(MutationObserver),  // MutationObserver feature
-//!     user_data: ?*anyopaque,  // Custom user data
+//!     event_listeners: ?StringHashMap(ArrayList(EventListener)),  // EventTarget feature
+//!     mutation_observers: ?ArrayList(*anyopaque),  // MutationObserver registrations (WEAK)
+//!     user_data: ?StringHashMap(*anyopaque),  // Custom user data
 //! };
 //! ```
 //!
@@ -116,24 +116,16 @@
 //! }
 //! ```
 //!
-//! ### Lazy Feature Access
-//! ```zig
-//! fn addMutationObserver(node: *Node, observer: MutationObserver) !void {
-//!     const rare_data = try node.ensureRareData();
-//!     try rare_data.mutation_observers.append(observer);
-//! }
-//! ```
-//!
 //! ### User Data Storage
 //! ```zig
-//! fn setUserData(node: *Node, data: *anyopaque) !void {
+//! fn setUserData(node: *Node, key: []const u8, data: *anyopaque) !void {
 //!     const rare_data = try node.ensureRareData();
-//!     rare_data.user_data = data;
+//!     try rare_data.setUserData(key, data);
 //! }
 //!
-//! fn getUserData(node: *Node) ?*anyopaque {
+//! fn getUserData(node: *Node, key: []const u8) ?*anyopaque {
 //!     if (node.rare_data) |rare_data| {
-//!         return rare_data.user_data;
+//!         return rare_data.getUserData(key);
 //!     }
 //!     return null;
 //! }
@@ -199,33 +191,6 @@ const Event = @import("event.zig").Event;
 pub const EventCallback = @import("event_target.zig").EventCallback;
 pub const EventListener = @import("event_target.zig").EventListener;
 
-/// Callback function type for mutation observers.
-///
-/// Called when a mutation occurs on an observed node.
-/// Context is user-provided data (e.g., JS object, CDP handler, etc.)
-pub const MutationCallback = *const fn (context: *anyopaque) void;
-
-/// Mutation observer registration.
-pub const MutationObserver = struct {
-    /// Callback function
-    callback: MutationCallback,
-
-    /// User context (passed to callback)
-    context: *anyopaque,
-
-    /// Observe child list changes
-    observe_children: bool,
-
-    /// Observe attribute changes
-    observe_attributes: bool,
-
-    /// Observe character data changes
-    observe_character_data: bool,
-
-    /// Observe subtree (descendants) changes
-    observe_subtree: bool,
-};
-
 /// Rare data storage for Node.
 ///
 /// Allocated on-demand when node uses rare features.
@@ -248,8 +213,10 @@ pub const NodeRareData = struct {
     /// Key: event type, Value: list of listeners for that type
     event_listeners: ?std.StringHashMap(std.ArrayList(EventListener)),
 
-    /// Mutation observers (allocated when first observer added)
-    mutation_observers: ?std.ArrayList(MutationObserver),
+    /// Mutation observer registrations (allocated when first observer registered)
+    /// WEAK pointers - MutationObserver owns registrations, not Node
+    /// Registrations removed automatically when observer.disconnect() called
+    mutation_observers: ?std.ArrayList(*anyopaque),
 
     /// User data (allocated when first data set)
     /// Key: data key, Value: opaque user data pointer
@@ -301,9 +268,11 @@ pub const NodeRareData = struct {
             listeners.deinit();
         }
 
-        // Clean up mutation observers
-        if (self.mutation_observers) |*observers| {
-            observers.deinit(self.allocator);
+        // Clean up mutation observers ArrayList
+        // Note: Pointers are WEAK (MutationObserver owns registrations)
+        // But we own the ArrayList itself
+        if (self.mutation_observers) |*list| {
+            list.deinit(self.allocator);
         }
 
         // Clean up user data
@@ -328,14 +297,6 @@ pub const NodeRareData = struct {
             self.event_listeners = std.StringHashMap(std.ArrayList(EventListener)).init(self.allocator);
         }
         return &self.event_listeners.?;
-    }
-
-    /// Ensures mutation observer list is allocated.
-    fn ensureMutationObservers(self: *NodeRareData) !*std.ArrayList(MutationObserver) {
-        if (self.mutation_observers == null) {
-            self.mutation_observers = std.ArrayList(MutationObserver){};
-        }
-        return &self.mutation_observers.?;
     }
 
     /// Ensures user data map is allocated.
@@ -416,57 +377,6 @@ pub const NodeRareData = struct {
         return listeners.contains(event_type);
     }
 
-    // === Mutation Observer Management ===
-
-    /// Adds a mutation observer.
-    ///
-    /// ## Parameters
-    /// - `observer`: Mutation observer configuration
-    ///
-    /// ## Errors
-    /// - `error.OutOfMemory`: Failed to allocate storage
-    pub fn addMutationObserver(self: *NodeRareData, observer: MutationObserver) !void {
-        const observers = try self.ensureMutationObservers();
-        try observers.append(self.allocator, observer);
-    }
-
-    /// Removes a mutation observer.
-    ///
-    /// Matches by callback pointer and context.
-    ///
-    /// ## Returns
-    /// true if observer was found and removed, false otherwise
-    pub fn removeMutationObserver(
-        self: *NodeRareData,
-        callback: MutationCallback,
-        context: *anyopaque,
-    ) bool {
-        if (self.mutation_observers) |*observers| {
-            for (observers.items, 0..) |observer, i| {
-                if (observer.callback == callback and observer.context == context) {
-                    _ = observers.swapRemove(i);
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /// Returns all mutation observers.
-    pub fn getMutationObservers(self: *const NodeRareData) []const MutationObserver {
-        const observers = self.mutation_observers orelse return &[_]MutationObserver{};
-        return observers.items;
-    }
-
-    /// Returns true if node has any mutation observers.
-    pub fn hasMutationObservers(self: *const NodeRareData) bool {
-        if (self.mutation_observers) |observers| {
-            return observers.items.len > 0;
-        }
-        return false;
-    }
-
     // === User Data Management ===
 
     /// Sets user data with the specified key.
@@ -508,14 +418,3 @@ pub const NodeRareData = struct {
         return data.contains(key);
     }
 };
-
-// ============================================================================
-// TESTS
-// ============================================================================
-
-
-
-
-
-
-

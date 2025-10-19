@@ -1061,21 +1061,3 @@ pub const Parser = struct {
         if (token.tag != expected) return error.UnexpectedToken;
     }
 };
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-const testing = std.testing;
-
-
-
-
-
-
-
-
-
-
-
-

@@ -249,19 +249,24 @@ Import relevant Web Platform Tests:
 
 #### 4.1 Find WPT Tests
 
-**WPT Repository**: https://github.com/web-platform-tests/wpt
+**Local WPT Repository**: `/Users/bcardarella/projects/wpt`
+
+**IMPORTANT**: Always use the local WPT checkout, not remote GitHub.
 
 **Search Locations**:
-- `dom/nodes/` - Node-related tests
-- `dom/events/` - Event-related tests
-- `dom/interface-objects/` - Interface tests
-- Feature-specific directories
+- `/Users/bcardarella/projects/wpt/dom/nodes/` - Node-related tests
+- `/Users/bcardarella/projects/wpt/dom/events/` - Event-related tests
+- `/Users/bcardarella/projects/wpt/dom/interface-objects/` - Interface tests
+- Feature-specific directories in `/Users/bcardarella/projects/wpt/`
 
-**Example**: For `setAttributeNS`:
+**Example**: Find MutationObserver tests:
 ```bash
-git clone https://github.com/web-platform-tests/wpt.git
-cd wpt
-find . -name "*attribute*" -name "*.html" | grep -i namespace
+find /Users/bcardarella/projects/wpt/dom/nodes -name "MutationObserver*.html"
+```
+
+**Example**: Find attribute tests:
+```bash
+find /Users/bcardarella/projects/wpt/dom/nodes -name "*attribute*" -name "*.html"
 ```
 
 #### 4.2 Convert WPT Tests to Zig

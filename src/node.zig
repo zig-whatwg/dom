@@ -1649,6 +1649,20 @@ pub const Node = struct {
             }
         }
 
+        // Queue mutation record for childList mutations
+        var nodes_array = [_]*Node{node};
+        queueMutationRecord(
+            self,
+            "childList",
+            &nodes_array, // added_nodes
+            null, // removed_nodes
+            last, // previousSibling
+            null, // nextSibling (always null for appendChild)
+            null, // attribute_name
+            null, // attribute_namespace
+            null, // old_value
+        ) catch {}; // Best effort - don't fail insertion if mutation tracking fails
+
         return node;
     }
 
@@ -2278,6 +2292,9 @@ pub const Node = struct {
 
 const validation = @import("validation.zig");
 const tree_helpers = @import("tree_helpers.zig");
+const MutationRecord = @import("mutation_observer.zig").MutationRecord;
+const MutationObserver = @import("mutation_observer.zig").MutationObserver;
+const MutationObserverRegistration = @import("mutation_observer.zig").MutationObserverRegistration;
 
 /// Adopt a node into a document per WHATWG DOM §4.2.4.
 ///
@@ -2585,6 +2602,19 @@ fn insert(
             }
         }
     }
+
+    // Queue mutation record for childList mutations
+    queueMutationRecord(
+        parent,
+        "childList",
+        nodes, // added_nodes
+        null, // removed_nodes
+        if (child) |c| c.previous_sibling else parent.last_child, // previousSibling
+        child, // nextSibling
+        null, // attribute_name
+        null, // attribute_namespace
+        null, // old_value
+    ) catch {}; // Best effort - don't fail insertion if mutation tracking fails
 }
 
 /// Inserts node into parent's children list before child.
@@ -2649,7 +2679,7 @@ fn preRemove(
 fn remove(node: *Node) void {
     const parent = node.parent_node orelse return;
 
-    // Update sibling pointers
+    // Capture siblings for mutation record BEFORE updating pointers
     const prev = node.previous_sibling;
     const next = node.next_sibling;
 
@@ -2684,6 +2714,21 @@ fn remove(node: *Node) void {
         node.setConnected(false);
         tree_helpers.setDescendantsConnected(node, false);
     }
+
+    // Queue mutation record for childList mutation
+    var removed_buffer: [1]*Node = undefined;
+    removed_buffer[0] = node;
+    queueMutationRecord(
+        parent,
+        "childList",
+        null, // added_nodes
+        &removed_buffer, // removed_nodes
+        prev, // previousSibling
+        next, // nextSibling
+        null, // attribute_name
+        null, // attribute_namespace
+        null, // old_value
+    ) catch {}; // Best effort
 }
 
 /// Replace algorithm per WHATWG DOM §4.2.4.
@@ -2715,3 +2760,123 @@ fn replace(
     return child;
 }
 
+// ============================================================================
+// MUTATION OBSERVER SUPPORT (Phase 17)
+// ============================================================================
+
+/// Queue a mutation record for interested observers.
+///
+/// This is called by tree mutation methods (appendChild, removeChild, etc.)
+/// and attribute/character data mutation methods.
+///
+/// ## Algorithm (WHATWG §4.3.1)
+///
+/// 1. Check if target has any registered observers
+/// 2. For each interested observer:
+///    - Create MutationRecord describing the mutation
+///    - Add record to observer's record queue
+/// 3. If subtree observation enabled, walk up tree checking ancestors
+///
+/// ## Parameters
+///
+/// - `target`: Node that was mutated
+/// - `mutation_type`: "childList", "attributes", or "characterData"
+/// - `added_nodes`: Nodes added (childList only)
+/// - `removed_nodes`: Nodes removed (childList only)
+/// - `previous_sibling`: Previous sibling of added/removed nodes
+/// - `next_sibling`: Next sibling of added/removed nodes
+/// - `attribute_name`: Name of changed attribute (attributes only)
+/// - `attribute_namespace`: Namespace of changed attribute (attributes only)
+/// - `old_value`: Previous value if requested
+pub fn queueMutationRecord(
+    target: *Node,
+    mutation_type: []const u8,
+    added_nodes: ?[]const *Node,
+    removed_nodes: ?[]const *Node,
+    previous_sibling: ?*Node,
+    next_sibling: ?*Node,
+    attribute_name: ?[]const u8,
+    attribute_namespace: ?[]const u8,
+    old_value: ?[]const u8,
+) !void {
+    // Process observers on target and ancestors (for subtree observation)
+    var current_node: ?*Node = target;
+    var is_target = true;
+
+    while (current_node) |observe_node| {
+        // Check if this node has any observers
+        if (observe_node.rare_data) |rare| {
+            if (rare.mutation_observers) |observers_list| {
+                // For each registered observer on this node
+                for (observers_list.items) |opaque_reg| {
+                    const reg: *MutationObserverRegistration = @ptrCast(@alignCast(opaque_reg));
+
+                    // If observing an ancestor, only interested if subtree=true
+                    if (!is_target and !reg.options.subtree) continue;
+
+                    // Check if this observer is interested in this mutation type
+                    const interested = reg.matches(mutation_type, attribute_name);
+                    if (!interested) continue;
+
+                    // Create mutation record
+                    const record = try MutationRecord.init(
+                        target.allocator,
+                        mutation_type,
+                        target,
+                    );
+                    errdefer record.deinit();
+
+                    // Populate childList fields
+                    if (std.mem.eql(u8, mutation_type, "childList")) {
+                        if (added_nodes) |nodes| {
+                            for (nodes) |node| {
+                                try record.added_nodes.append(target.allocator, node);
+                            }
+                        }
+                        if (removed_nodes) |nodes| {
+                            for (nodes) |node| {
+                                try record.removed_nodes.append(target.allocator, node);
+                            }
+                        }
+                        record.previous_sibling = previous_sibling;
+                        record.next_sibling = next_sibling;
+                    }
+
+                    // Populate attributes fields
+                    if (std.mem.eql(u8, mutation_type, "attributes")) {
+                        if (attribute_name) |name| {
+                            record.attribute_name = try target.allocator.dupe(u8, name);
+                        }
+                        if (attribute_namespace) |ns| {
+                            record.attribute_namespace = try target.allocator.dupe(u8, ns);
+                        }
+                    }
+
+                    // Populate old value if requested
+                    if (old_value) |val| {
+                        const should_include_old = blk: {
+                            if (std.mem.eql(u8, mutation_type, "attributes")) {
+                                break :blk reg.options.attribute_old_value orelse false;
+                            } else if (std.mem.eql(u8, mutation_type, "characterData")) {
+                                break :blk reg.options.character_data_old_value orelse false;
+                            } else {
+                                break :blk false;
+                            }
+                        };
+
+                        if (should_include_old) {
+                            record.old_value = try target.allocator.dupe(u8, val);
+                        }
+                    }
+
+                    // Add record to observer's queue
+                    try reg.observer.records.append(reg.observer.allocator, record);
+                }
+            }
+        }
+
+        // Move to parent for subtree observation
+        is_target = false;
+        current_node = observe_node.parent_node;
+    }
+}

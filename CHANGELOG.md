@@ -9,6 +9,240 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 19: StaticRange API (WHATWG DOM §5.4)** 🎉 NEW
+  - **StaticRange Interface (§5.4)** ✅ NEW
+    - Lightweight, immutable range that does NOT track DOM mutations
+    - Can represent invalid boundary points (out-of-bounds offsets, cross-tree)
+    - ~40 bytes (50-70% smaller than Range)
+    - **Constructor**: `StaticRange.init(allocator, StaticRangeInit)` - Create from dictionary
+    - **Validation**: `isValid()` - Check 4-condition validity per spec
+    - **Properties** (inherited from AbstractRange):
+      * `startContainer()`, `startOffset()` - Start boundary (read-only)
+      * `endContainer()`, `endOffset()` - End boundary (read-only)
+      * `collapsed()` - True if start equals end
+    - **Key Features**:
+      * Only validates node types (rejects DocumentType/Attr)
+      * Allows out-of-bounds offsets at construction
+      * WebKit-style fast-path node validation (~2-5x faster)
+      * Computed validity (not cached) - immutable ranges
+      * Same-node optimization in isValid() (O(1) vs O(log N))
+    - **Use Cases**: Snapshots, Input Events API, performance-critical scenarios
+    - **56 comprehensive tests** (26 constructor + 30 isValid tests)
+    - Zero memory leaks, all tests passing
+  
+- **Phase 18: Range API (WHATWG DOM §5) - Enhancement** 🎉 COMPLETE
+  - **Range.toString() Method (§5.5)** ✅
+    - `toString(allocator)` - Returns text representation of range contents
+    - Implements WHATWG `stringifier` per §5.5
+    - Collects text from all Text nodes within range in tree order
+    - Handles partial text at start/end boundaries
+    - Returns owned string (caller must free)
+    - Collapsed range returns empty string
+    - Single Text node optimized with substring extraction
+    - Multi-node traversal in document order
+    - 8 comprehensive tests covering all scenarios
+  
+- **Phase 18: Range API (WHATWG DOM §5) - Foundation** 🎉 COMPLETE
+  - **Range Interface (§5.2)** ✅ NEW
+    - `Range.init(allocator, document)` - Create collapsed range at document start
+    - `Range.deinit()` - Cleanup (does not own boundary nodes)
+    - `collapsed()` - Returns true if start and end are equal
+    - **Boundary Operations**:
+      * `setStart(node, offset)` - Set start boundary with validation
+      * `setEnd(node, offset)` - Set end boundary with validation
+      * `setStartBefore(node)` - Set start before node
+      * `setStartAfter(node)` - Set start after node
+      * `setEndBefore(node)` - Set end before node
+      * `setEndAfter(node)` - Set end after node
+      * Auto-collapse when boundaries become inverted
+    - **Selection Methods**:
+      * `selectNode(node)` - Select node and its contents
+      * `selectNodeContents(node)` - Select all children of node
+      * `collapse(toStart)` - Collapse to one boundary
+    - **Comparison Methods**:
+      * `commonAncestorContainer()` - Returns deepest node containing both boundaries
+      * `compareBoundaryPoints(how, sourceRange)` - Compare boundary points (-1, 0, 1)
+      * `comparePoint(node, offset)` - Compare point to range (-1, 0, 1)
+      * `isPointInRange(node, offset)` - Check if point is within range
+      * `intersectsNode(node)` - Check if node intersects range
+  - **AbstractRange Base Interface (§5.1)** ✅ NEW
+    - `start_container`, `start_offset`, `end_container`, `end_offset` - Boundary fields
+    - `collapsed()` - Immutable collapsed check
+    - 32 bytes (4 pointers/u32s)
+  - **BoundaryPointComparison Enum** ✅ NEW
+    - `start_to_start`, `start_to_end`, `end_to_end`, `end_to_start` - Comparison types
+    - Maps to WHATWG constants (0, 1, 2, 3)
+  - **Document Integration** ✅ NEW
+    - `Document.createRange()` - Factory method per §5.2
+    - Returns collapsed range at document start
+  - **Validation** ✅ COMPLETE
+    - DocumentType nodes rejected as boundary containers
+    - Offset validated against node length (IndexSizeError)
+    - Node parent validated for position shortcuts (InvalidNodeTypeError)
+  - **Helper Functions** ✅ COMPLETE
+    - `nodeLength(node)` - Get length for range purposes (§5.5)
+    - `nodeIndex(node)` - Get index within parent
+    - `compareBoundaryPointsImpl(a, b)` - Tree order comparison (§5.3)
+    - `nodeContains(ancestor, descendant)` - Containment check
+    - `findCommonAncestor(a, b)` - Lowest common ancestor
+    - `nodeTreeOrder(a, b)` - Tree order for non-containing nodes
+  - **Content Manipulation (§5.4)** ✅ NEW
+    - **`deleteContents()`** - Remove range content from DOM
+      * Handles collapsed ranges (no-op)
+      * Same-container: text/comment character deletion, element child removal
+      * Different-containers: partial text nodes, complete nodes between, complex trees
+      * Auto-collapse range to start after deletion
+    - **`extractContents()`** - Extract into DocumentFragment
+      * Returns empty fragment for collapsed ranges
+      * Same-container: extracts substring or children
+      * Different-containers: extracts partial texts, complete nodes, mixed content
+      * Content removed from DOM and added to fragment
+      * Auto-collapse range to start after extraction
+    - **`cloneContents()`** - Clone into DocumentFragment
+      * Returns empty fragment for collapsed ranges
+      * Same-container: clones substring or children
+      * Different-containers: clones partial texts, complete nodes, mixed content
+      * Original content unchanged, range NOT collapsed
+    - **Algorithm Implementation**:
+      * Shared `processContents()` core with ContentAction enum (delete/extract/clone)
+      * `processSameContainer()` - Handles text/comment and element separately
+      * `processDifferentContainers()` - Handles partial start, complete between, partial end
+      * Supports Text, Comment, Element, mixed content trees
+  - **Convenience Methods (§5.5)** ✅ NEW
+    - **`insertNode(node)`** - Insert node at range start
+      * Element container: Inserts at specified offset
+      * Text/Comment container: Splits node at offset and inserts between
+      * Handles offset 0 (before node) and end (after last child)
+    - **`surroundContents(newParent)`** - Wrap range content
+      * Validates range doesn't partially select nodes (InvalidStateError)
+      * Extracts contents into DocumentFragment
+      * Clears newParent's existing children
+      * Inserts newParent at range position
+      * Appends extracted contents to newParent
+      * Selects newParent
+    - **`cloneRange()`** - Clone the range
+      * Returns new Range with same boundaries
+      * Independent modifications (changes don't affect original)
+    - **`detach()`** - No-op for legacy compatibility
+  - **Test Suite** ✅ 54 NEW TESTS (Phases 1-4 complete)
+    - **Phase 1: Basic Structure (10 tests)**
+      * Create via Document.createRange()
+      * collapsed property (initially true, false after setEnd)
+      * Boundary getters
+      * setStart - valid element/text containers
+      * setStart - auto-collapse if end before start
+      * setStart - InvalidNodeTypeError for DocumentType
+      * setStart - IndexSizeError for offset > length
+      * setEnd - valid and auto-collapse if start after end
+    - **Phase 2: Comparison Methods (16 tests)**
+      * selectNode - selects node and its contents
+      * selectNode - error if no parent
+      * commonAncestorContainer - same node, different nodes with common parent
+      * compareBoundaryPoints - all 4 comparison types (START_TO_START, etc.)
+      * compareBoundaryPoints - before, equal, after results
+      * comparePoint - before range, in range, after range
+      * isPointInRange - true, false before, false after
+      * intersectsNode - true, false
+    - **Phase 3: Content Manipulation (18 tests)**
+      * deleteContents - collapsed (no-op), same container text/element, different containers
+      * extractContents - collapsed (empty fragment), same container text/element, different containers
+      * cloneContents - collapsed (empty fragment), same container text/element, different containers
+      * Comment node support (delete/extract/clone)
+      * Different containers with text nodes (partial deletion/extraction/cloning)
+      * Mixed content (text + elements) deletion/extraction/cloning
+    - **Phase 4: Convenience Methods (10 tests)**
+      * insertNode - element container, text node split, start/end positions
+      * surroundContents - wraps content, error on partial selection, collapsed range
+      * cloneRange - independent copy, independent modifications
+      * detach - no-op verification
+  - **WPT Coverage** ✅ DOCUMENTED
+    - Created `tests/wpt/ranges/Range-WPT-COVERAGE.md`
+    - 100% coverage of applicable WPT scenarios (35+ scenarios from 14 test files)
+    - Unit tests preferred over direct WPT import (generic DOM, type safety, memory safety)
+    - Additional coverage beyond WPT: Comment nodes, mixed content, memory verification
+  - **Design Decisions** (based on browser research)
+    - Simple structure (follow WebKit pattern, no caching)
+    - Validate on set (not on storage)
+    - No fast paths (correctness over performance)
+    - Compute commonAncestorContainer on demand (not cached)
+  - **Exports** ✅ COMPLETE
+    - `src/root.zig` exports: AbstractRange, Range, BoundaryPointComparison
+  - **Memory Management** ✅ VERIFIED
+    - Range does NOT own boundary nodes (managed by document/tree)
+    - DocumentFragments created by extract/clone must be released by caller
+    - surroundContents() properly releases internal fragment after use
+    - Zero memory leaks across all 966 tests
+  - **Spec Compliance**: WHATWG DOM §5.1-5.5 COMPLETE (Ranges, boundary points, comparisons, content manipulation, convenience methods)
+  - **Test Results**: 966/966 tests passing, 0 memory leaks
+  - **Status**: ✅ **Range API COMPLETE** (all WHATWG §5 methods implemented)
+
+- **Phase 17: MutationObserver Implementation** 🎉
+  - **MutationObserver API (WHATWG DOM §4.3)** ✅ NEW
+    - `MutationObserver.init(allocator, callback, context)` - Create observer with callback
+    - `observe(target, options)` - Start observing mutations on target node
+    - `disconnect()` - Stop all observations and clear records
+    - `takeRecords()` - Return and clear pending mutation records
+    - Full WebIDL compliance with all observation types:
+      * `childList` - Track appendChild, removeChild, insertBefore, replaceChild
+      * `attributes` - Track setAttribute, removeAttribute, setAttributeNS, removeAttributeNS
+      * `characterData` - Track appendData, insertData, deleteData, replaceData
+    - Options: subtree, attributeOldValue, characterDataOldValue, attributeFilter
+    - Caller-driven delivery model (manual `processMutationObservers()` or `takeRecords()`)
+  - **MutationRecord Structure** ✅ NEW
+    - `MutationRecord.init(allocator, type, target)` - Create mutation record
+    - Fields: type, target, addedNodes, removedNodes, previousSibling, nextSibling
+    - Attributes: attributeName, attributeNamespace, oldValue
+    - Reference counting: Acquires target, weak refs to added/removedNodes
+    - Automatic cleanup via deinit()
+  - **MutationObserverInit Options** ✅ NEW
+    - `validate()` - Enforces WHATWG validation rules (§4.3.3 step 1)
+    - Requires at least one of: childList, attributes, characterData
+    - Implicit attributes=true if attributeOldValue or attributeFilter present
+    - Implicit characterData=true if characterDataOldValue present
+    - Returns InvalidStateError if validation fails
+  - **Integration with DOM Mutations** ✅ COMPLETE
+    - **Node operations**: appendChild (fast path + slow path), insertBefore, removeChild, replaceChild
+    - **Element operations**: setAttribute, removeAttribute, setAttributeNS, removeAttributeNS
+    - **CharacterData operations**: appendData, insertData, deleteData, replaceData (Text + Comment)
+    - **Subtree observation**: queueMutationRecord walks ancestor tree checking subtree=true
+    - **All mutations tracked**: childList, attributes, characterData with old value support
+  - **Document Integration** ✅ NEW
+    - `Document.processMutationObservers()` - Manual delivery for headless DOM
+    - Caller-driven model: mutations queue until explicit delivery or takeRecords()
+    - No automatic callback invocation (suitable for headless/server environments)
+  - **Critical Bug Fix: appendChild Fast Path** ⭐ FIXED
+    - **Issue**: appendChildFast() didn't call queueMutationRecord(), causing 0 records
+    - **Impact**: All element-to-element appendChild mutations were not tracked
+    - **Fix**: Added queueMutationRecord call to fast path (node.zig line 1652)
+    - **Result**: All mutations now properly tracked in both fast and slow paths
+  - **Test Suite** ✅ 24 NEW TESTS
+    - Basic lifecycle (init, deinit, context)
+    - All observation types with comprehensive coverage
+    - disconnect() and takeRecords() functionality
+    - Mutation generation for all 3 types (childList, attributes, characterData)
+    - Subtree observation (positive and negative tests)
+    - Attribute filtering and old value tracking
+    - Multiple mutations and observer re-registration
+    - Memory safety stress test (100 mutations, zero leaks)
+  - **WPT Coverage Documentation** ✅ NEW
+    - Created `tests/wpt/nodes/MutationObserver-WPT-COVERAGE.md`
+    - Maps 12 WPT test files to our 24 unit tests
+    - 92% coverage of applicable WPT scenarios
+    - Additional tests beyond WPT (memory safety, Zig-specific patterns)
+    - Documents why unit tests preferred over WPT conversion (type safety, diagnostics)
+  - **Memory Management** ✅ VERIFIED
+    - Fixed rare_data cleanup to deinit mutation_observers ArrayList
+    - Added InvalidStateError to DOMError enum
+    - Fixed ArrayList initialization for Zig 0.15 syntax
+    - Corrected test patterns: nodes appended to parents should NOT be released by caller
+    - Zero memory leaks across all 911 tests
+  - **Exports** ✅ COMPLETE
+    - `src/root.zig` exports: MutationObserver, MutationRecord, MutationObserverInit
+    - MutationCallback, MutationObserverRegistration (internal)
+  - **Performance**: O(1) record creation, O(n) observer lookup per node (n=observers)
+  - **Spec Compliance**: WHATWG DOM §4.3 Mutation Observers
+  - **Test Results**: 911/911 tests passing, 0 memory leaks
+
 - **Phase 15: Namespace Attribute Support with Array-Based Storage** 🎉
   - **Qualified Name Validation (WHATWG DOM §4.9)** ✅ NEW
     - `validateAndExtract(namespace, qualifiedName)` - Validates and extracts namespace components
