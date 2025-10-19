@@ -840,22 +840,19 @@ pub const Element = struct {
         qualified_name: []const u8,
         value: []const u8,
     ) !void {
-        // TODO: Implement full validation and prefix extraction per spec
-        // For now, extract local name from qualified name (after ':' if present)
-        const local_name = if (std.mem.indexOfScalar(u8, qualified_name, ':')) |colon_idx|
-            qualified_name[colon_idx + 1 ..]
-        else
-            qualified_name;
+        // Step 1: Validate and extract namespace, prefix, and localName
+        const validation = @import("validation.zig");
+        const components = try validation.validateAndExtract(namespace, qualified_name);
 
         // Intern the strings via document's string pool if we have an owner document
         const interned_local = if (self.prototype.owner_document) |owner| blk: {
             if (owner.node_type == .document) {
                 const Document = @import("document.zig").Document;
                 const doc: *Document = @fieldParentPtr("prototype", owner);
-                break :blk try doc.string_pool.intern(local_name);
+                break :blk try doc.string_pool.intern(components.local_name);
             }
-            break :blk local_name;
-        } else local_name;
+            break :blk components.local_name;
+        } else components.local_name;
 
         const interned_value = if (self.prototype.owner_document) |owner| blk: {
             if (owner.node_type == .document) {
@@ -866,7 +863,7 @@ pub const Element = struct {
             break :blk value;
         } else value;
 
-        const interned_ns = if (namespace) |ns| blk: {
+        const interned_ns = if (components.namespace) |ns| blk: {
             if (self.prototype.owner_document) |owner| {
                 if (owner.node_type == .document) {
                     const Document = @import("document.zig").Document;
@@ -877,7 +874,7 @@ pub const Element = struct {
             break :blk ns;
         } else null;
 
-        // Set attribute with namespace
+        // Step 2: Set attribute value with namespace
         try self.attributes.array.set(interned_local, interned_ns, interned_value);
     }
 

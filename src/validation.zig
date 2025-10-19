@@ -204,6 +204,8 @@ pub const DOMError = error{
     HierarchyRequestError,
     NotFoundError,
     InUseAttributeError,
+    InvalidCharacterError,
+    NamespaceError,
 };
 
 /// Ensures pre-insert validity of a node into a parent before a child.
@@ -329,6 +331,191 @@ pub fn ensureReplaceValidity(
     if (parent.node_type == .document) {
         try ensureDocumentReplaceConstraints(node, child, parent);
     }
+}
+
+/// Result of validating and extracting a qualified name.
+///
+/// Contains the validated namespace, prefix, and local name components.
+pub const QualifiedNameComponents = struct {
+    namespace: ?[]const u8,
+    prefix: ?[]const u8,
+    local_name: []const u8,
+};
+
+/// Validates and extracts a qualified name with a namespace.
+///
+/// Implements WHATWG DOM "validate and extract" algorithm per §4.9.
+///
+/// ## Algorithm Steps
+/// 1. If namespace is the empty string, set it to null
+/// 2. Validate qualifiedName
+/// 3. Let prefix be null
+/// 4. Let localName be qualifiedName
+/// 5. If qualifiedName contains a U+003A (:), split on first occurrence
+/// 6. Validate namespace constraints for xml/xmlns
+///
+/// ## Validation Rules
+/// - qualifiedName must be a valid XML Name
+/// - If prefix exists, both prefix and localName must be valid XML NCNames
+/// - Prefix "xml" can only be used with XML namespace
+/// - Prefix "xmlns" or qualifiedName "xmlns" can only be used with XMLNS namespace
+/// - XMLNS namespace can only be used with "xmlns" prefix or name
+///
+/// ## Spec Reference
+/// https://dom.spec.whatwg.org/#validate-and-extract
+///
+/// ## Errors
+/// - `InvalidCharacterError`: Invalid qualified name format
+/// - `NamespaceError`: Namespace/prefix mismatch
+pub fn validateAndExtract(
+    namespace: ?[]const u8,
+    qualified_name: []const u8,
+) DOMError!QualifiedNameComponents {
+    // Step 1: Empty string namespace → null
+    const ns = if (namespace) |n|
+        if (n.len == 0) null else n
+    else
+        null;
+
+    // Step 2: Validate qualifiedName is a valid XML Name
+    if (!isValidXMLName(qualified_name)) {
+        return error.InvalidCharacterError;
+    }
+
+    // Steps 3-5: Extract prefix and localName
+    var prefix: ?[]const u8 = null;
+    var local_name: []const u8 = qualified_name;
+
+    if (std.mem.indexOfScalar(u8, qualified_name, ':')) |colon_idx| {
+        // Has prefix - split on first colon
+        prefix = qualified_name[0..colon_idx];
+        local_name = qualified_name[colon_idx + 1 ..];
+
+        // Validate both prefix and localName are valid XML NCNames
+        if (!isValidXMLNCName(prefix.?)) {
+            return error.InvalidCharacterError;
+        }
+        if (!isValidXMLNCName(local_name)) {
+            return error.InvalidCharacterError;
+        }
+    }
+
+    // Step 6: Validate namespace constraints
+
+    // Constraint 1: prefix "xml" can only be used with XML namespace
+    const xml_ns = "http://www.w3.org/XML/1998/namespace";
+    if (prefix) |p| {
+        if (std.mem.eql(u8, p, "xml")) {
+            if (ns == null or !std.mem.eql(u8, ns.?, xml_ns)) {
+                return error.NamespaceError;
+            }
+        }
+    }
+
+    // Constraint 2: prefix "xmlns" or qualifiedName "xmlns" can only be used with XMLNS namespace
+    const xmlns_ns = "http://www.w3.org/2000/xmlns/";
+    const is_xmlns_prefix = if (prefix) |p| std.mem.eql(u8, p, "xmlns") else false;
+    const is_xmlns_name = std.mem.eql(u8, qualified_name, "xmlns");
+
+    if (is_xmlns_prefix or is_xmlns_name) {
+        if (ns == null or !std.mem.eql(u8, ns.?, xmlns_ns)) {
+            return error.NamespaceError;
+        }
+    }
+
+    // Constraint 3: XMLNS namespace can only be used with "xmlns" prefix or name
+    if (ns) |n| {
+        if (std.mem.eql(u8, n, xmlns_ns)) {
+            if (!is_xmlns_prefix and !is_xmlns_name) {
+                return error.NamespaceError;
+            }
+        }
+    }
+
+    // Constraint 4: Non-null namespace with null prefix and qualifiedName = "xmlns" is invalid
+    if (ns != null and prefix == null and std.mem.eql(u8, qualified_name, "xmlns")) {
+        if (!std.mem.eql(u8, ns.?, xmlns_ns)) {
+            return error.NamespaceError;
+        }
+    }
+
+    return QualifiedNameComponents{
+        .namespace = ns,
+        .prefix = prefix,
+        .local_name = local_name,
+    };
+}
+
+/// Checks if a string is a valid XML Name.
+///
+/// Simplified validation (full XML Name validation is complex).
+/// For now, check basic rules:
+/// - Not empty
+/// - Starts with letter, underscore, or colon
+/// - Contains only letters, digits, hyphens, underscores, colons, or periods
+fn isValidXMLName(name: []const u8) bool {
+    if (name.len == 0) return false;
+
+    // First character must be letter, underscore, or colon
+    const first = name[0];
+    if (!isXMLNameStartChar(first)) return false;
+
+    // Remaining characters must be name characters
+    for (name[1..]) |c| {
+        if (!isXMLNameChar(c)) return false;
+    }
+
+    return true;
+}
+
+/// Checks if a string is a valid XML NCName (Name without colons).
+fn isValidXMLNCName(name: []const u8) bool {
+    if (name.len == 0) return false;
+
+    // NCName cannot contain colons
+    if (std.mem.indexOfScalar(u8, name, ':') != null) return false;
+
+    // First character must be letter or underscore (not colon)
+    const first = name[0];
+    if (!isXMLNCNameStartChar(first)) return false;
+
+    // Remaining characters must be name characters (except colon)
+    for (name[1..]) |c| {
+        if (!isXMLNCNameChar(c)) return false;
+    }
+
+    return true;
+}
+
+/// Checks if a character is a valid XML Name start character.
+fn isXMLNameStartChar(c: u8) bool {
+    return (c >= 'A' and c <= 'Z') or
+        (c >= 'a' and c <= 'z') or
+        c == '_' or
+        c == ':';
+}
+
+/// Checks if a character is a valid XML Name character.
+fn isXMLNameChar(c: u8) bool {
+    return isXMLNameStartChar(c) or
+        (c >= '0' and c <= '9') or
+        c == '-' or
+        c == '.';
+}
+
+/// Checks if a character is a valid XML NCName start character.
+fn isXMLNCNameStartChar(c: u8) bool {
+    return (c >= 'A' and c <= 'Z') or
+        (c >= 'a' and c <= 'z') or
+        c == '_';
+}
+
+/// Checks if a character is a valid XML NCName character.
+fn isXMLNCNameChar(c: u8) bool {
+    return isXMLNCNameStartChar(c) or
+        (c >= '0' and c <= '9') or
+        c == '-' or
+        c == '.';
 }
 
 /// Ensures pre-remove validity of removing child from parent.

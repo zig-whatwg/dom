@@ -1380,3 +1380,84 @@ test "multiple namespaced attributes" {
     try std.testing.expectEqualStrings("value", elem.getAttributeNS(custom_ns, "attr").?);
     try std.testing.expectEqualStrings("normal", elem.getAttributeNS(null, "regular").?);
 }
+
+// ============================================================================
+// Namespace Validation Tests
+// ============================================================================
+
+test "setAttributeNS validates xml prefix requires XML namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    // Invalid: xml prefix with wrong namespace
+    const result = elem.setAttributeNS("http://example.com", "xml:lang", "en");
+    try std.testing.expectError(error.NamespaceError, result);
+}
+
+test "setAttributeNS validates xmlns prefix requires XMLNS namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    // Invalid: xmlns prefix with wrong namespace
+    const result = elem.setAttributeNS("http://example.com", "xmlns:custom", "value");
+    try std.testing.expectError(error.NamespaceError, result);
+}
+
+test "setAttributeNS validates invalid characters" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    // Invalid: starts with digit
+    const result1 = elem.setAttributeNS(null, "9invalid", "value");
+    try std.testing.expectError(error.InvalidCharacterError, result1);
+
+    // Invalid: contains space
+    const result2 = elem.setAttributeNS(null, "invalid name", "value");
+    try std.testing.expectError(error.InvalidCharacterError, result2);
+
+    // Invalid: empty name
+    const result3 = elem.setAttributeNS(null, "", "value");
+    try std.testing.expectError(error.InvalidCharacterError, result3);
+}
+
+test "setAttributeNS allows valid xml namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    const xml_ns = "http://www.w3.org/XML/1998/namespace";
+
+    // Valid: xml prefix with XML namespace
+    try elem.setAttributeNS(xml_ns, "xml:lang", "en");
+    try std.testing.expectEqualStrings("en", elem.getAttributeNS(xml_ns, "lang").?);
+}
+
+test "setAttributeNS allows valid xmlns namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    const xmlns_ns = "http://www.w3.org/2000/xmlns/";
+
+    // Valid: xmlns prefix with XMLNS namespace
+    try elem.setAttributeNS(xmlns_ns, "xmlns:custom", "http://example.com");
+    try std.testing.expectEqualStrings("http://example.com", elem.getAttributeNS(xmlns_ns, "custom").?);
+}
