@@ -240,6 +240,7 @@ const NodeVTable = node_mod.NodeVTable;
 const Attr = @import("attr.zig").Attr;
 const NamedNodeMap = @import("named_node_map.zig").NamedNodeMap;
 const DOMError = @import("validation.zig").DOMError;
+const AttributeArray = @import("attribute_array.zig").AttributeArray;
 
 /// Bloom filter for fast class name matching in querySelector.
 ///
@@ -274,37 +275,55 @@ pub const BloomFilter = struct {
 ///
 /// Uses StringHashMap for O(1) average-case access.
 /// Keys and values are slices (pointers) to interned strings.
+/// AttributeMap: Compatibility wrapper around AttributeArray.
+///
+/// Provides the old HashMap-based API for backward compatibility,
+/// but delegates to the new AttributeArray implementation.
+///
+/// **Migration note**: This is a transitional type. Direct use of AttributeArray
+/// is preferred for new code to access namespace support.
 pub const AttributeMap = struct {
-    map: std.StringHashMap([]const u8),
+    array: AttributeArray,
 
     pub fn init(allocator: Allocator) AttributeMap {
         return .{
-            .map = std.StringHashMap([]const u8).init(allocator),
+            .array = AttributeArray.init(allocator),
         };
     }
 
     pub fn deinit(self: *AttributeMap) void {
-        self.map.deinit();
+        self.array.deinit();
     }
 
     pub fn set(self: *AttributeMap, name: []const u8, value: []const u8) !void {
-        try self.map.put(name, value);
+        // Delegate to AttributeArray with null namespace
+        try self.array.set(name, null, value);
     }
 
     pub fn get(self: *const AttributeMap, name: []const u8) ?[]const u8 {
-        return self.map.get(name);
+        // Delegate to AttributeArray with null namespace
+        return self.array.get(name, null);
     }
 
     pub fn remove(self: *AttributeMap, name: []const u8) bool {
-        return self.map.remove(name);
+        // Delegate to AttributeArray with null namespace
+        return self.array.remove(name, null);
     }
 
     pub fn has(self: *const AttributeMap, name: []const u8) bool {
-        return self.map.contains(name);
+        // Delegate to AttributeArray with null namespace
+        return self.array.has(name, null);
     }
 
     pub fn count(self: *const AttributeMap) usize {
-        return self.map.count();
+        return self.array.count();
+    }
+
+    /// Returns an iterator over attributes.
+    ///
+    /// For backward compatibility with code that accessed .map.iterator().
+    pub fn iterator(self: *const AttributeMap) AttributeArray.Iterator {
+        return self.array.iterator();
     }
 };
 
@@ -1075,9 +1094,9 @@ pub const Element = struct {
         errdefer allocator.free(names);
 
         var i: usize = 0;
-        var iter = self.attributes.map.keyIterator();
-        while (iter.next()) |key| {
-            names[i] = key.*;
+        var iter = self.attributes.iterator();
+        while (iter.next()) |attr| {
+            names[i] = attr.name.local_name;
             i += 1;
         }
 
@@ -3876,9 +3895,9 @@ pub const Element = struct {
         cloned.prototype.owner_document = elem.prototype.owner_document;
 
         // Copy attributes
-        var attr_iter = elem.attributes.map.iterator();
-        while (attr_iter.next()) |entry| {
-            try cloned.setAttribute(entry.key_ptr.*, entry.value_ptr.*);
+        var attr_iter = elem.attributes.iterator();
+        while (attr_iter.next()) |attr| {
+            try cloned.setAttribute(attr.name.local_name, attr.value);
         }
 
         // Deep clone children if requested
@@ -3917,9 +3936,9 @@ pub const Element = struct {
         cloned.prototype.owner_document = elem.prototype.owner_document;
 
         // Copy attributes
-        var attr_iter = elem.attributes.map.iterator();
-        while (attr_iter.next()) |entry| {
-            try cloned.setAttribute(entry.key_ptr.*, entry.value_ptr.*);
+        var attr_iter = elem.attributes.iterator();
+        while (attr_iter.next()) |attr| {
+            try cloned.setAttribute(attr.name.local_name, attr.value);
         }
 
         // Deep clone children if requested

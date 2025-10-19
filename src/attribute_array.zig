@@ -295,11 +295,12 @@ pub const AttributeArray = struct {
             for (self.inline_storage[0..self.inline_count], 0..) |attr, i| {
                 if (attr.matches(local_name, namespace_uri)) {
                     // Shift remaining attributes left (preserve order)
+                    // Use memmove-style copy for overlapping ranges
                     if (i < self.inline_count - 1) {
-                        @memcpy(
-                            self.inline_storage[i .. self.inline_count - 1],
-                            self.inline_storage[i + 1 .. self.inline_count],
-                        );
+                        var j = i;
+                        while (j < self.inline_count - 1) : (j += 1) {
+                            self.inline_storage[j] = self.inline_storage[j + 1];
+                        }
                     }
                     self.inline_count -= 1;
                     return true;
