@@ -192,6 +192,8 @@ pub const Comment = @import("comment.zig").Comment;
 pub const DocumentType = @import("document_type.zig").DocumentType;
 
 pub const Event = @import("event.zig").Event;
+pub const CustomEvent = @import("custom_event.zig").CustomEvent;
+pub const CustomEventInit = @import("custom_event.zig").CustomEventInit;
 pub const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
 pub const SelectorCache = @import("document.zig").SelectorCache;
 // Export document modules

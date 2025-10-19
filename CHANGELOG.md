@@ -9,16 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Phase 13: Legacy API Support (Quick Wins)** 🎉
+- **Phase 13: Legacy API & CustomEvent** 🎉
+  - **CustomEvent Interface (WHATWG DOM §2.2)** ✅ NEW
+    - `CustomEvent` - Event subclass with arbitrary detail data
+    - `CustomEvent.init(type, options)` - Create custom event with detail
+    - `CustomEvent.getDetail(T)` - Type-safe detail access with compile-time checking
+    - `CustomEvent.initCustomEvent(...)` - Legacy initialization method
+    - `CustomEventInit` struct with `detail` field of type `?*const anyopaque`
+    - Uses `anyopaque` to represent WebIDL's `any` type (zero overhead)
+    - Caller manages detail lifetime (same semantics as JavaScript)
+    - Full spec compliance with comprehensive documentation
   - **Element.webkitMatchesSelector() (WHATWG DOM §4.10)** ✅ NEW
     - `webkitMatchesSelector(selectors)` - Legacy alias for matches()
     - Provided for compatibility with older code
     - Delegates directly to matches() implementation
     - Full CSS selector support
-  - **Note**: CustomEvent skipped - requires `any` type not available in Zig
+  - **Test Coverage**: All methods tested, all passing, 0 leaks ✅
   - **Spec References**:
+    - CustomEvent: https://dom.spec.whatwg.org/#customevent
+    - CustomEvent.detail: https://dom.spec.whatwg.org/#dom-customevent-detail
+    - CustomEvent.initCustomEvent: https://dom.spec.whatwg.org/#dom-customevent-initcustomevent
     - webkitMatchesSelector: https://dom.spec.whatwg.org/#dom-element-webkitmatchesselector
-    - WebIDL: dom.idl:399
+    - WebIDL: dom.idl:44-58, dom.idl:399
 
 - **Phase 12: Text & Element Enhancement Methods** 🎉
   - **Text.wholeText Property (WHATWG DOM §4.7)** ✅ NEW
