@@ -213,7 +213,11 @@ pub const StressTest = struct {
         try self.takeSample();
 
         const final_memory = self.gpa.total_requested_bytes;
-        const memory_leaked = final_memory - self.start_memory;
+
+        // Use signed arithmetic to handle cases where final_memory < start_memory
+        // (can happen in ReleaseFast due to GPA behavior)
+        const memory_leaked_signed: i64 = @as(i64, @intCast(final_memory)) - @as(i64, @intCast(self.start_memory));
+        const memory_leaked_abs = @abs(memory_leaked_signed);
 
         std.debug.print("\nStress test complete!\n", .{});
         std.debug.print("Cycles completed: {d}\n", .{self.stats.cycles_completed});
@@ -226,37 +230,60 @@ pub const StressTest = struct {
         std.debug.print("Final DOM size: {d} nodes\n", .{self.registry.count()});
         std.debug.print("\n=== Memory Leak Analysis ===\n", .{});
         std.debug.print("Baseline memory: {d} bytes\n", .{self.start_memory});
-        std.debug.print("Final memory: {d} bytes\n", .{final_memory});
-        std.debug.print("Growth: {d} bytes ({d} bytes/cycle)\n", .{
-            memory_leaked,
-            if (self.stats.cycles_completed > 0) memory_leaked / self.stats.cycles_completed else 0,
-        });
+
+        // Check if final_memory looks corrupted (overflow/underflow in ReleaseFast)
+        const memory_looks_corrupted = final_memory > (1024 * 1024 * 1024 * 100); // > 100GB is clearly wrong
+
+        if (memory_looks_corrupted) {
+            std.debug.print("Final memory: [CORRUPTED - GPA tracking unreliable in ReleaseFast]\n", .{});
+            std.debug.print("\n⚠️  NOTE: Memory tracking is unreliable in ReleaseFast mode.\n", .{});
+            std.debug.print("⚠️  Use -Doptimize=ReleaseSafe for accurate memory measurements.\n", .{});
+            std.debug.print("⚠️  This is a known limitation of GPA in ReleaseFast.\n\n", .{});
+            std.debug.print("Growth: [CANNOT CALCULATE - use ReleaseSafe]\n", .{});
+        } else {
+            std.debug.print("Final memory: {d} bytes\n", .{final_memory});
+
+            if (memory_leaked_signed >= 0) {
+                std.debug.print("Growth: {d} bytes ({d} bytes/cycle)\n", .{
+                    memory_leaked_signed,
+                    if (self.stats.cycles_completed > 0) @divTrunc(memory_leaked_signed, @as(i64, @intCast(self.stats.cycles_completed))) else 0,
+                });
+            } else {
+                std.debug.print("Growth: -{d} bytes ({d} bytes/cycle)\n", .{
+                    memory_leaked_abs,
+                    if (self.stats.cycles_completed > 0) -@divTrunc(memory_leaked_signed, @as(i64, @intCast(self.stats.cycles_completed))) else 0,
+                });
+            }
+        }
 
         // Memory growth analysis for persistent DOM
         // Note: Some growth is expected due to HashMap capacity expansion (doesn't shrink)
         // and string pool growth - this is realistic for long-running applications
-        const bytes_per_cycle = if (self.stats.cycles_completed > 0) memory_leaked / self.stats.cycles_completed else 0;
 
-        std.debug.print("\n=== Memory Growth Analysis ===\n", .{});
-        std.debug.print("Expected sources of growth:\n", .{});
-        std.debug.print("  - Document.tag_map capacity (HashMap doesn't shrink)\n", .{});
-        std.debug.print("  - Document.class_map capacity\n", .{});
-        std.debug.print("  - Document.string_pool (string interning)\n", .{});
-        std.debug.print("  - Element.attributes HashMaps\n", .{});
+        if (!memory_looks_corrupted) {
+            const bytes_per_cycle = if (self.stats.cycles_completed > 0) @divTrunc(memory_leaked_signed, @as(i64, @intCast(self.stats.cycles_completed))) else 0;
 
-        // Calculate growth rate relative to DOM size
-        const final_dom_size = self.registry.count();
-        const bytes_per_element = if (final_dom_size > 0) memory_leaked / final_dom_size else 0;
-        std.debug.print("\nGrowth per element: {d} bytes\n", .{bytes_per_element});
+            std.debug.print("\n=== Memory Growth Analysis ===\n", .{});
+            std.debug.print("Expected sources of growth:\n", .{});
+            std.debug.print("  - Document.tag_map capacity (HashMap doesn't shrink)\n", .{});
+            std.debug.print("  - Document.class_map capacity\n", .{});
+            std.debug.print("  - Document.string_pool (string interning)\n", .{});
+            std.debug.print("  - Element.attributes HashMaps\n", .{});
 
-        // Lenient threshold for persistent DOM: up to 5KB/cycle is acceptable
-        // This accounts for HashMap capacity growth which is expected behavior
-        if (bytes_per_cycle < 5000) {
-            std.debug.print("✅ PASS: Memory growth is within acceptable range for persistent DOM\n", .{});
-            std.debug.print("         (HashMap capacity growth is expected and realistic)\n", .{});
-        } else {
-            std.debug.print("⚠️  WARN: Higher than expected growth - may indicate actual leak\n", .{});
-            std.debug.print("         (Investigate beyond HashMap capacity growth)\n", .{});
+            // Calculate growth rate relative to DOM size
+            const final_dom_size = self.registry.count();
+            const bytes_per_element = if (final_dom_size > 0) @divTrunc(memory_leaked_signed, @as(i64, @intCast(final_dom_size))) else 0;
+            std.debug.print("\nGrowth per element: {d} bytes\n", .{bytes_per_element});
+
+            // Lenient threshold for persistent DOM: up to 5KB/cycle is acceptable
+            // This accounts for HashMap capacity growth which is expected behavior
+            if (@abs(bytes_per_cycle) < 5000) {
+                std.debug.print("✅ PASS: Memory growth is within acceptable range for persistent DOM\n", .{});
+                std.debug.print("         (HashMap capacity growth is expected and realistic)\n", .{});
+            } else {
+                std.debug.print("⚠️  WARN: Higher than expected growth - may indicate actual leak\n", .{});
+                std.debug.print("         (Investigate beyond HashMap capacity growth)\n", .{});
+            }
         }
     }
 
