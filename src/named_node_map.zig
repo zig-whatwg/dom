@@ -338,12 +338,12 @@ pub const NamedNodeMap = struct {
         }
 
         // Iterate to the index-th attribute
-        var iter = attrs.map.iterator();
+        var iter = attrs.iterator();
         var i: u32 = 0;
-        while (iter.next()) |entry| {
+        while (iter.next()) |attr| {
             if (i == index) {
                 // Create or retrieve cached Attr node
-                return try self.getOrCreateAttr(entry.key_ptr.*, entry.value_ptr.*);
+                return try self.getOrCreateAttr(attr.name.local_name, attr.value);
             }
             i += 1;
         }
@@ -387,41 +387,25 @@ pub const NamedNodeMap = struct {
         // Iterate through all attributes to find matching (namespace, localName) pair
         // Note: null namespace is different from empty string per WHATWG spec
         const attrs = &self.element.attributes;
-        var iter = attrs.map.iterator();
+        var iter = attrs.iterator();
 
-        while (iter.next()) |entry| {
-            const name = entry.key_ptr.*;
-            const value = entry.value_ptr.*;
+        while (iter.next()) |attribute| {
+            // Check if local names match first
+            if (!std.mem.eql(u8, attribute.name.local_name, local_name)) {
+                continue;
+            }
 
-            // Parse the attribute name to check if it matches
-            // For namespaced attributes, name is "prefix:localName"
-            const has_colon = std.mem.indexOf(u8, name, ":");
+            // Check if namespace matches
+            const ns_match = if (namespace_uri == null and attribute.name.namespace_uri == null)
+                true
+            else if (namespace_uri != null and attribute.name.namespace_uri != null)
+                std.mem.eql(u8, namespace_uri.?, attribute.name.namespace_uri.?)
+            else
+                false;
 
-            if (has_colon) |colon_idx| {
-                const attr_local = name[colon_idx + 1 ..];
-
-                // Check if local names match
-                if (std.mem.eql(u8, attr_local, local_name)) {
-                    // Get or create the attr to check its namespace
-                    const attr = try self.getOrCreateAttr(name, value);
-
-                    // Match namespace (null vs null, or string equality)
-                    const ns_match = if (namespace_uri == null and attr.namespace_uri == null)
-                        true
-                    else if (namespace_uri != null and attr.namespace_uri != null)
-                        std.mem.eql(u8, namespace_uri.?, attr.namespace_uri.?)
-                    else
-                        false;
-
-                    if (ns_match) {
-                        return attr;
-                    }
-                }
-            } else {
-                // Non-namespaced attribute - only matches if namespace is null
-                if (namespace_uri == null and std.mem.eql(u8, name, local_name)) {
-                    return try self.getOrCreateAttr(name, value);
-                }
+            if (ns_match) {
+                // Found matching attribute - create Attr node for it
+                return try self.getOrCreateAttr(attribute.name.local_name, attribute.value);
             }
         }
 
