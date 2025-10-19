@@ -758,6 +758,211 @@ pub const Element = struct {
         return self.attributes.has(name);
     }
 
+    /// Gets an attribute value by namespace and local name.
+    ///
+    /// Implements WHATWG DOM Element.getAttributeNS() interface.
+    ///
+    /// ## WebIDL
+    ///
+    /// ```webidl
+    /// DOMString? getAttributeNS(DOMString? namespace, DOMString localName);
+    /// ```
+    ///
+    /// ## Parameters
+    ///
+    /// - `namespace`: Namespace URI (nullable)
+    /// - `local_name`: Local name of the attribute
+    ///
+    /// ## Returns
+    ///
+    /// Attribute value if found, null otherwise.
+    ///
+    /// ## Spec References
+    ///
+    /// **WHATWG DOM**:
+    /// > The getAttributeNS(namespace, localName) method steps are to return the result of
+    /// > getting an attribute given namespace, localName, and this.
+    ///
+    /// See: https://dom.spec.whatwg.org/#dom-element-getattributens
+    /// See: https://developer.mozilla.org/en-US/docs/Web/API/Element/getAttributeNS
+    ///
+    /// ## Example
+    ///
+    /// ```zig
+    /// const xml_ns = "http://www.w3.org/XML/1998/namespace";
+    /// if (element.getAttributeNS(xml_ns, "lang")) |value| {
+    ///     // Found xml:lang attribute
+    /// }
+    /// ```
+    pub fn getAttributeNS(
+        self: *const Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) ?[]const u8 {
+        return self.attributes.array.get(local_name, namespace);
+    }
+
+    /// Sets an attribute with a namespace and qualified name.
+    ///
+    /// Implements WHATWG DOM Element.setAttributeNS() interface.
+    ///
+    /// ## WebIDL
+    ///
+    /// ```webidl
+    /// [CEReactions] undefined setAttributeNS(DOMString? namespace, DOMString qualifiedName, DOMString value);
+    /// ```
+    ///
+    /// ## Parameters
+    ///
+    /// - `namespace`: Namespace URI (nullable)
+    /// - `qualified_name`: Qualified name (may include prefix, e.g. "xml:lang")
+    /// - `value`: Attribute value
+    ///
+    /// ## Spec References
+    ///
+    /// **WHATWG DOM**:
+    /// > The setAttributeNS(namespace, qualifiedName, value) method steps are:
+    /// > 1. Let namespace, prefix, and localName be the result of passing namespace and qualifiedName to validate and extract.
+    /// > 2. Set an attribute value for this using localName, value, and also prefix and namespace.
+    ///
+    /// See: https://dom.spec.whatwg.org/#dom-element-setattributens
+    /// See: https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttributeNS
+    ///
+    /// ## Example
+    ///
+    /// ```zig
+    /// const xml_ns = "http://www.w3.org/XML/1998/namespace";
+    /// try element.setAttributeNS(xml_ns, "xml:lang", "en");
+    /// ```
+    pub fn setAttributeNS(
+        self: *Element,
+        namespace: ?[]const u8,
+        qualified_name: []const u8,
+        value: []const u8,
+    ) !void {
+        // TODO: Implement full validation and prefix extraction per spec
+        // For now, extract local name from qualified name (after ':' if present)
+        const local_name = if (std.mem.indexOfScalar(u8, qualified_name, ':')) |colon_idx|
+            qualified_name[colon_idx + 1 ..]
+        else
+            qualified_name;
+
+        // Intern the strings via document's string pool if we have an owner document
+        const interned_local = if (self.prototype.owner_document) |owner| blk: {
+            if (owner.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", owner);
+                break :blk try doc.string_pool.intern(local_name);
+            }
+            break :blk local_name;
+        } else local_name;
+
+        const interned_value = if (self.prototype.owner_document) |owner| blk: {
+            if (owner.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", owner);
+                break :blk try doc.string_pool.intern(value);
+            }
+            break :blk value;
+        } else value;
+
+        const interned_ns = if (namespace) |ns| blk: {
+            if (self.prototype.owner_document) |owner| {
+                if (owner.node_type == .document) {
+                    const Document = @import("document.zig").Document;
+                    const doc: *Document = @fieldParentPtr("prototype", owner);
+                    break :blk try doc.string_pool.intern(ns);
+                }
+            }
+            break :blk ns;
+        } else null;
+
+        // Set attribute with namespace
+        try self.attributes.array.set(interned_local, interned_ns, interned_value);
+    }
+
+    /// Removes an attribute by namespace and local name.
+    ///
+    /// Implements WHATWG DOM Element.removeAttributeNS() interface.
+    ///
+    /// ## WebIDL
+    ///
+    /// ```webidl
+    /// [CEReactions] undefined removeAttributeNS(DOMString? namespace, DOMString localName);
+    /// ```
+    ///
+    /// ## Parameters
+    ///
+    /// - `namespace`: Namespace URI (nullable)
+    /// - `local_name`: Local name of the attribute to remove
+    ///
+    /// ## Spec References
+    ///
+    /// **WHATWG DOM**:
+    /// > The removeAttributeNS(namespace, localName) method steps are to remove an attribute
+    /// > given namespace, localName, and this.
+    ///
+    /// See: https://dom.spec.whatwg.org/#dom-element-removeattributens
+    /// See: https://developer.mozilla.org/en-US/docs/Web/API/Element/removeAttributeNS
+    ///
+    /// ## Example
+    ///
+    /// ```zig
+    /// const xml_ns = "http://www.w3.org/XML/1998/namespace";
+    /// element.removeAttributeNS(xml_ns, "lang"); // Remove xml:lang
+    /// ```
+    pub fn removeAttributeNS(
+        self: *Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) void {
+        _ = self.attributes.array.remove(local_name, namespace);
+    }
+
+    /// Checks if element has an attribute with given namespace and local name.
+    ///
+    /// Implements WHATWG DOM Element.hasAttributeNS() interface.
+    ///
+    /// ## WebIDL
+    ///
+    /// ```webidl
+    /// boolean hasAttributeNS(DOMString? namespace, DOMString localName);
+    /// ```
+    ///
+    /// ## Parameters
+    ///
+    /// - `namespace`: Namespace URI (nullable)
+    /// - `local_name`: Local name of the attribute
+    ///
+    /// ## Returns
+    ///
+    /// true if attribute exists, false otherwise.
+    ///
+    /// ## Spec References
+    ///
+    /// **WHATWG DOM**:
+    /// > The hasAttributeNS(namespace, localName) method steps are to return true if this has
+    /// > an attribute whose namespace is namespace and local name is localName; otherwise false.
+    ///
+    /// See: https://dom.spec.whatwg.org/#dom-element-hasattributens
+    /// See: https://developer.mozilla.org/en-US/docs/Web/API/Element/hasAttributeNS
+    ///
+    /// ## Example
+    ///
+    /// ```zig
+    /// const xml_ns = "http://www.w3.org/XML/1998/namespace";
+    /// if (element.hasAttributeNS(xml_ns, "lang")) {
+    ///     // Has xml:lang attribute
+    /// }
+    /// ```
+    pub fn hasAttributeNS(
+        self: *const Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) bool {
+        return self.attributes.array.has(local_name, namespace);
+    }
+
     /// Returns the number of attributes on the element.
     pub fn attributeCount(self: *const Element) usize {
         return self.attributes.count();

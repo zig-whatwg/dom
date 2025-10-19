@@ -1216,3 +1216,167 @@ test "Element - getElementsByClassName nested" {
     try std.testing.expectEqual(@as(usize, 1), container1_items.length());
     try std.testing.expect(container1_items.item(0).? == widget1);
 }
+
+// ============================================================================
+// Namespace Attribute Tests (Phase 15)
+// ============================================================================
+
+test "setAttributeNS and getAttributeNS basic usage" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    const xml_ns = "http://www.w3.org/XML/1998/namespace";
+
+    // Set namespaced attribute
+    try elem.setAttributeNS(xml_ns, "xml:lang", "en");
+
+    // Get by namespace and local name
+    const value = elem.getAttributeNS(xml_ns, "lang");
+    try std.testing.expect(value != null);
+    try std.testing.expectEqualStrings("en", value.?);
+}
+
+test "getAttributeNS returns null for non-existent attribute" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    const xml_ns = "http://www.w3.org/XML/1998/namespace";
+
+    // Get non-existent attribute
+    const value = elem.getAttributeNS(xml_ns, "lang");
+    try std.testing.expect(value == null);
+}
+
+test "setAttributeNS with null namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    // Set attribute with null namespace
+    try elem.setAttributeNS(null, "attr", "value");
+
+    // Get by null namespace
+    const value = elem.getAttributeNS(null, "attr");
+    try std.testing.expect(value != null);
+    try std.testing.expectEqualStrings("value", value.?);
+}
+
+test "hasAttributeNS checks namespace and local name" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    const xml_ns = "http://www.w3.org/XML/1998/namespace";
+
+    // Set attribute
+    try elem.setAttributeNS(xml_ns, "xml:lang", "en");
+
+    // Check existence
+    try std.testing.expect(elem.hasAttributeNS(xml_ns, "lang"));
+    try std.testing.expect(!elem.hasAttributeNS(xml_ns, "space"));
+    try std.testing.expect(!elem.hasAttributeNS(null, "lang")); // Different namespace
+}
+
+test "removeAttributeNS removes namespaced attribute" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    const xml_ns = "http://www.w3.org/XML/1998/namespace";
+
+    // Set and verify
+    try elem.setAttributeNS(xml_ns, "xml:lang", "en");
+    try std.testing.expect(elem.hasAttributeNS(xml_ns, "lang"));
+
+    // Remove
+    elem.removeAttributeNS(xml_ns, "lang");
+
+    // Verify removed
+    try std.testing.expect(!elem.hasAttributeNS(xml_ns, "lang"));
+    try std.testing.expect(elem.getAttributeNS(xml_ns, "lang") == null);
+}
+
+test "namespaced and non-namespaced attributes are separate" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    const xml_ns = "http://www.w3.org/XML/1998/namespace";
+
+    // Set both namespaced and non-namespaced attributes with same local name
+    try elem.setAttributeNS(xml_ns, "xml:lang", "en");
+    try elem.setAttributeNS(null, "lang", "fr");
+
+    // Both should exist independently
+    try std.testing.expectEqualStrings("en", elem.getAttributeNS(xml_ns, "lang").?);
+    try std.testing.expectEqualStrings("fr", elem.getAttributeNS(null, "lang").?);
+
+    // Remove one shouldn't affect the other
+    elem.removeAttributeNS(xml_ns, "lang");
+    try std.testing.expect(elem.getAttributeNS(xml_ns, "lang") == null);
+    try std.testing.expectEqualStrings("fr", elem.getAttributeNS(null, "lang").?);
+}
+
+test "setAttributeNS updates existing attribute" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    const xml_ns = "http://www.w3.org/XML/1998/namespace";
+
+    // Set initial value
+    try elem.setAttributeNS(xml_ns, "xml:lang", "en");
+    try std.testing.expectEqualStrings("en", elem.getAttributeNS(xml_ns, "lang").?);
+
+    // Update value
+    try elem.setAttributeNS(xml_ns, "xml:lang", "fr");
+    try std.testing.expectEqualStrings("fr", elem.getAttributeNS(xml_ns, "lang").?);
+
+    // Should still only have one attribute with this namespace+localName
+    // (This is implicitly tested by the fact that we get the new value)
+}
+
+test "multiple namespaced attributes" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("element");
+    defer elem.prototype.release();
+
+    const xml_ns = "http://www.w3.org/XML/1998/namespace";
+    const custom_ns = "http://example.com/custom";
+
+    // Set multiple attributes with different namespaces
+    try elem.setAttributeNS(xml_ns, "xml:lang", "en");
+    try elem.setAttributeNS(custom_ns, "custom:attr", "value");
+    try elem.setAttributeNS(null, "regular", "normal");
+
+    // Verify all exist
+    try std.testing.expectEqualStrings("en", elem.getAttributeNS(xml_ns, "lang").?);
+    try std.testing.expectEqualStrings("value", elem.getAttributeNS(custom_ns, "attr").?);
+    try std.testing.expectEqualStrings("normal", elem.getAttributeNS(null, "regular").?);
+}
