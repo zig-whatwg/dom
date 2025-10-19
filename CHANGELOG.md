@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Phase 15: Namespace Attribute Support with Array-Based Storage** 🎉
+  - **Qualified Name Validation (WHATWG DOM §4.9)** ✅ NEW
+    - `validateAndExtract(namespace, qualifiedName)` - Validates and extracts namespace components
+    - `QualifiedNameComponents` struct - Returns (namespace, prefix, localName) tuple
+    - XML Name validation per XML Namespaces specification
+    - NCName validation (no colons in prefix/localName)
+    - Namespace-specific rules enforcement:
+      * `xml` prefix requires XML namespace (`http://www.w3.org/XML/1998/namespace`)
+      * `xmlns` prefix/name requires XMLNS namespace (`http://www.w3.org/2000/xmlns/`)
+      * XMLNS namespace requires `xmlns` prefix or name
+    - Character validation: `isValidXMLName()`, `isValidXMLNCName()`
+    - New errors: `InvalidCharacterError`, `NamespaceError`
+    - Element.setAttributeNS() now validates before setting
+    - 15 new tests (10 validation unit + 5 Element integration)
   - **QualifiedName Foundation** ✅ NEW
     - `QualifiedName` - Immutable (namespace, prefix, localName) tuple
     - `QualifiedName.init(localName)` - Create non-namespaced name
