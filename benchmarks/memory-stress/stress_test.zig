@@ -264,14 +264,14 @@ pub const StressTest = struct {
     fn createInitialDOM(self: *StressTest) !void {
         // Create root container
         const body = try self.doc.createElement("body");
-        _ = try self.doc.node.appendChild(&body.node);
+        _ = try self.doc.prototype.appendChild(&body.prototype);
         try self.registry.add(body);
 
         // Create main sections
         var section_idx: usize = 0;
         while (section_idx < 5) : (section_idx += 1) {
             const section = try self.doc.createElement("section");
-            _ = try body.node.appendChild(&section.node);
+            _ = try body.prototype.appendChild(&section.prototype);
             try self.registry.add(section);
 
             // Add some initial elements to each section
@@ -279,11 +279,11 @@ pub const StressTest = struct {
             while (elem_idx < 20) : (elem_idx += 1) {
                 const div = try self.doc.createElement("div");
                 try div.setAttribute("class", "content");
-                _ = try section.node.appendChild(&div.node);
+                _ = try section.prototype.appendChild(&div.prototype);
                 try self.registry.add(div);
 
                 const text = try self.doc.createTextNode("Initial content");
-                _ = try div.node.appendChild(&text.node);
+                _ = try div.prototype.appendChild(&text.prototype);
 
                 self.stats.nodes_created += 1;
             }
@@ -314,13 +314,13 @@ pub const StressTest = struct {
             // Create new element
             const new_elem = try self.doc.createElement("div");
             try new_elem.setAttribute("class", "dynamic");
-            _ = try parent.node.appendChild(&new_elem.node);
+            _ = try parent.prototype.appendChild(&new_elem.prototype);
             try self.registry.add(new_elem);
 
             // 50% chance to add text content (creates mix of leaf and non-leaf nodes)
             if (self.prng.random().boolean()) {
                 const text = try self.doc.createTextNode("Dynamic content");
-                _ = try new_elem.node.appendChild(&text.node);
+                _ = try new_elem.prototype.appendChild(&text.prototype);
             }
 
             self.stats.nodes_created += 1;
@@ -336,8 +336,8 @@ pub const StressTest = struct {
                     // Access random element
                     const elem = self.registry.getRandom(&self.prng);
                     if (elem) |e| {
-                        _ = e.node.node_type;
-                        _ = e.node.parent_node;
+                        _ = e.prototype.node_type;
+                        _ = e.prototype.parent_node;
                     }
                 },
                 1 => {
@@ -415,9 +415,9 @@ pub const StressTest = struct {
             const elem = self.registry.getRandom(&self.prng) orelse continue;
 
             // Modify text content (but limit growth to avoid unbounded memory)
-            if (elem.node.first_child) |child| {
+            if (elem.prototype.first_child) |child| {
                 if (child.node_type == .text) {
-                    const text_node: *Text = @fieldParentPtr("node", child);
+                    const text_node: *Text = @fieldParentPtr("prototype", child);
                     // Only append if text is still reasonably short
                     if (text_node.data.len < 100) {
                         text_node.appendData("!") catch {};
@@ -477,18 +477,18 @@ pub const StressTest = struct {
             const elem = self.registry.getRandom(&self.prng) orelse break;
 
             // Skip if it's a root element (body or section)
-            if (elem.node.parent_node == null or elem.node.parent_node == &self.doc.node) continue;
+            if (elem.prototype.parent_node == null or elem.prototype.parent_node == &self.doc.prototype) continue;
 
             // Skip if it has children (only remove leaf nodes to avoid cascading deletes)
-            if (elem.node.first_child != null) continue;
+            if (elem.prototype.first_child != null) continue;
 
             // Check if element has a parent
-            if (elem.node.parent_node) |parent| {
+            if (elem.prototype.parent_node) |parent| {
                 // Remove from registry FIRST (HashMap.remove is safe with pointer)
                 self.registry.remove(elem);
 
                 // Remove from DOM and free the node
-                const removed_node = try parent.removeChild(&elem.node);
+                const removed_node = try parent.removeChild(&elem.prototype);
                 removed_node.release();
 
                 self.stats.nodes_deleted += 1;
