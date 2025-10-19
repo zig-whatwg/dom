@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 12: Text & Element Enhancement Methods** 🎉
+  - **Text.wholeText Property (WHATWG DOM §4.7)** ✅ NEW
+    - `wholeText(allocator)` - Returns combined text of all adjacent text nodes
+    - Concatenates contiguous Text nodes (reachable via siblings)
+    - Useful for getting complete text across normalized boundaries
+    - Returns owned slice (caller must free)
+  - **Text.splitText() (WHATWG DOM §4.7)** ✅ Already implemented
+    - Splits text node at specified offset into two nodes
+    - Returns new text node with content after offset
+    - Automatically inserts new node after original in tree
+  - **Element.insertAdjacentElement() (WHATWG DOM §4.10)** ✅ NEW
+    - `insertAdjacentElement(where, element)` - Insert element at relative position
+    - Positions: "beforebegin", "afterbegin", "beforeend", "afterend"
+    - Returns inserted element or null if position invalid
+    - Legacy API but widely used
+  - **Element.insertAdjacentText() (WHATWG DOM §4.10)** ✅ NEW
+    - `insertAdjacentText(where, data)` - Insert text at relative position
+    - Same position strings as insertAdjacentElement
+    - Automatically creates Text node from string
+    - Legacy API but widely used
+  - **Node.isEqualNode() (WHATWG DOM §4.4)** ✅ Already implemented
+    - Deep equality comparison of nodes
+    - Compares node type, name, value, attributes, and children
+    - Recursive comparison of entire subtree
+  - **Test Coverage**: All methods tested, all passing, 0 leaks ✅
+  - **Spec References**:
+    - Text.wholeText: https://dom.spec.whatwg.org/#dom-text-wholetext
+    - Text.splitText: https://dom.spec.whatwg.org/#dom-text-splittext
+    - insertAdjacent: https://dom.spec.whatwg.org/#dom-element-insertadjacentelement
+    - Node.isEqualNode: https://dom.spec.whatwg.org/#dom-node-isequalnode
+    - WebIDL: dom.idl:244, 405-406, 458-459
+
 - **Phase 11: DOM Convenience Methods Complete** 🎉
   - **ChildNode Mixin (WHATWG DOM §4.2.8)** - Complete on all types
     - `remove()` - Remove node from parent (simpler than `parent.removeChild(node)`)

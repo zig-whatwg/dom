@@ -605,6 +605,75 @@ pub const Text = struct {
         return new_text;
     }
 
+    /// Returns the combined text of all adjacent text nodes.
+    ///
+    /// Implements WHATWG DOM Text.wholeText per §4.7.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute DOMString wholeText;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - wholeText: https://developer.mozilla.org/en-US/docs/Web/API/Text/wholeText
+    ///
+    /// ## Algorithm (from spec §4.7)
+    /// Concatenate data of contiguous Text nodes (those that can be reached by traversing
+    /// previous/next sibling Text nodes).
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-text-wholetext
+    /// - WebIDL: dom.idl:459
+    ///
+    /// ## Parameters
+    /// - `allocator`: Memory allocator for the combined string
+    ///
+    /// ## Returns
+    /// Combined text of all adjacent text nodes (caller must free)
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("div");
+    /// const text1 = try doc.createTextNode("Hello");
+    /// _ = try parent.prototype.appendChild(&text1.prototype);
+    /// const text2 = try doc.createTextNode(" ");
+    /// _ = try parent.prototype.appendChild(&text2.prototype);
+    /// const text3 = try doc.createTextNode("World");
+    /// _ = try parent.prototype.appendChild(&text3.prototype);
+    ///
+    /// const whole = try text2.wholeText(allocator);
+    /// defer allocator.free(whole);
+    /// // whole = "Hello World"
+    /// ```
+    pub fn wholeText(self: *const Text, allocator: Allocator) ![]const u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        errdefer list.deinit();
+
+        // Find the first text node in the contiguous sequence
+        var first: *Node = @constCast(&self.prototype);
+        while (first.previous_sibling) |prev| {
+            if (prev.node_type == .text) {
+                first = prev;
+            } else {
+                break;
+            }
+        }
+
+        // Concatenate all contiguous text nodes
+        var current: ?*Node = first;
+        while (current) |node| {
+            if (node.node_type == .text) {
+                const text_node: *const Text = @fieldParentPtr("prototype", node);
+                try list.appendSlice(text_node.data);
+                current = node.next_sibling;
+            } else {
+                break;
+            }
+        }
+
+        return try list.toOwnedSlice();
+    }
+
     // ========================================================================
     // NonDocumentTypeChildNode Mixin (WHATWG DOM §4.2.7)
     // ========================================================================

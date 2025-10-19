@@ -3348,6 +3348,144 @@ pub const Element = struct {
     // NOTE: Phase 3 - addToClassMap and removeFromClassMap removed
     // getElementsByClassName now uses tree traversal with bloom filters instead of class_map
 
+    // ========================================================================
+    // Legacy Insertion Methods (WHATWG DOM §4.10)
+    // ========================================================================
+
+    /// Inserts an element at a position relative to this element.
+    ///
+    /// Implements WHATWG DOM Element.insertAdjacentElement() per §4.10 (legacy).
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] Element? insertAdjacentElement(DOMString where, Element element);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - insertAdjacentElement(): https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentElement
+    ///
+    /// ## Algorithm (from spec §4.10)
+    /// where can be:
+    /// - "beforebegin": Before this element
+    /// - "afterbegin": As first child of this element
+    /// - "beforeend": As last child of this element
+    /// - "afterend": After this element
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-element-insertadjacentelement
+    /// - WebIDL: dom.idl:405
+    ///
+    /// ## Parameters
+    /// - `where`: Position string ("beforebegin", "afterbegin", "beforeend", "afterend")
+    /// - `element`: Element to insert
+    ///
+    /// ## Returns
+    /// The inserted element, or null if position is invalid
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const child = try doc.createElement("child");
+    /// const new_elem = try doc.createElement("new");
+    ///
+    /// _ = try parent.prototype.appendChild(&child.prototype);
+    /// const result = try child.insertAdjacentElement("beforebegin", new_elem);
+    /// // Order: new, child
+    /// ```
+    pub fn insertAdjacentElement(self: *Element, where: []const u8, element: *Element) !?*Element {
+        if (std.mem.eql(u8, where, "beforebegin")) {
+            const parent = self.prototype.parent_node orelse return null;
+            _ = try parent.insertBefore(&element.prototype, &self.prototype);
+            return element;
+        } else if (std.mem.eql(u8, where, "afterbegin")) {
+            _ = try self.prototype.insertBefore(&element.prototype, self.prototype.first_child);
+            return element;
+        } else if (std.mem.eql(u8, where, "beforeend")) {
+            _ = try self.prototype.appendChild(&element.prototype);
+            return element;
+        } else if (std.mem.eql(u8, where, "afterend")) {
+            const parent = self.prototype.parent_node orelse return null;
+            _ = try parent.insertBefore(&element.prototype, self.prototype.next_sibling);
+            return element;
+        } else {
+            // Invalid position
+            return error.SyntaxError;
+        }
+    }
+
+    /// Inserts text at a position relative to this element.
+    ///
+    /// Implements WHATWG DOM Element.insertAdjacentText() per §4.10 (legacy).
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// undefined insertAdjacentText(DOMString where, DOMString data);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - insertAdjacentText(): https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentText
+    ///
+    /// ## Algorithm (from spec §4.10)
+    /// where can be:
+    /// - "beforebegin": Before this element
+    /// - "afterbegin": As first child of this element
+    /// - "beforeend": As last child of this element
+    /// - "afterend": After this element
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-element-insertadjacenttext
+    /// - WebIDL: dom.idl:406
+    ///
+    /// ## Parameters
+    /// - `where`: Position string ("beforebegin", "afterbegin", "beforeend", "afterend")
+    /// - `data`: Text content to insert
+    ///
+    /// ## Errors
+    /// - `error.SyntaxError`: Invalid position string
+    /// - `error.OutOfMemory`: Failed to create text node
+    ///
+    /// ## Example
+    /// ```zig
+    /// const parent = try doc.createElement("parent");
+    /// const child = try doc.createElement("child");
+    ///
+    /// _ = try parent.prototype.appendChild(&child.prototype);
+    /// try child.insertAdjacentText("beforebegin", "text");
+    /// // Order: text, child
+    /// ```
+    pub fn insertAdjacentText(self: *Element, where: []const u8, data: []const u8) !void {
+        const owner_doc = self.prototype.owner_document orelse {
+            return error.InvalidStateError;
+        };
+        if (owner_doc.node_type != .document) {
+            return error.InvalidStateError;
+        }
+
+        const Document = @import("document.zig").Document;
+        const doc: *Document = @fieldParentPtr("prototype", owner_doc);
+        const text = try doc.createTextNode(data);
+
+        if (std.mem.eql(u8, where, "beforebegin")) {
+            const parent = self.prototype.parent_node orelse return;
+            _ = try parent.insertBefore(&text.prototype, &self.prototype);
+        } else if (std.mem.eql(u8, where, "afterbegin")) {
+            _ = try self.prototype.insertBefore(&text.prototype, self.prototype.first_child);
+        } else if (std.mem.eql(u8, where, "beforeend")) {
+            _ = try self.prototype.appendChild(&text.prototype);
+        } else if (std.mem.eql(u8, where, "afterend")) {
+            const parent = self.prototype.parent_node orelse return;
+            _ = try parent.insertBefore(&text.prototype, self.prototype.next_sibling);
+        } else {
+            // Invalid position - need to release the text node we created
+            text.prototype.release();
+            return error.SyntaxError;
+        }
+    }
+
+    // ========================================================================
+    // Vtable Implementations
+    // ========================================================================
+
     /// Vtable implementation: cleanup
     fn deinitImpl(node: *Node) void {
         const elem: *Element = @fieldParentPtr("prototype", node);
