@@ -4,6 +4,25 @@
 
 ---
 
+## ⚠️ CRITICAL ENFORCEMENT RULE
+
+**ABSOLUTELY NEVER create summary/analysis/planning/completion documents in the project root.**
+
+**VIOLATION EXAMPLES** (these should NEVER exist in root):
+- ❌ `PHASE_*_SUMMARY.md`
+- ❌ `PHASE_*_COMPLETE.md`
+- ❌ `SESSION_*.md`
+- ❌ `*_ANALYSIS.md`
+- ❌ `*_PLAN.md`
+- ❌ `GAP_ANALYSIS*.md`
+- ❌ `*_STATUS.md`
+- ❌ `*_REPORT.md`
+- ❌ `*_IMPLEMENTATION.md` (unless core design doc)
+
+**ALL these MUST go in `summaries/` subdirectories.**
+
+---
+
 ## Core Rule
 
 **NEVER create analysis, planning, or completion documents in the project root.**
@@ -113,9 +132,10 @@ summaries/
 - `COMPLEX_SELECTORS_COMPLETE.md`
 
 **Naming convention:**
-- `{PHASE}_COMPLETE.md` or `{FEATURE}_COMPLETE.md`
+- `PHASE_{N}_COMPLETE.md` or `{FEATURE}_COMPLETE.md`
 - Use UPPERCASE with underscores
 - Clear indication of completion
+- **ALWAYS in `summaries/completion/`, NEVER in root**
 
 ### Session Summaries → `summaries/sessions/`
 
@@ -126,12 +146,15 @@ summaries/
 
 **Examples:**
 - `SESSION_SUMMARY_2025-10-17.md`
+- `SESSION_PHASE10_COMPLETE.md`
 - `CONVERSATION_SUMMARY.md`
 
 **Naming convention:**
 - `SESSION_SUMMARY_{DATE}.md` for date-specific
+- `SESSION_PHASE{N}_COMPLETE.md` for phase completion sessions
 - `SESSION_SUMMARY_{DATE}_PART{N}.md` for multi-part sessions
 - Include ISO date format (YYYY-MM-DD)
+- **ALWAYS in `summaries/sessions/`, NEVER in root**
 
 ### Obsolete Documents → `summaries/obsolete/`
 
