@@ -24,7 +24,7 @@ test {
 test {
     _ = @import("event_test.zig");
     _ = @import("abort_signal_test.zig");
-    _ = @import("mutation_observer_test.zig");
+    _ = @import("mutation_observer_test_fixed.zig");
     // TODO: event_target_test.zig needs refactoring - tests internal APIs not exported
     // _ = @import("event_target_test.zig");
 }
