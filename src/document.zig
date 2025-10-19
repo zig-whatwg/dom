@@ -890,6 +890,107 @@ pub const Document = struct {
         return fragment;
     }
 
+    /// Creates a new DocumentType node.
+    ///
+    /// ## WHATWG Specification
+    /// - **DOMImplementation.createDocumentType()**: https://dom.spec.whatwg.org/#dom-domimplementation-createdocumenttype
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] DocumentType createDocumentType(DOMString qualifiedName, DOMString publicId, DOMString systemId);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - DOMImplementation.createDocumentType(): https://developer.mozilla.org/en-US/docs/Web/API/DOMImplementation/createDocumentType
+    ///
+    /// ## Algorithm (WHATWG DOM §5.2)
+    /// Create a new DocumentType node with:
+    /// - name set to qualifiedName
+    /// - publicId set to publicId
+    /// - systemId set to systemId
+    /// - node document set to this document
+    ///
+    /// ## Memory Management
+    /// Returns DocumentType with ref_count=1. Caller MUST call `doctype.prototype.release()`.
+    ///
+    /// ## Parameters
+    /// - `name`: Document type name (e.g., "html", "xml", "svg")
+    /// - `publicId`: Public identifier (empty string for HTML5)
+    /// - `systemId`: System identifier/DTD URL (empty string for HTML5)
+    ///
+    /// ## Returns
+    /// New DocumentType node owned by this document
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-domimplementation-createdocumenttype
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// // HTML5 doctype: <!DOCTYPE html>
+    /// const doctype = try doc.createDocumentType("html", "", "");
+    /// defer doctype.prototype.release();
+    ///
+    /// // XML doctype with public/system IDs
+    /// const xml_doctype = try doc.createDocumentType(
+    ///     "svg",
+    ///     "-//W3C//DTD SVG 1.1//EN",
+    ///     "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"
+    /// );
+    /// defer xml_doctype.prototype.release();
+    /// ```
+    pub fn createDocumentType(self: *Document, name: []const u8, publicId: []const u8, systemId: []const u8) !*@import("document_type.zig").DocumentType {
+        const DocumentType = @import("document_type.zig").DocumentType;
+
+        // Intern strings via document string pool
+        const name_interned = try self.string_pool.intern(name);
+        const publicId_interned = try self.string_pool.intern(publicId);
+        const systemId_interned = try self.string_pool.intern(systemId);
+
+        // Create DocumentType with interned strings
+        const dt = try self.prototype.allocator.create(DocumentType);
+        errdefer self.prototype.allocator.destroy(dt);
+
+        dt.* = DocumentType{
+            .prototype = .{
+                .prototype = .{
+                    .vtable = &node_mod.eventtarget_vtable,
+                },
+                .vtable = &DocumentType.vtable,
+                .ref_count_and_parent = std.atomic.Value(u32).init(1),
+                .node_type = .document_type,
+                .flags = 0,
+                .node_id = 0,
+                .generation = 0,
+                .allocator = self.prototype.allocator,
+                .parent_node = null,
+                .previous_sibling = null,
+                .first_child = null,
+                .last_child = null,
+                .next_sibling = null,
+                .owner_document = null,
+                .rare_data = null,
+            },
+            .name = name_interned,
+            .publicId = publicId_interned,
+            .systemId = systemId_interned,
+        };
+
+        // Set owner document and assign node ID
+        dt.prototype.owner_document = &self.prototype;
+        dt.prototype.node_id = self.allocateNodeId();
+
+        // Increment document's node ref count
+        self.acquireNodeRef();
+
+        return dt;
+    }
+
     /// Adopts a node from another document into this document.
     ///
     /// Implements WHATWG DOM Document.adoptNode() per §4.10.
@@ -941,6 +1042,85 @@ pub const Document = struct {
     /// _ = try doc2.adoptNode(&elem.prototype);
     /// try std.testing.expect(elem.prototype.getOwnerDocument() == doc2);
     /// ```
+    /// Imports a node from another document into this document.
+    ///
+    /// Creates a copy of the node from an external document and prepares it for insertion
+    /// into this document. The original node is not modified. If `deep` is true, the entire
+    /// subtree (including descendants) is cloned.
+    ///
+    /// Implements WHATWG DOM Document.importNode() interface per §4.5.2.
+    ///
+    /// ## WebIDL
+    ///
+    /// ```webidl
+    /// [CEReactions, NewObject] Node importNode(Node node, optional (boolean or ImportNodeOptions) options = false);
+    /// ```
+    ///
+    /// ## WHATWG Algorithm (§4.5.2)
+    ///
+    /// 1. If node is a document or shadow root, throw NotSupportedError
+    /// 2. Return clone(node, this, deep flag)
+    ///
+    /// ## Parameters
+    /// - `node`: Node to import from another document
+    /// - `deep`: If true, recursively clone descendants; if false, clone only the node itself
+    ///
+    /// ## Returns
+    /// Cloned node owned by this document (not yet inserted)
+    ///
+    /// ## Errors
+    /// - `NotSupported`: Cannot import Document or ShadowRoot nodes
+    /// - `OutOfMemory`: Failed to allocate cloned node
+    ///
+    /// ## Example
+    ///
+    /// ```zig
+    /// const doc1 = try Document.init(allocator);
+    /// defer doc1.release();
+    /// const doc2 = try Document.init(allocator);
+    /// defer doc2.release();
+    ///
+    /// const elem1 = try doc1.createElement("div");
+    /// try elem1.setAttribute("id", "original");
+    /// _ = try doc1.prototype.appendChild(&elem1.prototype);
+    ///
+    /// // Import (clone) from doc1 to doc2
+    /// const imported = try doc2.importNode(&elem1.prototype, false);
+    /// // imported is a separate node owned by doc2
+    /// // elem1 remains in doc1 unchanged
+    ///
+    /// _ = try doc2.prototype.appendChild(imported);
+    /// ```
+    ///
+    /// ## Spec References
+    ///
+    /// See: https://dom.spec.whatwg.org/#dom-document-importnode
+    /// See: https://developer.mozilla.org/en-US/docs/Web/API/Document/importNode
+    pub fn importNode(self: *Document, node: *Node, deep: bool) !*Node {
+        // Step 1: If node is a document, throw NotSupportedError
+        if (node.node_type == .document) {
+            return error.NotSupported;
+        }
+
+        // Step 2: If node is a shadow root, throw NotSupportedError
+        if (node.node_type == .shadow_root) {
+            return error.NotSupported;
+        }
+
+        // Step 3: Clone the node using this document's allocator
+        // This ensures the cloned node and all its descendants are allocated
+        // in the target document's arena, avoiding cross-arena memory issues
+        const cloned = try node.cloneNodeWithAllocator(self.prototype.allocator, deep);
+        errdefer cloned.release();
+
+        // Step 4: Adopt the cloned node into this document
+        // This sets owner_document and updates all descendants
+        const adopt_fn = @import("node.zig").adopt;
+        try adopt_fn(cloned, &self.prototype);
+
+        return cloned;
+    }
+
     pub fn adoptNode(self: *Document, node: *Node) !*Node {
         // Step 1: If node is a document, throw NotSupportedError
         if (node.node_type == .document) {
@@ -1019,13 +1199,12 @@ pub const Document = struct {
     ///     std.debug.print("Doctype: {s}\n", .{dt.name});
     /// }
     /// ```
-    pub fn doctype(self: *const Document) ?*Node {
-        // TODO: Full implementation requires DocumentType struct
-        // For now, search for DocumentType node among children
+    pub fn doctype(self: *const Document) ?*@import("document_type.zig").DocumentType {
+        // Search for DocumentType node among children
         var current = self.prototype.first_child;
         while (current) |node| {
             if (node.node_type == .document_type) {
-                return node;
+                return @fieldParentPtr("prototype", node);
             }
             current = node.next_sibling;
         }
@@ -1774,931 +1953,14 @@ pub const Document = struct {
 // TESTS
 // ============================================================================
 
-test "StringPool - string deduplication" {
-    const allocator = std.testing.allocator;
-
-    var pool = StringPool.init(allocator);
-    defer pool.deinit();
-
-    // Intern same string twice
-    const str1 = try pool.intern("test-element");
-    const str2 = try pool.intern("test-element");
-
-    // Should return same pointer (deduplicated)
-    try std.testing.expectEqual(str1.ptr, str2.ptr);
-    try std.testing.expectEqualStrings("test-element", str1);
-
-    // Only one string allocated
-    try std.testing.expectEqual(@as(usize, 1), pool.count());
-}
-
-test "StringPool - multiple strings" {
-    const allocator = std.testing.allocator;
-
-    var pool = StringPool.init(allocator);
-    defer pool.deinit();
-
-    // Intern multiple different strings
-    const custom1 = try pool.intern("my-custom-element");
-    const custom2 = try pool.intern("my-custom-element");
-
-    // Should return same pointer (deduplicated)
-    try std.testing.expectEqual(custom1.ptr, custom2.ptr);
-    try std.testing.expectEqualStrings("my-custom-element", custom1);
-
-    // One string allocated
-    try std.testing.expectEqual(@as(usize, 1), pool.count());
-
-    // Add another string
-    _ = try pool.intern("another-element");
-    try std.testing.expectEqual(@as(usize, 2), pool.count());
-}
-
-test "StringPool - multiple unique strings" {
-    const allocator = std.testing.allocator;
-
-    var pool = StringPool.init(allocator);
-    defer pool.deinit();
-
-    // Intern multiple unique strings
-    const str1 = try pool.intern("element-one");
-    const str2 = try pool.intern("custom-element");
-    const str3 = try pool.intern("element-three");
-
-    try std.testing.expectEqualStrings("element-one", str1);
-    try std.testing.expectEqualStrings("custom-element", str2);
-    try std.testing.expectEqualStrings("element-three", str3);
-
-    // Three unique strings allocated
-    try std.testing.expectEqual(@as(usize, 3), pool.count());
-}
-
-test "Document - creation and cleanup" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Verify node properties
-    try std.testing.expectEqual(NodeType.document, doc.prototype.node_type);
-    try std.testing.expectEqual(@as(usize, 1), doc.external_ref_count.load(.monotonic));
-    try std.testing.expectEqual(@as(usize, 0), doc.node_ref_count.load(.monotonic));
-
-    // Verify vtable dispatch
-    try std.testing.expectEqualStrings("#document", doc.prototype.nodeName());
-    try std.testing.expect(doc.prototype.nodeValue() == null);
-}
-
-test "Document - dual ref counting" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Initial external refs
-    try std.testing.expectEqual(@as(usize, 1), doc.external_ref_count.load(.monotonic));
-
-    // Acquire external ref
-    doc.acquire();
-    try std.testing.expectEqual(@as(usize, 2), doc.external_ref_count.load(.monotonic));
-
-    // Release external ref
-    doc.release();
-    try std.testing.expectEqual(@as(usize, 1), doc.external_ref_count.load(.monotonic));
-}
-
-test "Document - createElement" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Create element
-    const elem = try doc.createElement("test-element");
-    defer elem.prototype.release();
-
-    // Verify element properties
-    try std.testing.expectEqualStrings("test-element", elem.tag_name);
-    try std.testing.expectEqual(&doc.prototype, elem.prototype.owner_document.?);
-    try std.testing.expect(elem.prototype.node_id > 0);
-
-    // Verify document's node ref count incremented
-    try std.testing.expectEqual(@as(usize, 1), doc.node_ref_count.load(.monotonic));
-}
-
-test "Document - createTextNode" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Create text node
-    const text = try doc.createTextNode("Hello World");
-    defer text.prototype.release();
-
-    // Verify text properties
-    try std.testing.expectEqualStrings("Hello World", text.data);
-    try std.testing.expectEqual(&doc.prototype, text.prototype.owner_document.?);
-    try std.testing.expect(text.prototype.node_id > 0);
-
-    // Verify document's node ref count incremented
-    try std.testing.expectEqual(@as(usize, 1), doc.node_ref_count.load(.monotonic));
-}
-
-test "Document - createComment" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Create comment node
-    const comment = try doc.createComment(" TODO: implement ");
-    defer comment.prototype.release();
-
-    // Verify comment properties
-    try std.testing.expectEqualStrings(" TODO: implement ", comment.data);
-    try std.testing.expectEqual(&doc.prototype, comment.prototype.owner_document.?);
-    try std.testing.expect(comment.prototype.node_id > 0);
-
-    // Verify document's node ref count incremented
-    try std.testing.expectEqual(@as(usize, 1), doc.node_ref_count.load(.monotonic));
-}
-
-test "Document - createDocumentFragment" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Create document fragment
-    const fragment = try doc.createDocumentFragment();
-    defer fragment.prototype.release();
-
-    // Verify fragment properties
-    try std.testing.expect(fragment.prototype.node_type == .document_fragment);
-    try std.testing.expectEqualStrings("#document-fragment", fragment.prototype.nodeName());
-    try std.testing.expectEqual(&doc.prototype, fragment.prototype.owner_document.?);
-    try std.testing.expect(fragment.prototype.node_id > 0);
-
-    // Verify document's node ref count incremented
-    try std.testing.expectEqual(@as(usize, 1), doc.node_ref_count.load(.monotonic));
-}
-
-test "Document - createDocumentFragment with children" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const fragment = try doc.createDocumentFragment();
-    defer fragment.prototype.release();
-
-    // Add children to fragment
-    const elem1 = try doc.createElement("div");
-    const elem2 = try doc.createElement("span");
-
-    _ = try fragment.prototype.appendChild(&elem1.prototype);
-    _ = try fragment.prototype.appendChild(&elem2.prototype);
-
-    // Verify fragment has children
-    try std.testing.expect(fragment.prototype.hasChildNodes());
-    try std.testing.expectEqual(@as(usize, 2), fragment.prototype.childNodes().length());
-}
-
-test "Document - string interning in createElement" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Create multiple elements with same tag
-    const elem1 = try doc.createElement("test-element");
-    defer elem1.prototype.release();
-
-    const elem2 = try doc.createElement("test-element");
-    defer elem2.prototype.release();
-
-    // Tag names should point to same interned string
-    try std.testing.expectEqual(elem1.tag_name.ptr, elem2.tag_name.ptr);
-
-    // One string should be interned
-    try std.testing.expectEqual(@as(usize, 1), doc.string_pool.count());
-}
-
-test "Document - multiple node types" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Create various nodes
-    const elem = try doc.createElement("test-element");
-    defer elem.prototype.release();
-
-    const text = try doc.createTextNode("content");
-    defer text.prototype.release();
-
-    const comment = try doc.createComment(" note ");
-    defer comment.prototype.release();
-
-    // All should have unique IDs
-    try std.testing.expect(elem.prototype.node_id != text.prototype.node_id);
-    try std.testing.expect(text.prototype.node_id != comment.prototype.node_id);
-    try std.testing.expect(elem.prototype.node_id != comment.prototype.node_id);
-
-    // All should reference document
-    try std.testing.expectEqual(&doc.prototype, elem.prototype.owner_document.?);
-    try std.testing.expectEqual(&doc.prototype, text.prototype.owner_document.?);
-    try std.testing.expectEqual(&doc.prototype, comment.prototype.owner_document.?);
-
-    // Document should track 3 node refs
-    try std.testing.expectEqual(@as(usize, 3), doc.node_ref_count.load(.monotonic));
-}
-
-test "Document - memory leak test" {
-    const allocator = std.testing.allocator;
-
-    // Test 1: Simple document
-    {
-        const doc = try Document.init(allocator);
-        defer doc.release();
-    }
-
-    // Test 2: Document with elements
-    {
-        const doc = try Document.init(allocator);
-        defer doc.release();
-
-        const elem1 = try doc.createElement("element-one");
-        defer elem1.prototype.release();
-
-        const elem2 = try doc.createElement("element-two");
-        defer elem2.prototype.release();
-    }
-
-    // Test 3: Document with all node types
-    {
-        const doc = try Document.init(allocator);
-        defer doc.release();
-
-        const elem = try doc.createElement("test-element");
-        defer elem.prototype.release();
-
-        const text = try doc.createTextNode("test");
-        defer text.prototype.release();
-
-        const comment = try doc.createComment(" test ");
-        defer comment.prototype.release();
-    }
-
-    // Test 4: Document with string interning
-    {
-        const doc = try Document.init(allocator);
-        defer doc.release();
-
-        // Create elements with interning
-        const elem1 = try doc.createElement("test-element");
-        defer elem1.prototype.release();
-
-        const elem2 = try doc.createElement("another-element");
-        defer elem2.prototype.release();
-
-        const elem3 = try doc.createElement("test-element"); // Reuse interned
-        defer elem3.prototype.release();
-
-        // Custom element
-        const custom = try doc.createElement("my-custom-element");
-        defer custom.prototype.release();
-    }
-
-    // If we reach here without leaks, std.testing.allocator validates success
-}
-
-test "Document - external ref counting" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Initial state
-    try std.testing.expectEqual(@as(usize, 1), doc.external_ref_count.load(.monotonic));
-
-    // Acquire multiple times
-    doc.acquire();
-    doc.acquire();
-    try std.testing.expectEqual(@as(usize, 3), doc.external_ref_count.load(.monotonic));
-
-    // Release
-    doc.release();
-    try std.testing.expectEqual(@as(usize, 2), doc.external_ref_count.load(.monotonic));
-
-    doc.release();
-    try std.testing.expectEqual(@as(usize, 1), doc.external_ref_count.load(.monotonic));
-}
-
-test "Document - documentElement" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Initially no document element
-    try std.testing.expect(doc.documentElement() == null);
-
-    // Create and add root element (Phase 2 will do this via appendChild)
-    const root_elem = try doc.createElement("root");
-    defer root_elem.prototype.release();
-
-    // Manually add to document children
-    doc.prototype.first_child = &root_elem.prototype;
-    doc.prototype.last_child = &root_elem.prototype;
-    root_elem.prototype.parent_node = &doc.prototype;
-    root_elem.prototype.setHasParent(true);
-
-    // documentElement should return the root element
-    const root = doc.documentElement();
-    try std.testing.expect(root != null);
-    try std.testing.expectEqual(root_elem, root.?);
-    try std.testing.expectEqualStrings("root", root.?.tag_name);
-
-    // Clean up manual connection
-    doc.prototype.first_child = null;
-    doc.prototype.last_child = null;
-    root_elem.prototype.parent_node = null;
-    root_elem.prototype.setHasParent(false);
-}
-
-test "Document - documentElement with mixed children" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Create comment (before root element)
-    const comment = try doc.createComment(" metadata ");
-    defer comment.prototype.release();
-
-    // Create root element
-    const root_elem = try doc.createElement("root");
-    defer root_elem.prototype.release();
-
-    // Manually add both to document (comment first, then root element)
-    doc.prototype.first_child = &comment.prototype;
-    doc.prototype.last_child = &root_elem.prototype;
-    comment.prototype.next_sibling = &root_elem.prototype;
-    comment.prototype.parent_node = &doc.prototype;
-    root_elem.prototype.parent_node = &doc.prototype;
-    root_elem.prototype.setHasParent(true);
-    comment.prototype.setHasParent(true);
-
-    // documentElement should skip comment and return root element
-    const root = doc.documentElement();
-    try std.testing.expect(root != null);
-    try std.testing.expectEqual(root_elem, root.?);
-
-    // Clean up manual connections
-    doc.prototype.first_child = null;
-    doc.prototype.last_child = null;
-    comment.prototype.next_sibling = null;
-    comment.prototype.parent_node = null;
-    root_elem.prototype.parent_node = null;
-    root_elem.prototype.setHasParent(false);
-    comment.prototype.setHasParent(false);
-}
-
-test "Document - doctype property returns null (no DocumentType yet)" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // No DocumentType children, so doctype() should return null
-    try std.testing.expect(doc.doctype() == null);
-}
-
-test "Document - doctype property with element children" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Add an element child
-    const elem = try doc.createElement("html");
-
-    _ = try doc.prototype.appendChild(&elem.prototype);
-
-    // Still no DocumentType, should return null
-    try std.testing.expect(doc.doctype() == null);
-}
-
 // ============================================================================
 // SELECTOR CACHE TESTS
 // ============================================================================
-
-test "SelectorCache - basic caching" {
-    const allocator = std.testing.allocator;
-
-    var cache = SelectorCache.init(allocator);
-    defer cache.deinit();
-
-    // Get selector (should parse and cache)
-    const parsed1 = try cache.get("#main");
-    try std.testing.expect(parsed1.fast_path == .simple_id);
-    try std.testing.expectEqual(@as(usize, 1), cache.count());
-
-    // Get same selector (should return cached)
-    const parsed2 = try cache.get("#main");
-    try std.testing.expect(parsed1 == parsed2); // Same pointer
-    try std.testing.expectEqual(@as(usize, 1), cache.count());
-
-    // Get different selector
-    const parsed3 = try cache.get(".button");
-    try std.testing.expect(parsed3.fast_path == .simple_class);
-    try std.testing.expectEqual(@as(usize, 2), cache.count());
-}
-
-test "SelectorCache - fast path detection" {
-    const allocator = std.testing.allocator;
-
-    var cache = SelectorCache.init(allocator);
-    defer cache.deinit();
-
-    // ID selector
-    const id_sel = try cache.get("#test");
-    try std.testing.expect(id_sel.fast_path == .simple_id);
-    try std.testing.expectEqualStrings("test", id_sel.identifier.?);
-
-    // Class selector
-    const class_sel = try cache.get(".button");
-    try std.testing.expect(class_sel.fast_path == .simple_class);
-    try std.testing.expectEqualStrings("button", class_sel.identifier.?);
-
-    // Tag selector
-    const tag_sel = try cache.get("div");
-    try std.testing.expect(tag_sel.fast_path == .simple_tag);
-    try std.testing.expectEqualStrings("div", tag_sel.identifier.?);
-
-    // Generic selector
-    const gen_sel = try cache.get("div > p");
-    try std.testing.expect(gen_sel.fast_path == .generic);
-    try std.testing.expect(gen_sel.identifier == null);
-}
-
-test "SelectorCache - FIFO eviction" {
-    const allocator = std.testing.allocator;
-
-    var cache = SelectorCache.init(allocator);
-    cache.max_size = 3; // Small cache for testing
-    defer cache.deinit();
-
-    // Fill cache
-    _ = try cache.get("#id1");
-    _ = try cache.get("#id2");
-    _ = try cache.get("#id3");
-    try std.testing.expectEqual(@as(usize, 3), cache.count());
-
-    // Add one more (should evict #id1)
-    _ = try cache.get("#id4");
-    try std.testing.expectEqual(@as(usize, 3), cache.count());
-
-    // Verify #id1 was evicted
-    const id1_again = try cache.get("#id1");
-    try std.testing.expectEqual(@as(usize, 3), cache.count()); // Still 3 (evicted #id2)
-    try std.testing.expectEqualStrings("#id1", id1_again.selector_string);
-}
-
-test "SelectorCache - clear" {
-    const allocator = std.testing.allocator;
-
-    var cache = SelectorCache.init(allocator);
-    defer cache.deinit();
-
-    // Add some entries
-    _ = try cache.get("#main");
-    _ = try cache.get(".button");
-    _ = try cache.get("div");
-    try std.testing.expectEqual(@as(usize, 3), cache.count());
-
-    // Clear cache
-    cache.clear();
-    try std.testing.expectEqual(@as(usize, 0), cache.count());
-
-    // Can add again
-    _ = try cache.get("#main");
-    try std.testing.expectEqual(@as(usize, 1), cache.count());
-}
-
-test "Document - selector cache integration" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    // Selector cache should be initialized
-    try std.testing.expectEqual(@as(usize, 0), doc.selector_cache.count());
-
-    // We'll test actual usage in the next step when we integrate with querySelector
-}
 
 // ============================================================================
 // ID MAP TESTS (Phase 2)
 // ============================================================================
 
-test "Document - getElementById basic" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    const button = try doc.createElement("button");
-    try button.setAttribute("id", "submit");
-    _ = try root.prototype.appendChild(&button.prototype);
-
-    // O(1) lookup!
-    const found = doc.getElementById("submit");
-    try std.testing.expect(found != null);
-    try std.testing.expect(found.? == button);
-
-    // Not found
-    const not_found = doc.getElementById("missing");
-    try std.testing.expect(not_found == null);
-}
-
-test "Document - getElementById updates on setAttribute" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    const button = try doc.createElement("button");
-    _ = try root.prototype.appendChild(&button.prototype);
-
-    // Initially no ID
-    try std.testing.expect(doc.getElementById("test") == null);
-
-    // Set ID
-    try button.setAttribute("id", "test");
-    const found1 = doc.getElementById("test");
-    try std.testing.expect(found1 != null);
-    try std.testing.expect(found1.? == button);
-
-    // Change ID
-    try button.setAttribute("id", "changed");
-    try std.testing.expect(doc.getElementById("test") == null);
-    const found2 = doc.getElementById("changed");
-    try std.testing.expect(found2 != null);
-    try std.testing.expect(found2.? == button);
-}
-
-test "Document - getElementById cleans up on removeAttribute" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    const button = try doc.createElement("button");
-    try button.setAttribute("id", "remove-test");
-    _ = try root.prototype.appendChild(&button.prototype);
-
-    // ID exists
-    try std.testing.expect(doc.getElementById("remove-test") != null);
-
-    // Remove ID attribute
-    button.removeAttribute("id");
-    try std.testing.expect(doc.getElementById("remove-test") == null);
-}
-
-test "Document - getElementById multiple elements" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    // Create multiple elements with IDs
-    const button1 = try doc.createElement("button");
-    try button1.setAttribute("id", "btn1");
-    _ = try root.prototype.appendChild(&button1.prototype);
-
-    const button2 = try doc.createElement("button");
-    try button2.setAttribute("id", "btn2");
-    _ = try root.prototype.appendChild(&button2.prototype);
-
-    const button3 = try doc.createElement("button");
-    try button3.setAttribute("id", "btn3");
-    _ = try root.prototype.appendChild(&button3.prototype);
-
-    // All should be findable
-    try std.testing.expect(doc.getElementById("btn1").? == button1);
-    try std.testing.expect(doc.getElementById("btn2").? == button2);
-    try std.testing.expect(doc.getElementById("btn3").? == button3);
-}
-
-test "Document - querySelector uses getElementById for #id" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    const button = try doc.createElement("button");
-    try button.setAttribute("id", "target");
-    _ = try root.prototype.appendChild(&button.prototype);
-
-    // querySelector("#id") should use fast path with O(1) lookup
-    const found = try doc.querySelector("#target");
-    try std.testing.expect(found != null);
-    try std.testing.expect(found.? == button);
-}
-
 // ============================================================================
 // TAG MAP TESTS (Phase 3)
 // ============================================================================
-
-test "Document - getElementsByTagName basic" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    const button1 = try doc.createElement("button");
-    _ = try root.prototype.appendChild(&button1.prototype);
-
-    const button2 = try doc.createElement("button");
-    _ = try root.prototype.appendChild(&button2.prototype);
-
-    const div = try doc.createElement("div");
-    _ = try root.prototype.appendChild(&div.prototype);
-
-    // Get all buttons
-    const buttons = doc.getElementsByTagName("button");
-    try std.testing.expectEqual(@as(usize, 2), buttons.length());
-    try std.testing.expect(buttons.item(0).? == button1);
-    try std.testing.expect(buttons.item(1).? == button2);
-
-    // Get all divs
-    const divs = doc.getElementsByTagName("div");
-    try std.testing.expectEqual(@as(usize, 1), divs.length());
-    try std.testing.expect(divs.item(0).? == div);
-
-    // Not found
-    const spans = doc.getElementsByTagName("span");
-    try std.testing.expectEqual(@as(usize, 0), spans.length());
-}
-
-test "Document - tag map maintained on createElement" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    // Create multiple elements with same tag
-    const div1 = try doc.createElement("div");
-    _ = try root.prototype.appendChild(&div1.prototype);
-
-    const div2 = try doc.createElement("div");
-    _ = try root.prototype.appendChild(&div2.prototype);
-
-    const div3 = try doc.createElement("div");
-    _ = try root.prototype.appendChild(&div3.prototype);
-
-    // Tag map should have all three
-    const divs = doc.getElementsByTagName("div");
-    try std.testing.expectEqual(@as(usize, 3), divs.length());
-}
-
-test "Document - tag map cleaned up on element removal" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    const div1 = try doc.createElement("div");
-    _ = try root.prototype.appendChild(&div1.prototype);
-
-    const div2 = try doc.createElement("div");
-    _ = try root.prototype.appendChild(&div2.prototype);
-
-    // Should have 2 divs
-    {
-        const divs = doc.getElementsByTagName("div");
-        try std.testing.expectEqual(@as(usize, 2), divs.length());
-    }
-
-    // Remove one div
-    _ = try root.prototype.removeChild(&div1.prototype);
-    div1.prototype.release();
-
-    // Should have 1 div
-    {
-        const divs = doc.getElementsByTagName("div");
-        try std.testing.expectEqual(@as(usize, 1), divs.length());
-        try std.testing.expect(divs.item(0).? == div2);
-    }
-}
-
-test "Document - getElementsByClassName basic" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    const button1 = try doc.createElement("button");
-    try button1.setAttribute("class", "btn primary");
-    _ = try root.prototype.appendChild(&button1.prototype);
-
-    const button2 = try doc.createElement("button");
-    try button2.setAttribute("class", "btn");
-    _ = try root.prototype.appendChild(&button2.prototype);
-
-    const div = try doc.createElement("div");
-    try div.setAttribute("class", "container");
-    _ = try root.prototype.appendChild(&div.prototype);
-
-    // Get all "btn" elements
-    const btns = doc.getElementsByClassName("btn");
-    try std.testing.expectEqual(@as(usize, 2), btns.length());
-    try std.testing.expect(btns.item(0).? == button1);
-    try std.testing.expect(btns.item(1).? == button2);
-
-    // Get all "primary" elements
-    const primaries = doc.getElementsByClassName("primary");
-    try std.testing.expectEqual(@as(usize, 1), primaries.length());
-    try std.testing.expect(primaries.item(0).? == button1);
-
-    // Get all "container" elements
-    const containers = doc.getElementsByClassName("container");
-    try std.testing.expectEqual(@as(usize, 1), containers.length());
-    try std.testing.expect(containers.item(0).? == div);
-
-    // Not found
-    const notfound = doc.getElementsByClassName("notfound");
-    try std.testing.expectEqual(@as(usize, 0), notfound.length());
-}
-
-test "Document - class map maintained on setAttribute" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    const div = try doc.createElement("div");
-    _ = try root.prototype.appendChild(&div.prototype);
-
-    // Initially no class
-    {
-        const elements = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 0), elements.length());
-    }
-
-    // Add class
-    try div.setAttribute("class", "foo bar");
-    {
-        const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 1), foos.length());
-        try std.testing.expect(foos.item(0).? == div);
-
-        const bars = doc.getElementsByClassName("bar");
-        try std.testing.expectEqual(@as(usize, 1), bars.length());
-        try std.testing.expect(bars.item(0).? == div);
-    }
-
-    // Change class
-    try div.setAttribute("class", "baz");
-    {
-        // Old classes should be gone
-        const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 0), foos.length());
-
-        const bars = doc.getElementsByClassName("bar");
-        try std.testing.expectEqual(@as(usize, 0), bars.length());
-
-        // New class should be present
-        const bazs = doc.getElementsByClassName("baz");
-        try std.testing.expectEqual(@as(usize, 1), bazs.length());
-        try std.testing.expect(bazs.item(0).? == div);
-    }
-
-    // Add class
-    try div.setAttribute("class", "foo bar");
-    {
-        const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 1), foos.length());
-        try std.testing.expect(foos.item(0).? == div);
-
-        const bars = doc.getElementsByClassName("bar");
-        try std.testing.expectEqual(@as(usize, 1), bars.length());
-        try std.testing.expect(bars.item(0).? == div);
-    }
-
-    // Change class
-    try div.setAttribute("class", "baz");
-    {
-        // Old classes should be gone
-        const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 0), foos.length());
-
-        const bars = doc.getElementsByClassName("bar");
-        try std.testing.expectEqual(@as(usize, 0), bars.length());
-
-        // New class should be present
-        const bazs = doc.getElementsByClassName("baz");
-        try std.testing.expectEqual(@as(usize, 1), bazs.length());
-        try std.testing.expect(bazs.item(0).? == div);
-    }
-}
-
-test "Document - class map cleaned up on removeAttribute" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("html");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    const div = try doc.createElement("div");
-    try div.setAttribute("class", "foo bar");
-    _ = try root.prototype.appendChild(&div.prototype);
-
-    // Should have classes
-    {
-        const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 1), foos.length());
-    }
-
-    // Remove class attribute
-    div.removeAttribute("class");
-
-    // Should be empty
-    {
-        const foos = doc.getElementsByClassName("foo");
-        try std.testing.expectEqual(@as(usize, 0), foos.length());
-
-        const bars = doc.getElementsByClassName("bar");
-        try std.testing.expectEqual(@as(usize, 0), bars.length());
-    }
-}
-
-test "Document - class map cleaned up on element removal" {
-    const allocator = std.testing.allocator;
-
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const root = try doc.createElement("root");
-    _ = try doc.prototype.appendChild(&root.prototype);
-
-    const elem1 = try doc.createElement("element");
-    try elem1.setAttribute("class", "testclass1");
-    _ = try root.prototype.appendChild(&elem1.prototype);
-
-    const elem2 = try doc.createElement("element");
-    try elem2.setAttribute("class", "testclass1");
-    _ = try root.prototype.appendChild(&elem2.prototype);
-
-    // Should have 2 elements with class "testclass1"
-    {
-        const results = doc.getElementsByClassName("testclass1");
-        try std.testing.expectEqual(@as(usize, 2), results.length());
-    }
-
-    // Remove one element
-    _ = try root.prototype.removeChild(&elem1.prototype);
-    elem1.prototype.release();
-
-    // Should have 1 element with class "testclass1"
-    {
-        const results = doc.getElementsByClassName("testclass1");
-        try std.testing.expectEqual(@as(usize, 1), results.length());
-        try std.testing.expect(results.item(0).? == elem2);
-    }
-}

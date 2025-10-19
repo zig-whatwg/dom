@@ -1,7 +1,8 @@
 //! Phase 2 Verification Tests: getElementsByTagName with mutation-time map updates
 
 const std = @import("std");
-const Document = @import("document.zig").Document;
+const dom = @import("dom");
+const Document = dom.Document;
 
 test "getElementsByTagName - elements added to map on appendChild" {
     const allocator = std.testing.allocator;

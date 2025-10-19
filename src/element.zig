@@ -3441,6 +3441,47 @@ pub const Element = struct {
         return &cloned.prototype;
     }
 
+    /// Internal: Clones element using a specific allocator.
+    ///
+    /// Used by `Document.importNode()` to clone elements into a different
+    /// document's allocator.
+    ///
+    /// ## Parameters
+    /// - `elem`: The element to clone
+    /// - `allocator`: The allocator to use for the cloned element
+    /// - `deep`: Whether to recursively clone children
+    ///
+    /// ## Returns
+    /// A new cloned element allocated with the specified allocator
+    pub fn cloneWithAllocator(elem: *const Element, allocator: Allocator, deep: bool) anyerror!*Node {
+        // Create new element with same tag using the provided allocator
+        const cloned = try Element.create(allocator, elem.tag_name);
+        errdefer cloned.prototype.release();
+
+        // Preserve owner document (will be updated by adopt())
+        cloned.prototype.owner_document = elem.prototype.owner_document;
+
+        // Copy attributes
+        var attr_iter = elem.attributes.map.iterator();
+        while (attr_iter.next()) |entry| {
+            try cloned.setAttribute(entry.key_ptr.*, entry.value_ptr.*);
+        }
+
+        // Deep clone children if requested
+        if (deep) {
+            var child = elem.prototype.first_child;
+            while (child) |child_node| {
+                // Recursively use the same allocator for children
+                const child_clone = try child_node.cloneNodeWithAllocator(allocator, true);
+                errdefer child_clone.release();
+                _ = try cloned.prototype.appendChild(child_clone);
+                child = child_node.next_sibling;
+            }
+        }
+
+        return &cloned.prototype;
+    }
+
     /// Vtable implementation: adopting steps
     /// Called when node is adopted into a new document
     fn adoptingStepsImpl(node: *Node, old_document: ?*Node) !void {

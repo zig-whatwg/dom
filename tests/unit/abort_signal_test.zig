@@ -1,8 +1,9 @@
 const std = @import("std");
-const AbortSignal = @import("abort_signal.zig").AbortSignal;
-const AbortController = @import("abort_controller.zig").AbortController;
-const AbortAlgorithm = @import("abort_signal.zig").AbortAlgorithm;
-const Event = @import("event.zig").Event;
+const dom = @import("dom");
+const AbortSignal = dom.AbortSignal;
+const AbortController = dom.AbortController;
+const AbortAlgorithm = dom.AbortAlgorithm;
+const Event = dom.Event;
 
 test "AbortSignal.init - creates signal with ref_count = 1" {
     const allocator = std.testing.allocator;

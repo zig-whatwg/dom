@@ -4,9 +4,10 @@
 
 const std = @import("std");
 const testing = std.testing;
-const Document = @import("document.zig").Document;
-const Element = @import("element.zig").Element;
-const DocumentFragment = @import("document_fragment.zig").DocumentFragment;
+const dom = @import("dom");
+const Document = dom.Document;
+const Element = dom.Element;
+const DocumentFragment = dom.DocumentFragment;
 
 test "querySelector - simple type selector" {
     const allocator = testing.allocator;

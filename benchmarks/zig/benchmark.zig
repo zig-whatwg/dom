@@ -266,11 +266,11 @@ fn matchSimpleId(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const div = try doc.createElement("div");
     try div.setAttribute("id", "target");
-    _ = try root.node.appendChild(&div.node);
+    _ = try root.prototype.appendChild(&div.prototype);
 
     var tokenizer = Tokenizer.init(allocator, "#target");
     var parser = try Parser.init(allocator, &tokenizer);
@@ -287,11 +287,11 @@ fn matchSimpleClass(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const button = try doc.createElement("button");
     try button.setAttribute("class", "btn");
-    _ = try root.node.appendChild(&button.node);
+    _ = try root.prototype.appendChild(&button.prototype);
 
     var tokenizer = Tokenizer.init(allocator, ".btn");
     var parser = try Parser.init(allocator, &tokenizer);
@@ -308,13 +308,13 @@ fn querySmallDom(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 100) : (i += 1) {
         const div = try doc.createElement("div");
         if (i == 50) try div.setAttribute("id", "target");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     const result = try doc.querySelector("#target");
@@ -326,13 +326,13 @@ fn queryMediumDom(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 1000) : (i += 1) {
         const div = try doc.createElement("div");
         if (i == 500) try div.setAttribute("id", "target");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     const result = try doc.querySelector("#target");
@@ -344,13 +344,13 @@ fn queryLargeDom(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 10000) : (i += 1) {
         const div = try doc.createElement("div");
         if (i == 5000) try div.setAttribute("id", "target");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     const result = try doc.querySelector("#target");
@@ -362,13 +362,13 @@ fn queryClass(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 1000) : (i += 1) {
         const div = try doc.createElement("div");
         if (i % 100 == 0) try div.setAttribute("class", "target");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     const result = try doc.querySelector(".target");
@@ -380,18 +380,18 @@ fn spaRepeated(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Build DOM with various components
     var i: usize = 0;
     while (i < 100) : (i += 1) {
         const div = try doc.createElement("div");
         try div.setAttribute("class", "component");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
 
         const button = try doc.createElement("button");
         try button.setAttribute("class", "btn primary");
-        _ = try div.node.appendChild(&button.node);
+        _ = try div.prototype.appendChild(&button.prototype);
     }
 
     // Simulate SPA: repeated queries for different selectors
@@ -411,7 +411,7 @@ fn spaColdVsHot(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Build simple DOM
     var i: usize = 0;
@@ -419,7 +419,7 @@ fn spaColdVsHot(allocator: std.mem.Allocator) !void {
         const div = try doc.createElement("div");
         try div.setAttribute("class", "item");
         if (i == 500) try div.setAttribute("id", "target");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     // Run same query 100 times (1st is cold, rest are hot from cache)
@@ -434,13 +434,13 @@ fn getElementByIdSmall(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 100) : (i += 1) {
         const div = try doc.createElement("div");
         if (i == 50) try div.setAttribute("id", "target");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     // Direct O(1) lookup!
@@ -453,13 +453,13 @@ fn getElementByIdMedium(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 1000) : (i += 1) {
         const div = try doc.createElement("div");
         if (i == 500) try div.setAttribute("id", "target");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     const result = doc.getElementById("target");
@@ -471,13 +471,13 @@ fn getElementByIdLarge(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 10000) : (i += 1) {
         const div = try doc.createElement("div");
         if (i == 5000) try div.setAttribute("id", "target");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     const result = doc.getElementById("target");
@@ -491,13 +491,13 @@ fn setupSmallDom(allocator: std.mem.Allocator) !*Document {
     errdefer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 100) : (i += 1) {
         const div = try doc.createElement("div");
         if (i == 50) try div.setAttribute("id", "target");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     return doc;
@@ -508,13 +508,13 @@ fn setupMediumDom(allocator: std.mem.Allocator) !*Document {
     errdefer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 1000) : (i += 1) {
         const div = try doc.createElement("div");
         if (i == 500) try div.setAttribute("id", "target");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     return doc;
@@ -525,13 +525,13 @@ fn setupLargeDom(allocator: std.mem.Allocator) !*Document {
     errdefer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 10000) : (i += 1) {
         const div = try doc.createElement("div");
         if (i == 5000) try div.setAttribute("id", "target");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     return doc;
@@ -556,19 +556,19 @@ fn setupTagSmall(allocator: std.mem.Allocator) !*Document {
     errdefer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Create mix of elements - 50 divs, 50 buttons
     var i: usize = 0;
     while (i < 50) : (i += 1) {
         const div = try doc.createElement("div");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     i = 0;
     while (i < 50) : (i += 1) {
         const button = try doc.createElement("button");
-        _ = try root.node.appendChild(&button.node);
+        _ = try root.prototype.appendChild(&button.prototype);
     }
 
     return doc;
@@ -579,19 +579,19 @@ fn setupTagMedium(allocator: std.mem.Allocator) !*Document {
     errdefer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Create mix of elements - 500 divs, 500 buttons
     var i: usize = 0;
     while (i < 500) : (i += 1) {
         const div = try doc.createElement("div");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     i = 0;
     while (i < 500) : (i += 1) {
         const button = try doc.createElement("button");
-        _ = try root.node.appendChild(&button.node);
+        _ = try root.prototype.appendChild(&button.prototype);
     }
 
     return doc;
@@ -602,19 +602,19 @@ fn setupTagLarge(allocator: std.mem.Allocator) !*Document {
     errdefer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Create mix of elements - 5000 divs, 5000 buttons
     var i: usize = 0;
     while (i < 5000) : (i += 1) {
         const div = try doc.createElement("div");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     i = 0;
     while (i < 5000) : (i += 1) {
         const button = try doc.createElement("button");
-        _ = try root.node.appendChild(&button.node);
+        _ = try root.prototype.appendChild(&button.prototype);
     }
 
     return doc;
@@ -639,21 +639,21 @@ fn setupClassSmall(allocator: std.mem.Allocator) !*Document {
     errdefer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Create mix of elements - 50 with "btn", 50 with "container"
     var i: usize = 0;
     while (i < 50) : (i += 1) {
         const button = try doc.createElement("button");
         try button.setAttribute("class", "btn primary");
-        _ = try root.node.appendChild(&button.node);
+        _ = try root.prototype.appendChild(&button.prototype);
     }
 
     i = 0;
     while (i < 50) : (i += 1) {
         const div = try doc.createElement("div");
         try div.setAttribute("class", "container");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     return doc;
@@ -664,21 +664,21 @@ fn setupClassMedium(allocator: std.mem.Allocator) !*Document {
     errdefer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Create mix of elements - 500 with "btn", 500 with "container"
     var i: usize = 0;
     while (i < 500) : (i += 1) {
         const button = try doc.createElement("button");
         try button.setAttribute("class", "btn primary");
-        _ = try root.node.appendChild(&button.node);
+        _ = try root.prototype.appendChild(&button.prototype);
     }
 
     i = 0;
     while (i < 500) : (i += 1) {
         const div = try doc.createElement("div");
         try div.setAttribute("class", "container");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     return doc;
@@ -689,21 +689,21 @@ fn setupClassLarge(allocator: std.mem.Allocator) !*Document {
     errdefer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Create mix of elements - 5000 with "btn", 5000 with "container"
     var i: usize = 0;
     while (i < 5000) : (i += 1) {
         const button = try doc.createElement("button");
         try button.setAttribute("class", "btn primary");
-        _ = try root.node.appendChild(&button.node);
+        _ = try root.prototype.appendChild(&button.prototype);
     }
 
     i = 0;
     while (i < 5000) : (i += 1) {
         const div = try doc.createElement("div");
         try div.setAttribute("class", "container");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     return doc;
@@ -728,12 +728,12 @@ fn constructSmallDom(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 100) : (i += 1) {
         const div = try doc.createElement("div");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 }
 
@@ -742,12 +742,12 @@ fn constructMediumDom(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 1000) : (i += 1) {
         const div = try doc.createElement("div");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 }
 
@@ -756,12 +756,12 @@ fn constructLargeDom(allocator: std.mem.Allocator) !void {
     defer doc.release();
 
     const root = try doc.createElement("html");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 10000) : (i += 1) {
         const div = try doc.createElement("div");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 }
 
@@ -775,14 +775,14 @@ fn setupChildCombinator(allocator: std.mem.Allocator) !*Document {
 
     // Build: div > (div > p) * 1000
     const root = try doc.createElement("div");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 1000) : (i += 1) {
         const div = try doc.createElement("div");
         const p = try doc.createElement("p");
-        _ = try div.node.appendChild(&p.node);
-        _ = try root.node.appendChild(&div.node);
+        _ = try div.prototype.appendChild(&p.prototype);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     return doc;
@@ -794,16 +794,16 @@ fn setupDescendantCombinator(allocator: std.mem.Allocator) !*Document {
 
     // Build: article > div > div > p * 1000
     const root = try doc.createElement("article");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 1000) : (i += 1) {
         const outer = try doc.createElement("div");
         const inner = try doc.createElement("div");
         const p = try doc.createElement("p");
-        _ = try inner.node.appendChild(&p.node);
-        _ = try outer.node.appendChild(&inner.node);
-        _ = try root.node.appendChild(&outer.node);
+        _ = try inner.prototype.appendChild(&p.prototype);
+        _ = try outer.prototype.appendChild(&inner.prototype);
+        _ = try root.prototype.appendChild(&outer.prototype);
     }
 
     return doc;
@@ -815,14 +815,14 @@ fn setupAdjacentSibling(allocator: std.mem.Allocator) !*Document {
 
     // Build: (h1, p) * 500 pairs
     const root = try doc.createElement("div");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 500) : (i += 1) {
         const h1 = try doc.createElement("h1");
         const p = try doc.createElement("p");
-        _ = try root.node.appendChild(&h1.node);
-        _ = try root.node.appendChild(&p.node);
+        _ = try root.prototype.appendChild(&h1.prototype);
+        _ = try root.prototype.appendChild(&p.prototype);
     }
 
     return doc;
@@ -834,13 +834,13 @@ fn setupTypeClass(allocator: std.mem.Allocator) !*Document {
 
     // Build: 1000 divs, 10% with class "active"
     const root = try doc.createElement("div");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var i: usize = 0;
     while (i < 1000) : (i += 1) {
         const div = try doc.createElement("div");
         if (i % 10 == 0) try div.setAttribute("class", "active");
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     return doc;
@@ -852,7 +852,7 @@ fn setupAttributeSelector(allocator: std.mem.Allocator) !*Document {
 
     // Build: 1000 divs with data-id
     const root = try doc.createElement("div");
-    _ = try doc.node.appendChild(&root.node);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     var buf: [16]u8 = undefined;
     var i: usize = 0;
@@ -860,7 +860,7 @@ fn setupAttributeSelector(allocator: std.mem.Allocator) !*Document {
         const div = try doc.createElement("div");
         const id_str = try std.fmt.bufPrint(&buf, "{d}", .{i});
         try div.setAttribute("data-id", id_str);
-        _ = try root.node.appendChild(&div.node);
+        _ = try root.prototype.appendChild(&div.prototype);
     }
 
     return doc;
@@ -873,18 +873,18 @@ fn setupComplexMultiComponent(allocator: std.mem.Allocator) !*Document {
     // Build: article#main > header > (div > h1.title) * 100
     const article = try doc.createElement("article");
     try article.setAttribute("id", "main");
-    _ = try doc.node.appendChild(&article.node);
+    _ = try doc.prototype.appendChild(&article.prototype);
 
     const header = try doc.createElement("header");
-    _ = try article.node.appendChild(&header.node);
+    _ = try article.prototype.appendChild(&header.prototype);
 
     var i: usize = 0;
     while (i < 100) : (i += 1) {
         const div = try doc.createElement("div");
         const h1 = try doc.createElement("h1");
         try h1.setAttribute("class", "title");
-        _ = try div.node.appendChild(&h1.node);
-        _ = try header.node.appendChild(&div.node);
+        _ = try div.prototype.appendChild(&h1.prototype);
+        _ = try header.prototype.appendChild(&div.prototype);
     }
 
     return doc;

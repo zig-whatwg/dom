@@ -891,80 +891,39 @@ pub const DocumentFragment = struct {
 
         return &new_fragment.prototype;
     }
+
+    /// Internal: Clones document fragment using a specific allocator.
+    ///
+    /// Used by `Document.importNode()` to clone fragments into a different
+    /// document's allocator.
+    ///
+    /// ## Parameters
+    /// - `fragment`: The fragment to clone
+    /// - `allocator`: The allocator to use for the cloned fragment
+    /// - `deep`: Whether to recursively clone children
+    ///
+    /// ## Returns
+    /// A new cloned fragment allocated with the specified allocator
+    pub fn cloneWithAllocator(fragment: *const DocumentFragment, allocator: Allocator, deep: bool) anyerror!*Node {
+        // Create new fragment using the provided allocator
+        const new_fragment = try DocumentFragment.create(allocator);
+
+        // If deep clone, clone all children
+        if (deep) {
+            var current = fragment.prototype.first_child;
+            while (current) |child| {
+                // Recursively use the same allocator for children
+                const cloned_child = try child.cloneNodeWithAllocator(allocator, true);
+                errdefer cloned_child.release();
+
+                _ = try new_fragment.prototype.appendChild(cloned_child);
+
+                current = child.next_sibling;
+            }
+        }
+
+        return &new_fragment.prototype;
+    }
 };
 
 // === Tests ===
-
-test "DocumentFragment - creation and cleanup" {
-    const allocator = std.testing.allocator;
-
-    const fragment = try DocumentFragment.create(allocator);
-    defer fragment.prototype.release();
-
-    try std.testing.expect(fragment.prototype.node_type == .document_fragment);
-    try std.testing.expectEqualStrings("#document-fragment", fragment.prototype.nodeName());
-    try std.testing.expect(fragment.prototype.nodeValue() == null);
-}
-
-test "DocumentFragment - can hold children" {
-    const allocator = std.testing.allocator;
-
-    const Document = @import("document.zig").Document;
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const fragment = try DocumentFragment.create(allocator);
-    defer fragment.prototype.release();
-
-    const elem1 = try doc.createElement("div");
-    const elem2 = try doc.createElement("span");
-
-    _ = try fragment.prototype.appendChild(&elem1.prototype);
-    _ = try fragment.prototype.appendChild(&elem2.prototype);
-
-    try std.testing.expect(fragment.prototype.hasChildNodes());
-    try std.testing.expectEqual(@as(usize, 2), fragment.prototype.childNodes().length());
-}
-
-test "DocumentFragment - clone shallow" {
-    const allocator = std.testing.allocator;
-
-    const Document = @import("document.zig").Document;
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const fragment = try doc.createDocumentFragment();
-    defer fragment.prototype.release();
-
-    const elem = try doc.createElement("div");
-    _ = try fragment.prototype.appendChild(&elem.prototype);
-
-    // Shallow clone
-    const clone = try fragment.prototype.cloneNode(false);
-    defer clone.release();
-
-    try std.testing.expect(clone.node_type == .document_fragment);
-    try std.testing.expect(!clone.hasChildNodes());
-}
-
-test "DocumentFragment - clone deep" {
-    const allocator = std.testing.allocator;
-
-    const Document = @import("document.zig").Document;
-    const doc = try Document.init(allocator);
-    defer doc.release();
-
-    const fragment = try doc.createDocumentFragment();
-    defer fragment.prototype.release();
-
-    const elem = try doc.createElement("div");
-    _ = try fragment.prototype.appendChild(&elem.prototype);
-
-    // Deep clone
-    const clone = try fragment.prototype.cloneNode(true);
-    defer clone.release();
-
-    try std.testing.expect(clone.node_type == .document_fragment);
-    try std.testing.expect(clone.hasChildNodes());
-    try std.testing.expectEqual(@as(usize, 1), clone.childNodes().length());
-}

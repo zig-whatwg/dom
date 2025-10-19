@@ -183,10 +183,17 @@ pub const Element = @import("element.zig").Element;
 pub const BloomFilter = @import("element.zig").BloomFilter;
 pub const AttributeMap = @import("element.zig").AttributeMap;
 
+// Export character data module (base for Text and Comment)
+pub const character_data = @import("character_data.zig");
+
 // Export text and comment modules
 pub const Text = @import("text.zig").Text;
 pub const Comment = @import("comment.zig").Comment;
+pub const DocumentType = @import("document_type.zig").DocumentType;
 
+pub const Event = @import("event.zig").Event;
+pub const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
+pub const SelectorCache = @import("document.zig").SelectorCache;
 // Export document modules
 pub const Document = @import("document.zig").Document;
 pub const StringPool = @import("document.zig").StringPool;
@@ -202,6 +209,7 @@ pub const MutationCallback = @import("rare_data.zig").MutationCallback;
 // Export collections
 pub const NodeList = @import("node_list.zig").NodeList;
 pub const HTMLCollection = @import("html_collection.zig").HTMLCollection;
+pub const DOMTokenList = @import("dom_token_list.zig").DOMTokenList;
 
 // Export AbortSignal and AbortController
 pub const AbortSignal = @import("abort_signal.zig").AbortSignal;
@@ -225,42 +233,14 @@ pub const selector = struct {
     pub const SimpleSelector = @import("selector/parser.zig").SimpleSelector;
     pub const Combinator = @import("selector/parser.zig").Combinator;
 };
+pub const Tokenizer = selector.Tokenizer;
+pub const Token = selector.Token;
+pub const Parser = selector.Parser;
+pub const Matcher = selector.Matcher;
+pub const Combinator = selector.Combinator;
 
 // Export fast path optimization modules
 pub const FastPathType = @import("fast_path.zig").FastPathType;
 pub const detectFastPath = @import("fast_path.zig").detectFastPath;
 pub const extractIdentifier = @import("fast_path.zig").extractIdentifier;
 pub const ElementIterator = @import("element_iterator.zig").ElementIterator;
-
-test {
-    // Run tests from all modules
-    std.testing.refAllDecls(@This());
-    _ = @import("node.zig");
-    _ = @import("element.zig");
-    _ = @import("text.zig");
-    _ = @import("comment.zig");
-    _ = @import("document.zig");
-    _ = @import("document_fragment.zig");
-    _ = @import("rare_data.zig");
-    _ = @import("node_list.zig");
-    _ = @import("html_collection.zig");
-    _ = @import("validation.zig");
-    _ = @import("tree_helpers.zig");
-    _ = @import("abort_signal.zig");
-    _ = @import("abort_signal_test.zig");
-    _ = @import("abort_controller.zig");
-    _ = @import("abort_signal_rare_data.zig");
-    // Phase 4 - querySelector
-    _ = @import("selector/tokenizer.zig");
-    _ = @import("selector/parser.zig");
-    _ = @import("selector/matcher.zig");
-    _ = @import("query_selector_test.zig");
-    // Fast path optimizations
-    _ = @import("fast_path.zig");
-    _ = @import("element_iterator.zig");
-    // Phase 2 verification tests
-    _ = @import("getElementsByTagName_test.zig");
-
-    // Shadow DOM tests
-    _ = @import("slot_test.zig");
-}

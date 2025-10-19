@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Document.importNode() Implementation** 🎉
+  - **Cross-Document Node Cloning (WHATWG DOM §4.4)**
+    - `Document.importNode(node, deep)` - Import nodes from other documents
+      - Clones node into target document's memory allocator
+      - Supports shallow (node only) and deep (with descendants) cloning
+      - Automatically adopts cloned node into target document
+      - Prevents importing Document and ShadowRoot nodes (NotSupported error)
+    - **Internal cloneNodeWithAllocator() API**
+      - `Node.cloneNodeWithAllocator(allocator, deep)` - Clone with explicit allocator
+      - Implemented for Element, Text, Comment, DocumentFragment, DocumentType
+      - Solves cross-arena memory management for importNode
+      - Recursively clones descendants with correct allocator
+    - **Memory Safety**: All nodes allocated in target document's allocator
+    - **Test Coverage**: 9 importNode tests, all passing, 0 leaks ✅
+    - **Spec References**:
+      - WHATWG DOM §4.4: https://dom.spec.whatwg.org/#dom-document-importnode
+      - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Document/importNode
+
 - **Named Slot Assignment Algorithms** 🎉
   - **Complete WHATWG Slot Assignment (DOM §4.2.2.3-4)**
     - `Element.findSlot()` - Find the slot a slottable should be assigned to

@@ -528,8 +528,8 @@ pub const Node = struct {
     }
 
     // === Bit manipulation constants ===
-    const HAS_PARENT_BIT: u32 = 1 << 31;
-    const REF_COUNT_MASK: u32 = 0x7FFF_FFFF; // 31 bits
+    pub const HAS_PARENT_BIT: u32 = 1 << 31;
+    pub const REF_COUNT_MASK: u32 = 0x7FFF_FFFF; // 31 bits
     const MAX_REF_COUNT: u32 = REF_COUNT_MASK;
 
     // === Flag bit positions ===
@@ -832,6 +832,69 @@ pub const Node = struct {
     /// Clones the node (delegates to vtable).
     pub fn cloneNode(self: *const Node, deep: bool) !*Node {
         return self.vtable.clone_node(self, deep);
+    }
+
+    /// Internal: Clones the node using a specific allocator.
+    ///
+    /// This is used by `Document.importNode()` to clone nodes into a different
+    /// document's allocator. Unlike `cloneNode()`, which uses the source node's
+    /// allocator, this function uses the provided allocator for all memory
+    /// allocations.
+    ///
+    /// ## Parameters
+    /// - `allocator`: The allocator to use for the cloned node and its descendants
+    /// - `deep`: Whether to recursively clone descendants
+    ///
+    /// ## Returns
+    /// A new cloned node allocated with the specified allocator
+    ///
+    /// ## Errors
+    /// - `OutOfMemory`: Failed to allocate memory for the cloned node
+    /// - `InvalidCharacterError`: Invalid attribute name during cloning
+    /// - `NotSupported`: Node type cannot be cloned (Document, ShadowRoot, ProcessingInstruction)
+    /// - `HierarchyRequestError`: Invalid tree structure during child cloning
+    ///
+    /// ## Memory Management
+    /// The caller is responsible for releasing the returned node. The cloned
+    /// node will use `allocator` for all its memory, making it safe to use
+    /// across different document arenas.
+    pub fn cloneNodeWithAllocator(self: *const Node, allocator: Allocator, deep: bool) anyerror!*Node {
+        // Dispatch to the appropriate clone implementation based on node type
+        switch (self.node_type) {
+            .element => {
+                const Element = @import("element.zig").Element;
+                const elem: *const Element = @fieldParentPtr("prototype", self);
+                return try Element.cloneWithAllocator(elem, allocator, deep);
+            },
+            .text => {
+                const Text = @import("text.zig").Text;
+                const text: *const Text = @fieldParentPtr("prototype", self);
+                return try Text.cloneWithAllocator(text, allocator);
+            },
+            .comment => {
+                const Comment = @import("comment.zig").Comment;
+                const comment: *const Comment = @fieldParentPtr("prototype", self);
+                return try Comment.cloneWithAllocator(comment, allocator);
+            },
+            .document_fragment => {
+                const DocumentFragment = @import("document_fragment.zig").DocumentFragment;
+                const frag: *const DocumentFragment = @fieldParentPtr("prototype", self);
+                return try DocumentFragment.cloneWithAllocator(frag, allocator, deep);
+            },
+            .document_type => {
+                const DocumentType = @import("document_type.zig").DocumentType;
+                const doctype: *const DocumentType = @fieldParentPtr("prototype", self);
+                return try DocumentType.cloneWithAllocator(doctype, allocator);
+            },
+            .document, .shadow_root => {
+                // These node types cannot be cloned via importNode
+                return error.NotSupported;
+            },
+            .processing_instruction => {
+                // ProcessingInstruction not yet implemented
+                return error.NotSupported;
+            },
+        }
     }
 
     /// Returns whether this node is the same node as other.
@@ -1559,6 +1622,24 @@ pub const Node = struct {
             if (self.owner_document) |owner_doc| {
                 if (owner_doc.node_type == .document) {
                     try addNodeToDocumentMaps(node, owner_doc);
+                }
+            }
+        }
+
+        // Slot assignment for fast path (WHATWG DOM §4.2.4 step 7.4)
+        // If parent is a shadow host whose shadow root's slot assignment is "named"
+        // and node is a slottable, then assign a slot for node.
+        if (self.node_type == .element) {
+            const Element = @import("element.zig").Element;
+            if (self.rare_data) |rare_data| {
+                if (rare_data.shadow_root) |shadow_ptr| {
+                    const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
+                    const shadow: *const ShadowRoot = @ptrCast(@alignCast(shadow_ptr));
+                    if (shadow.slot_assignment == .named) {
+                        if (node.node_type == .element or node.node_type == .text) {
+                            Element.assignASlot(node.allocator, node) catch {};
+                        }
+                    }
                 }
             }
         }
@@ -2477,6 +2558,24 @@ fn insert(
             if (parent.owner_document) |owner_doc| {
                 if (owner_doc.node_type == .document) {
                     addNodeToDocumentMaps(n, owner_doc) catch {}; // Best effort
+                }
+            }
+        }
+
+        // Slot assignment steps (WHATWG DOM §4.2.4 - insert algorithm step 7.4)
+        // Step 7.4: If parent is a shadow host whose shadow root's slot assignment is "named"
+        //           and node is a slottable, then assign a slot for node.
+        if (parent.node_type == .element) {
+            const Element = @import("element.zig").Element;
+            if (parent.rare_data) |rare_data| {
+                if (rare_data.shadow_root) |shadow_ptr| {
+                    const ShadowRoot = @import("shadow_root.zig").ShadowRoot;
+                    const shadow: *const ShadowRoot = @ptrCast(@alignCast(shadow_ptr));
+                    if (shadow.slot_assignment == .named) {
+                        if (n.node_type == .element or n.node_type == .text) {
+                            Element.assignASlot(n.allocator, n) catch {};
+                        }
+                    }
                 }
             }
         }

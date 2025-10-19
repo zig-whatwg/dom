@@ -4,11 +4,10 @@
 //! with a mock type (not Node).
 
 const std = @import("std");
-const event_target = @import("event_target.zig");
-const EventTargetMixin = event_target.EventTargetMixin;
-const EventListener = event_target.EventListener;
-const EventCallback = event_target.EventCallback;
-const Event = @import("event.zig").Event;
+const dom = @import("dom");
+// Note: EventTargetMixin and internal types are not exported from dom module
+// This test file tests internal implementation details
+// TODO: Refactor to test through public API or make internal types testable
 const Allocator = std.mem.Allocator;
 
 // Mock RareData for testing
