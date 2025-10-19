@@ -439,6 +439,31 @@ test "cloneNode() adding children to original doesn't affect shallow clone" {
 // Multiple Attribute Tests
 // ============================================================================
 
+test "setAttribute/getAttribute with 6 attributes (heap migration)" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const element = try doc.createElement("element");
+    defer element.prototype.release();
+
+    // Set 6 attributes (should migrate to heap after 4th)
+    try element.setAttribute("attr1", "value1");
+    try element.setAttribute("attr2", "value2");
+    try element.setAttribute("attr3", "value3");
+    try element.setAttribute("data-id", "test-id");
+    try element.setAttribute("data-name", "test-name");
+    try element.setAttribute("flag", "");
+
+    // Verify all can be retrieved
+    try std.testing.expectEqualStrings("value1", element.getAttribute("attr1").?);
+    try std.testing.expectEqualStrings("value2", element.getAttribute("attr2").?);
+    try std.testing.expectEqualStrings("value3", element.getAttribute("attr3").?);
+    try std.testing.expectEqualStrings("test-id", element.getAttribute("data-id").?);
+    try std.testing.expectEqualStrings("test-name", element.getAttribute("data-name").?);
+    try std.testing.expectEqualStrings("", element.getAttribute("flag").?);
+}
+
 test "cloneNode() copies multiple attributes correctly" {
     const allocator = std.testing.allocator;
     const doc = try Document.init(allocator);

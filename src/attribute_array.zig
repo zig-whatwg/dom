@@ -251,20 +251,24 @@ pub const AttributeArray = struct {
         else
             Attribute.init(local_name, value);
 
-        // Add to inline storage if room
-        if (self.inline_count < 4) {
+        // Determine storage location
+        if (self.attributes.items.len > 0) {
+            // Already using heap - append
+            try self.attributes.append(self.allocator, new_attr);
+        } else if (self.inline_count < 4) {
+            // Using inline storage with room - add to inline
             self.inline_storage[self.inline_count] = new_attr;
             self.inline_count += 1;
         } else {
-            // Move to heap on first overflow
-            if (self.attributes.items.len == 0) {
-                try self.attributes.ensureTotalCapacity(self.allocator, 8);
-                for (self.inline_storage[0..4]) |attr| {
-                    self.attributes.appendAssumeCapacity(attr);
-                }
-                self.inline_count = 0; // Mark as using heap
+            // inline_count == 4 - first overflow, migrate to heap
+            try self.attributes.ensureTotalCapacity(self.allocator, 8);
+            for (self.inline_storage[0..4]) |attr| {
+                self.attributes.appendAssumeCapacity(attr);
             }
+
+            // Append the new attribute
             try self.attributes.append(self.allocator, new_attr);
+            self.inline_count = 0; // Mark as using heap
         }
     }
 
