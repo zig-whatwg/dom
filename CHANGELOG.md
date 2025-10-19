@@ -24,15 +24,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       - Finds all matching slottables for a slot
       - Updates slot's assigned nodes list
       - Updates each slottable's assigned slot pointer
+  - **Automatic Slot Assignment (Phase 9a Complete)** ✅
+    - **Insertion-triggered assignment**: appendChild() and insertBefore() automatically assign slottables in named mode
+    - **Attribute change hooks**: Changing `slot` or `name` attributes triggers automatic reassignment
+    - **Dual insertion points**: Both `Node.insert()` and `Node.appendChildFast()` have assignment hooks
+    - **Supported operations**:
+      - Element slot attribute changes → reassigns element to new slot
+      - Slot name attribute changes → reassigns all matching slottables
+      - Removing slot attribute → reassigns to default slot
+      - Removing slot name → converts to default slot, reassigns matching slottables
+    - **Manual mode respected**: No automatic assignment in manual slot assignment mode
   - **Shadow DOM Slot Modes**
-    - Named mode (automatic matching via attributes)
+    - Named mode (automatic matching via attributes) - FULLY IMPLEMENTED ✅
     - Manual mode (explicit assignment via assign())
     - Mode controlled by `ShadowRootInit.slot_assignment`
   - **Slottable Support**
     - Element nodes with `slot` attribute
     - Text nodes (always match default slot)
     - Default slot matches nodes without slot attribute
-  - **Test Coverage**: 31 slot tests (15 new), all passing, 0 leaks ✅
+  - **Test Coverage**: 42 slot tests (26 new: 15 core + 11 automatic), all passing, 0 leaks ✅
   - **Spec References**:
     - WHATWG DOM §4.2.2.3: Finding slots and slottables
     - WHATWG DOM §4.2.2.4: Assigning slottables and slots

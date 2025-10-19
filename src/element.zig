@@ -542,6 +542,27 @@ pub const Element = struct {
                 }
             }
         }
+
+        // Handle slot name attribute changes (WHATWG DOM §4.2.2.3)
+        // When a slot's name changes, reassign all slottables in the shadow tree
+        if (std.mem.eql(u8, name, "name") and std.mem.eql(u8, self.tag_name, "slot")) {
+            // Run assign slottables for a tree with element's root
+            const root = self.prototype.getRootNode(false);
+            if (root.node_type == .shadow_root) {
+                assignSlottablesForTree(self.prototype.allocator, root) catch {};
+            }
+        }
+
+        // Handle slottable slot attribute changes (WHATWG DOM §4.2.2.3)
+        // When an element's slot attribute changes, reassign it to the correct slot
+        if (std.mem.eql(u8, name, "slot")) {
+            // If element is assigned, run assign slottables for element's assigned slot
+            if (self.assignedSlot()) |assigned| {
+                assignSlottables(self.prototype.allocator, assigned) catch {};
+            }
+            // Run assign a slot for element
+            assignASlot(self.prototype.allocator, &self.prototype) catch {};
+        }
     }
 
     /// Gets an attribute value from the element.
@@ -625,6 +646,27 @@ pub const Element = struct {
         // Clear bloom filter if removing class attribute (Phase 3: class_map removed, bloom filter still used)
         if (removed and std.mem.eql(u8, name, "class")) {
             self.class_bloom.clear();
+        }
+
+        // Handle slot name attribute removal (WHATWG DOM §4.2.2.3)
+        // When a slot's name is removed, it becomes a default slot - reassign all slottables
+        if (removed and std.mem.eql(u8, name, "name") and std.mem.eql(u8, self.tag_name, "slot")) {
+            // Run assign slottables for a tree with element's root
+            const root = self.prototype.getRootNode(false);
+            if (root.node_type == .shadow_root) {
+                assignSlottablesForTree(self.prototype.allocator, root) catch {};
+            }
+        }
+
+        // Handle slottable slot attribute removal (WHATWG DOM §4.2.2.3)
+        // When an element's slot attribute is removed, reassign it to default slot
+        if (removed and std.mem.eql(u8, name, "slot")) {
+            // If element was assigned, run assign slottables for its old slot
+            if (self.assignedSlot()) |assigned| {
+                assignSlottables(self.prototype.allocator, assigned) catch {};
+            }
+            // Run assign a slot for element (will now match default slot)
+            assignASlot(self.prototype.allocator, &self.prototype) catch {};
         }
     }
 
@@ -1670,6 +1712,60 @@ pub const Element = struct {
                 try text.setAssignedSlot(slot);
             }
         }
+    }
+
+    /// Assign slottables for a tree (WHATWG §4.2.2.4).
+    ///
+    /// To assign slottables for a tree, given a node root,
+    /// run assign slottables for each slot of root's inclusive descendants, in tree order.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.2.2.4 Assigning slottables and slots**: https://dom.spec.whatwg.org/#assigning-slottables-and-slots
+    ///
+    /// ## Parameters
+    /// - `allocator`: Memory allocator
+    /// - `root`: Root node to start searching for slots
+    ///
+    /// ## Errors
+    /// - `OutOfMemory`: Failed to allocate arrays
+    pub fn assignSlottablesForTree(allocator: Allocator, root: *Node) !void {
+        // Find all slot elements in tree
+        if (root.node_type == .element) {
+            const elem: *Element = @fieldParentPtr("prototype", root);
+            if (std.mem.eql(u8, elem.tag_name, "slot")) {
+                try assignSlottables(allocator, elem);
+            }
+        }
+
+        // Recursively process children
+        var current = root.first_child;
+        while (current) |node| {
+            try assignSlottablesForTree(allocator, node);
+            current = node.next_sibling;
+        }
+    }
+
+    /// Assign a slot for a slottable (WHATWG §4.2.2.4).
+    ///
+    /// To assign a slot, given a slottable:
+    /// 1. Let slot be the result of finding a slot with slottable.
+    /// 2. If slot is non-null, then run assign slottables for slot.
+    ///
+    /// ## WHATWG Specification
+    /// - **§4.2.2.4 Assigning slottables and slots**: https://dom.spec.whatwg.org/#assigning-slottables-and-slots
+    ///
+    /// ## Parameters
+    /// - `allocator`: Memory allocator
+    /// - `slottable`: The node to assign a slot for
+    ///
+    /// ## Errors
+    /// - `OutOfMemory`: Failed to allocate arrays
+    pub fn assignASlot(allocator: Allocator, slottable: *Node) !void {
+        // 1. Let slot be the result of finding a slot with slottable
+        const slot = findSlot(slottable, false) orelse return;
+
+        // 2. If slot is non-null, then run assign slottables for slot
+        try assignSlottables(allocator, slot);
     }
 
     // ========================================================================

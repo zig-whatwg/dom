@@ -729,14 +729,14 @@ test "Named Slot - assignSlottables updates assignments" {
     try elem2.setAttribute("slot", "content");
     _ = try host.prototype.appendChild(&elem2.prototype);
 
-    // Initially no assignments
-    try std.testing.expect(elem1.assignedSlot() == null);
-    try std.testing.expect(elem2.assignedSlot() == null);
+    // With automatic assignment (named mode), elements are already assigned after appendChild
+    try std.testing.expect(elem1.assignedSlot() == slot);
+    try std.testing.expect(elem2.assignedSlot() == slot);
 
-    // Assign slottables
+    // Manually calling assignSlottables should still work (idempotent)
     try Element.assignSlottables(allocator, slot);
 
-    // Check assignments were updated
+    // Check assignments are still correct
     try std.testing.expect(elem1.assignedSlot() == slot);
     try std.testing.expect(elem2.assignedSlot() == slot);
 
@@ -818,4 +818,322 @@ test "Named Slot - memory leak test for slot assignment algorithms" {
         const s = try Element.findSlottables(allocator, slot);
         defer allocator.free(s);
     }
+}
+
+// ============================================================================
+// Automatic Slot Assignment Tests - Insertion Hooks
+// ============================================================================
+
+test "Automatic Assignment - appendChild triggers assignment in named mode" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open, .slot_assignment = .named });
+
+    const slot = try doc.createElement("slot");
+    try slot.setAttribute("name", "content");
+    _ = try shadow.prototype.appendChild(&slot.prototype);
+
+    const elem = try doc.createElement("item");
+    try elem.setAttribute("slot", "content");
+
+    // Before appendChild, no assignment
+    try std.testing.expect(elem.assignedSlot() == null);
+
+    // appendChild should trigger automatic assignment
+    _ = try host.prototype.appendChild(&elem.prototype);
+
+    // After appendChild, element should be assigned to slot
+    try std.testing.expect(elem.assignedSlot() == slot);
+}
+
+test "Automatic Assignment - insertBefore triggers assignment in named mode" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open, .slot_assignment = .named });
+
+    const slot = try doc.createElement("slot");
+    try slot.setAttribute("name", "content");
+    _ = try shadow.prototype.appendChild(&slot.prototype);
+
+    const first_child = try doc.createElement("first");
+    _ = try host.prototype.appendChild(&first_child.prototype);
+
+    const elem = try doc.createElement("item");
+    try elem.setAttribute("slot", "content");
+
+    // Before insertBefore, no assignment
+    try std.testing.expect(elem.assignedSlot() == null);
+
+    // insertBefore should trigger automatic assignment
+    _ = try host.prototype.insertBefore(&elem.prototype, &first_child.prototype);
+
+    // After insertBefore, element should be assigned to slot
+    try std.testing.expect(elem.assignedSlot() == slot);
+}
+
+test "Automatic Assignment - text node automatically assigned to default slot" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open, .slot_assignment = .named });
+
+    // Default slot (no name attribute)
+    const slot = try doc.createElement("slot");
+    _ = try shadow.prototype.appendChild(&slot.prototype);
+
+    const text = try doc.createTextNode("Hello");
+
+    // Before appendChild, no assignment
+    try std.testing.expect(text.assignedSlot() == null);
+
+    // appendChild should trigger automatic assignment to default slot
+    _ = try host.prototype.appendChild(&text.prototype);
+
+    // After appendChild, text should be assigned to default slot
+    try std.testing.expect(text.assignedSlot() == slot);
+}
+
+test "Automatic Assignment - no assignment in manual mode" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open, .slot_assignment = .manual });
+
+    const slot = try doc.createElement("slot");
+    try slot.setAttribute("name", "content");
+    _ = try shadow.prototype.appendChild(&slot.prototype);
+
+    const elem = try doc.createElement("item");
+    try elem.setAttribute("slot", "content");
+
+    // appendChild should NOT trigger assignment in manual mode
+    _ = try host.prototype.appendChild(&elem.prototype);
+
+    // Element should NOT be assigned (manual mode)
+    try std.testing.expect(elem.assignedSlot() == null);
+}
+
+test "Automatic Assignment - appendChild to non-host does not trigger assignment" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("container");
+    defer container.prototype.release();
+
+    const elem = try doc.createElement("item");
+    try elem.setAttribute("slot", "content");
+
+    // appendChild to non-shadow-host should not trigger assignment
+    _ = try container.prototype.appendChild(&elem.prototype);
+
+    // Element should not be assigned (parent is not shadow host)
+    try std.testing.expect(elem.assignedSlot() == null);
+}
+
+// ============================================================================
+// Automatic Slot Assignment Tests - Attribute Change Hooks
+// ============================================================================
+
+test "Automatic Assignment - changing element slot attribute triggers reassignment" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open, .slot_assignment = .named });
+
+    const slot1 = try doc.createElement("slot");
+    try slot1.setAttribute("name", "slot1");
+    _ = try shadow.prototype.appendChild(&slot1.prototype);
+
+    const slot2 = try doc.createElement("slot");
+    try slot2.setAttribute("name", "slot2");
+    _ = try shadow.prototype.appendChild(&slot2.prototype);
+
+    const elem = try doc.createElement("item");
+    try elem.setAttribute("slot", "slot1");
+    _ = try host.prototype.appendChild(&elem.prototype);
+
+    // Element should be assigned to slot1
+    try std.testing.expect(elem.assignedSlot() == slot1);
+
+    // Changing slot attribute should trigger reassignment
+    try elem.setAttribute("slot", "slot2");
+
+    // Element should now be assigned to slot2
+    try std.testing.expect(elem.assignedSlot() == slot2);
+}
+
+test "Automatic Assignment - changing slot name attribute triggers reassignment" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open, .slot_assignment = .named });
+
+    const slot = try doc.createElement("slot");
+    try slot.setAttribute("name", "original");
+    _ = try shadow.prototype.appendChild(&slot.prototype);
+
+    const elem = try doc.createElement("item");
+    try elem.setAttribute("slot", "changed");
+    _ = try host.prototype.appendChild(&elem.prototype);
+
+    // Element should not be assigned (names don't match)
+    try std.testing.expect(elem.assignedSlot() == null);
+
+    // Changing slot's name attribute should trigger reassignment
+    try slot.setAttribute("name", "changed");
+
+    // Element should now be assigned to slot
+    try std.testing.expect(elem.assignedSlot() == slot);
+}
+
+test "Automatic Assignment - removing element slot attribute triggers reassignment to default" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open, .slot_assignment = .named });
+
+    const named_slot = try doc.createElement("slot");
+    try named_slot.setAttribute("name", "content");
+    _ = try shadow.prototype.appendChild(&named_slot.prototype);
+
+    const default_slot = try doc.createElement("slot");
+    _ = try shadow.prototype.appendChild(&default_slot.prototype);
+
+    const elem = try doc.createElement("item");
+    try elem.setAttribute("slot", "content");
+    _ = try host.prototype.appendChild(&elem.prototype);
+
+    // Element should be assigned to named slot
+    try std.testing.expect(elem.assignedSlot() == named_slot);
+
+    // Removing slot attribute should trigger reassignment to default slot
+    elem.removeAttribute("slot");
+
+    // Element should now be assigned to default slot
+    try std.testing.expect(elem.assignedSlot() == default_slot);
+}
+
+test "Automatic Assignment - attribute change on non-slottable has no effect" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const container = try doc.createElement("container");
+    defer container.prototype.release();
+
+    const elem = try doc.createElement("item");
+    _ = try container.prototype.appendChild(&elem.prototype);
+
+    // Element is not child of shadow host
+    try std.testing.expect(elem.assignedSlot() == null);
+
+    // Changing slot attribute should have no effect
+    try elem.setAttribute("slot", "content");
+
+    // Still not assigned (parent is not shadow host)
+    try std.testing.expect(elem.assignedSlot() == null);
+}
+
+test "Automatic Assignment - slot name change reassigns all matching slottables" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open, .slot_assignment = .named });
+
+    const slot = try doc.createElement("slot");
+    try slot.setAttribute("name", "old");
+    _ = try shadow.prototype.appendChild(&slot.prototype);
+
+    const elem1 = try doc.createElement("item1");
+    try elem1.setAttribute("slot", "new");
+    _ = try host.prototype.appendChild(&elem1.prototype);
+
+    const elem2 = try doc.createElement("item2");
+    try elem2.setAttribute("slot", "new");
+    _ = try host.prototype.appendChild(&elem2.prototype);
+
+    // Elements should not be assigned (names don't match)
+    try std.testing.expect(elem1.assignedSlot() == null);
+    try std.testing.expect(elem2.assignedSlot() == null);
+
+    // Changing slot's name should assign both elements
+    try slot.setAttribute("name", "new");
+
+    // Both elements should now be assigned
+    try std.testing.expect(elem1.assignedSlot() == slot);
+    try std.testing.expect(elem2.assignedSlot() == slot);
+}
+
+test "Automatic Assignment - removing slot name assigns default slot slottables" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("host");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{ .mode = .open, .slot_assignment = .named });
+
+    const slot = try doc.createElement("slot");
+    try slot.setAttribute("name", "content");
+    _ = try shadow.prototype.appendChild(&slot.prototype);
+
+    const elem = try doc.createElement("item");
+    // No slot attribute - should match default slot
+    _ = try host.prototype.appendChild(&elem.prototype);
+
+    // Element should not be assigned (slot has name)
+    try std.testing.expect(elem.assignedSlot() == null);
+
+    // Removing slot's name makes it default slot
+    slot.removeAttribute("name");
+
+    // Element should now be assigned (matches default slot)
+    try std.testing.expect(elem.assignedSlot() == slot);
 }
