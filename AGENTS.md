@@ -318,28 +318,65 @@ When requirements are ambiguous, unclear, or could be interpreted multiple ways,
 
 **Location:** `skills/communication_protocol/`
 
+### 8. **browser_research** - Browser Implementation Research ⭐ NEW
+
+**Automatically loaded when:**
+- Implementing ANY new DOM feature or interface
+- Adding new methods to existing interfaces
+- Designing data structures for DOM nodes
+- Planning performance optimizations
+
+**Core Principle:**
+Before implementing ANY new feature, research how Chrome (Blink), Firefox (Gecko), and WebKit implement it. Design based on proven browser patterns optimized for Zig's strengths.
+
+**Provides:**
+- Mandatory browser research workflow (Chrome, Firefox, WebKit)
+- Design document template (browser analysis → Zig plan)
+- WPT test import process
+- Cross-browser pattern identification
+- Phased implementation planning
+- Performance expectation calculations
+- Risk analysis framework
+
+**Mandatory Process**:
+1. Read WHATWG + WebIDL specs completely
+2. Research all 3 browsers (Chrome, Firefox, WebKit)
+3. Create design document with analysis + plan
+4. Import relevant WPT tests (generic element names only!)
+5. Implement using TDD
+6. Document thoroughly (inline + CHANGELOG + completion report)
+
+**Critical Rule:** NEVER implement a new feature without browser research + design document first!
+
+**Location:** `skills/browser_research/`
+
+**Example**: See `summaries/plans/namespaced_attributes_design.md` for complete 70-page design following this skill.
+
 ---
 
 ## Golden Rules
 
 These apply to ALL work on this project:
 
-### 0. **Ask When Unclear** ⭐ NEW
+### 0. **Ask When Unclear** ⭐
 When requirements are ambiguous or unclear, **ASK CLARIFYING QUESTIONS** before proceeding. One question at a time. Wait for answer. Never assume.
 
-### 1. **Complete Spec Understanding** 
+### 1. **Browser Research First** ⭐ NEW
+For ANY new feature: Research Chrome/Firefox/WebKit → Create design document → Import WPT tests → Then implement. NO exceptions!
+
+### 2. **Complete Spec Understanding** 
 Read FULL specifications from `skills/whatwg_compliance/`, not grep fragments. WebIDL AND prose MUST both be consulted.
 
-### 2. **Memory Safety**
+### 3. **Memory Safety**
 Zero leaks, proper cleanup with defer, test with `std.testing.allocator`.
 
-### 3. **Performance Critical**
-This is a DOM implementation. Optimize aggressively. Use fast paths, bloom filters, minimize allocations.
+### 4. **Performance Critical**
+This is a DOM implementation. Optimize aggressively. Use fast paths, bloom filters, minimize allocations. Learn from browser implementations.
 
-### 4. **Test First**
-Write tests before implementation. Never modify existing tests during refactoring (they are the contract).
+### 5. **Test First**
+Write tests before implementation (especially WPT tests). Never modify existing tests during refactoring (they are the contract).
 
-### 5. **Dual Compliance**
+### 6. **Dual Compliance**
 WebIDL signature + WHATWG algorithm required for every feature. Both spec references (WHATWG + MDN) in documentation following the standard format.
 
 ---
@@ -360,14 +397,22 @@ WebIDL signature + WHATWG algorithm required for every feature. Both spec refere
 - Zero tolerance for missing or incomplete documentation
 - **Documentation standard**: Follow format from `/Users/bcardarella/projects/dom/src/`
 
-### Workflow
-1. **Check WebIDL** in `skills/whatwg_compliance/dom.idl` for EXACT signature
-2. **Read WHATWG algorithm** from spec for complete behavior
-3. **Write tests first** (TDD)
-4. **Implement** with both spec references
-5. **Verify** no leaks, all tests pass
-6. **Document** with WebIDL + prose references
-7. **Update** CHANGELOG.md immediately
+### Workflow (New Features)
+1. **Research browsers** (Chrome, Firefox, WebKit) - see `browser_research` skill
+2. **Create design document** in `summaries/plans/` with analysis + plan
+3. **Import WPT tests** - convert to Zig with generic element names
+4. **Check WebIDL** in `skills/whatwg_compliance/dom.idl` for EXACT signature
+5. **Read WHATWG algorithm** from spec for complete behavior
+6. **Implement using TDD** - tests first, then code
+7. **Verify** no leaks, all tests pass, benchmarks meet expectations
+8. **Document** with WebIDL + prose references (both WHATWG + MDN)
+9. **Update CHANGELOG.md** + write completion report immediately
+
+### Workflow (Bug Fixes)
+1. **Write failing test** that reproduces the bug
+2. **Fix the bug** with minimal code change
+3. **Verify** all tests pass (including new test)
+4. **Update** CHANGELOG.md if user-visible
 
 ---
 
@@ -439,12 +484,14 @@ elem.node.acquire();  // Increment ref_count before sharing
 
 ```
 skills/
+├── browser_research/        # ⭐ NEW: Browser implementation research (mandatory for new features)
 ├── communication_protocol/  # ⭐ Ask clarifying questions when unclear
 ├── whatwg_compliance/       # Complete specs, WebIDL, type mappings
 ├── zig_standards/           # Zig idioms, memory patterns, errors
 ├── testing_requirements/    # Test patterns, coverage, TDD
 ├── performance_optimization/# Fast paths, bloom filters, benchmarks
-└── documentation_standards/ # Doc format, CHANGELOG, README
+├── documentation_standards/ # Doc format, CHANGELOG, README
+└── benchmark_parity/        # Zig ↔ JS benchmark synchronization
 
 memory/                      # Persistent knowledge (memory tool)
 ├── completed_features.json
@@ -452,10 +499,14 @@ memory/                      # Persistent knowledge (memory tool)
 └── performance_baselines.json
 
 summaries/                   # Analysis docs, plans, reports
-├── plans/
-├── analysis/
-├── completion/
-└── notes/
+├── plans/                   # Design documents (browser research + Zig plan)
+├── analysis/                # Technical analysis and research findings
+├── completion/              # Phase completion reports
+└── notes/                   # Session notes and working documents
+
+tests/
+├── unit/                    # Unit tests (co-located with src/)
+└── wpt/                     # Web Platform Tests (converted from upstream)
 
 src/                         # Source code
 └── ... (Zig files)
@@ -477,20 +528,23 @@ Root:
 - Untested code
 - Missing documentation
 - Undocumented CHANGELOG entries
+- **New features without browser research** ⭐ NEW
 - **Implementations without WebIDL verification**
 - **Missing spec references (WebIDL + WHATWG prose)**
 - **Using grep instead of reading complete specs**
+- **Skipping WPT test imports for new features**
 
 ---
 
 ## When in Doubt
 
 1. **ASK A CLARIFYING QUESTION** ⭐ - Don't assume, just ask (one question at a time)
-2. **Load `whatwg_compliance` skill** - Check complete WebIDL + prose spec
-3. **Load relevant skills** - Get specialized guidance
-4. Check existing code for patterns
-5. Look at existing tests
-6. Follow the Golden Rules
+2. **For new features**: Load `browser_research` skill - Research Chrome/Firefox/WebKit first!
+3. **Load `whatwg_compliance` skill** - Check complete WebIDL + prose spec
+4. **Load relevant skills** - Get specialized guidance
+5. Check existing code for patterns
+6. Look at existing tests
+7. Follow the Golden Rules
 
 ---
 
