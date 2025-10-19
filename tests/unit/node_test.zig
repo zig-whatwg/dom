@@ -1,17 +1,15 @@
 const std = @import("std");
 const dom = @import("dom");
-
-// Import all commonly used types
 const Node = dom.Node;
 const NodeType = dom.NodeType;
-const NodeVTable = dom.NodeVTable;
 const Element = dom.Element;
 const Text = dom.Text;
 const Comment = dom.Comment;
 const Document = dom.Document;
 const DocumentFragment = dom.DocumentFragment;
-const ShadowRoot = dom.ShadowRoot;
 const Event = dom.Event;
+const EventTarget = dom.EventTarget;
+const NodeVTable = dom.NodeVTable;
 
 test "Node - size constraint" {
     const size = @sizeOf(Node);
@@ -644,6 +642,14 @@ test "Node - childNodes" {
     child1.parent_node = null;
     child2.parent_node = null;
 }
+
+// ============================================================================
+// TREE MANIPULATION TESTS
+// ============================================================================
+
+// ============================================================================
+// TREE MANIPULATION TESTS
+// ============================================================================
 
 test "Node.appendChild - adds child successfully" {
     const allocator = std.testing.allocator;
@@ -1304,6 +1310,8 @@ test "Node.textContent - no memory leaks" {
     // Test passes if no leaks detected by testing allocator
 }
 
+// === isSameNode() Tests ===
+
 test "Node.isSameNode - returns true for same node" {
     const allocator = std.testing.allocator;
 
@@ -1342,6 +1350,8 @@ test "Node.isSameNode - returns false for null" {
 
     try std.testing.expect(!elem.prototype.isSameNode(null));
 }
+
+// === getRootNode() Tests ===
 
 test "Node.getRootNode - returns document for connected node" {
     const allocator = std.testing.allocator;
@@ -1407,6 +1417,8 @@ test "Node.getRootNode - composed parameter (no shadow DOM yet)" {
     try std.testing.expect(root1 == root2);
     try std.testing.expect(root1 == &doc.prototype);
 }
+
+// === contains() Tests ===
 
 test "Node.contains - returns true for self (inclusive)" {
     const allocator = std.testing.allocator;
@@ -1501,6 +1513,8 @@ test "Node.contains - returns false for null (per spec)" {
     try std.testing.expect(!elem.prototype.contains(null));
 }
 
+// === baseURI() Tests ===
+
 test "Node.baseURI - returns empty string (placeholder)" {
     const allocator = std.testing.allocator;
 
@@ -1513,6 +1527,8 @@ test "Node.baseURI - returns empty string (placeholder)" {
     const uri = elem.prototype.baseURI();
     try std.testing.expectEqualStrings("", uri);
 }
+
+// === compareDocumentPosition() Tests ===
 
 test "Node.compareDocumentPosition - returns 0 for same node" {
     const allocator = std.testing.allocator;
@@ -1655,6 +1671,8 @@ test "Node.compareDocumentPosition - complex tree order" {
     try std.testing.expect((pos & Node.DOCUMENT_POSITION_PRECEDING) != 0);
 }
 
+// === isEqualNode() Tests ===
+
 test "Node.isEqualNode - returns true for same node" {
     const allocator = std.testing.allocator;
 
@@ -1708,6 +1726,10 @@ test "Node.isEqualNode - returns false for different tag names" {
 
     try std.testing.expect(!elem1.prototype.isEqualNode(&elem2.prototype));
 }
+
+// ============================================================================
+// EVENT DISPATCHING TESTS
+// ============================================================================
 
 test "Node.dispatchEvent - basic dispatch returns true" {
     const allocator = std.testing.allocator;
@@ -2338,6 +2360,10 @@ test "Node.appendChild - cross-document adoption" {
     // elem should no longer be in doc1's tree
     try std.testing.expect(container1.prototype.first_child == null);
 }
+
+// ============================================================================
+// Case-Sensitive Tag Names and Attributes Tests (with any casing support)
+// ============================================================================
 
 test "Node - supports any case in tag names" {
     const allocator = std.testing.allocator;
