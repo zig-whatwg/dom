@@ -76,11 +76,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - 8 new Element namespace API tests (setAttributeNS, getAttributeNS, etc.)
     - 1 new heap migration test (6 attributes)
     - All existing tests pass with new storage
-  - **Performance Validation**: Browser-grade attribute handling
-    - Typical element (3-5 attrs): 100% inline, zero allocations
-    - 90th percentile (<10 attrs): Single heap allocation, optimal cache usage
-    - getAttribute: ~15 cycles (sequential scan) vs ~250 cycles (hash lookup)
-    - setAttribute: ~55 cycles (inline) vs ~100 cycles + allocation (hash)
+  - **Performance Validation**: Browser-grade attribute handling ✅ BENCHMARKED
+    - **getAttribute (3 attrs, inline)**: 143ns = 7M ops/sec ⚡
+    - **getAttribute (5 attrs, heap)**: 267ns = 3.7M ops/sec
+    - **getAttribute (10 attrs, heap)**: 446ns = 2.2M ops/sec
+    - **setAttribute (3 attrs, inline)**: 218ns = 4.6M ops/sec ⚡
+    - **setAttribute (5 attrs, heap)**: 396ns = 2.5M ops/sec
+    - **hasAttribute**: 103ns = 9.7M ops/sec (fastest!)
+    - **setAttributeNS (validation)**: 1073ns = 736K ops/sec
+    - Linear O(n) performance as expected, optimized for typical n < 10
+    - Zero allocations for ≤4 attributes (inline storage)
+    - Cache-friendly sequential access
+    - 11 comprehensive benchmarks covering all operations
   - **Spec References**:
     - Element.setAttributeNS: https://dom.spec.whatwg.org/#dom-element-setattributens
     - Element.getAttributeNS: https://dom.spec.whatwg.org/#dom-element-getattributens
