@@ -14,11 +14,22 @@
 - NO HTML elements: `div`, `span`, `p`, `a`, `button`, `input`, `form`, `table`, `ul`, `li`, `header`, `footer`, `section`, `article`, `nav`, `main`, `aside`, `h1`, `body`, `html`
 - NO HTML attributes: `id`, `class`, `href`, `src`, `type`, `name`, `action`, `method`, `placeholder`
 
-### Test Location Rules
+### Test Location Rules ⚠️ CRITICAL
 
-- **Unit tests**: Co-located with implementation in `src/` files
-- **WPT tests**: Converted from Web Platform Tests, placed in `wpt_tests/` directory ONLY
-- **WPT conversion**: Replace ALL HTML element/attribute names with generic names
+**NEVER write tests inside `src/` files!**
+
+- **Unit tests**: Separate files in `tests/unit/` directory
+  - One test file per source file (e.g., `src/element.zig` → `tests/unit/element_test.zig`)
+  - Import the module under test: `const Element = @import("dom").Element;`
+  - Use `std.testing.allocator` for memory leak detection
+
+- **WPT tests**: Converted from Web Platform Tests, placed in `tests/wpt/` directory ONLY
+  - Organized by interface (e.g., `tests/wpt/nodes/Element-*.zig`)
+  - Replace ALL HTML element/attribute names with generic names during conversion
+
+- **Integration tests**: Can be in `tests/` root for cross-module tests
+
+**Rationale**: Separate test files keep source code clean, enable faster compilation (tests only compiled when needed), and follow Zig best practices.
 
 ## When to use this skill
 
