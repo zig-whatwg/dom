@@ -343,3 +343,91 @@ test "Text.splitText - invalid offset" {
     );
 }
 
+
+test "Text - wholeText with single text node" {
+    const allocator = std.testing.allocator;
+
+    const text = try Text.create(allocator, "Hello World");
+    defer text.prototype.release();
+
+    const whole = try text.wholeText(allocator);
+    defer allocator.free(whole);
+
+    try std.testing.expectEqualStrings("Hello World", whole);
+}
+
+test "Text - wholeText with contiguous text nodes" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.prototype.release();
+
+    const text1 = try doc.createTextNode("Hello ");
+    const text2 = try doc.createTextNode("beautiful ");
+    const text3 = try doc.createTextNode("world!");
+
+    _ = try parent.prototype.appendChild(&text1.prototype);
+    _ = try parent.prototype.appendChild(&text2.prototype);
+    _ = try parent.prototype.appendChild(&text3.prototype);
+
+    // wholeText from middle node should concatenate all three
+    const whole = try text2.wholeText(allocator);
+    defer allocator.free(whole);
+
+    try std.testing.expectEqualStrings("Hello beautiful world!", whole);
+}
+
+test "Text - wholeText with non-text siblings" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.prototype.release();
+
+    const text1 = try doc.createTextNode("Hello");
+    const elem = try doc.createElement("span");
+    const text2 = try doc.createTextNode("World");
+
+    _ = try parent.prototype.appendChild(&text1.prototype);
+    _ = try parent.prototype.appendChild(&elem.prototype);
+    _ = try parent.prototype.appendChild(&text2.prototype);
+
+    // wholeText from text1 should only include text1 (element breaks contiguity)
+    const whole1 = try text1.wholeText(allocator);
+    defer allocator.free(whole1);
+    try std.testing.expectEqualStrings("Hello", whole1);
+
+    // wholeText from text2 should only include text2
+    const whole2 = try text2.wholeText(allocator);
+    defer allocator.free(whole2);
+    try std.testing.expectEqualStrings("World", whole2);
+}
+
+test "Text - wholeText with empty text nodes" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    defer parent.prototype.release();
+
+    const text1 = try doc.createTextNode("");
+    const text2 = try doc.createTextNode("Content");
+    const text3 = try doc.createTextNode("");
+
+    _ = try parent.prototype.appendChild(&text1.prototype);
+    _ = try parent.prototype.appendChild(&text2.prototype);
+    _ = try parent.prototype.appendChild(&text3.prototype);
+
+    // wholeText should include empty strings too
+    const whole = try text2.wholeText(allocator);
+    defer allocator.free(whole);
+
+    try std.testing.expectEqualStrings("Content", whole);
+}
