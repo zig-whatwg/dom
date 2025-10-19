@@ -223,6 +223,10 @@ pub const AbortController = @import("abort_controller.zig").AbortController;
 pub const AbortAlgorithm = @import("abort_signal.zig").AbortAlgorithm;
 pub const SignalRareData = @import("abort_signal_rare_data.zig").SignalRareData;
 
+// Export mixins (Phase 16)
+pub const child_node = @import("child_node.zig");
+pub const parent_node = @import("parent_node.zig");
+
 // Export validation and helpers (internal)
 pub const validation = @import("validation.zig");
 pub const tree_helpers = @import("tree_helpers.zig");
