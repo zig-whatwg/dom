@@ -203,6 +203,7 @@ const NodeType = @import("node.zig").NodeType;
 pub const DOMError = error{
     HierarchyRequestError,
     NotFoundError,
+    InUseAttributeError,
 };
 
 /// Ensures pre-insert validity of a node into a parent before a child.
@@ -619,8 +620,3 @@ fn elementIsPreceding(node: *Node) bool {
 
 const Element = @import("element.zig").Element;
 const Document = @import("document.zig").Document;
-
-
-
-
-

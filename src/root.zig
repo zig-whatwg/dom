@@ -191,6 +191,10 @@ pub const Text = @import("text.zig").Text;
 pub const Comment = @import("comment.zig").Comment;
 pub const DocumentType = @import("document_type.zig").DocumentType;
 
+// Export attribute modules
+pub const Attr = @import("attr.zig").Attr;
+pub const NamedNodeMap = @import("named_node_map.zig").NamedNodeMap;
+
 pub const Event = @import("event.zig").Event;
 pub const CustomEvent = @import("custom_event.zig").CustomEvent;
 pub const CustomEventInit = @import("custom_event.zig").CustomEventInit;

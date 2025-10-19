@@ -356,6 +356,7 @@ const EventTargetMixin = @import("event_target.zig").EventTargetMixin;
 /// Node types per WHATWG DOM specification.
 pub const NodeType = enum(u8) {
     element = 1,
+    attribute = 2,
     text = 3,
     comment = 8,
     document = 9,
@@ -865,6 +866,10 @@ pub const Node = struct {
                 const Element = @import("element.zig").Element;
                 const elem: *const Element = @fieldParentPtr("prototype", self);
                 return try Element.cloneWithAllocator(elem, allocator, deep);
+            },
+            .attribute => {
+                // Attr nodes use vtable dispatch
+                return try self.vtable.clone_node(self, deep);
             },
             .text => {
                 const Text = @import("text.zig").Text;

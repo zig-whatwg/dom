@@ -249,6 +249,7 @@ const NodeVTable = node_mod.NodeVTable;
 const Element = @import("element.zig").Element;
 const Text = @import("text.zig").Text;
 const Comment = @import("comment.zig").Comment;
+const Attr = @import("attr.zig").Attr;
 const DocumentFragment = @import("document_fragment.zig").DocumentFragment;
 const SelectorList = @import("selector/parser.zig").SelectorList;
 const FastPathType = @import("fast_path.zig").FastPathType;
@@ -888,6 +889,132 @@ pub const Document = struct {
         self.acquireNodeRef();
 
         return fragment;
+    }
+
+    /// Creates a new Attr node with the specified name.
+    ///
+    /// Implements WHATWG DOM Document.createAttribute() per §4.10.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] Attr createAttribute(DOMString localName);
+    /// ```
+    ///
+    /// ## Parameters
+    /// - `local_name`: Attribute name
+    ///
+    /// ## Memory Management
+    /// Returns Attr with ref_count=1. Caller MUST call `attr.node.release()`.
+    /// Attribute name is interned via string pool for memory efficiency.
+    ///
+    /// ## Returns
+    /// New Attr node with empty value, ownerDocument=this
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-createattribute
+    /// - WebIDL: dom.idl:511
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const attr = try doc.createAttribute("class");
+    /// defer attr.node.release();
+    ///
+    /// attr.setValue("highlight");
+    ///
+    /// const elem = try doc.createElement("div");
+    /// _ = try elem.setAttributeNode(attr);
+    /// ```
+    pub fn createAttribute(self: *Document, local_name: []const u8) !*Attr {
+        // Intern attribute name via string pool
+        const interned_name = try self.string_pool.intern(local_name);
+
+        // Create Attr node
+        const attr = try Attr.create(self.prototype.allocator, interned_name);
+        errdefer attr.node.release();
+
+        // Set owner document and assign node ID
+        attr.node.owner_document = &self.prototype;
+        attr.node.node_id = self.allocateNodeId();
+
+        // Increment document's node ref count
+        self.acquireNodeRef();
+
+        return attr;
+    }
+
+    /// Creates a new namespaced Attr node.
+    ///
+    /// Implements WHATWG DOM Document.createAttributeNS() per §4.10.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] Attr createAttributeNS(DOMString? namespace, DOMString qualifiedName);
+    /// ```
+    ///
+    /// ## Parameters
+    /// - `namespace_uri`: Namespace URI (nullable)
+    /// - `qualified_name`: Qualified name (may include prefix like "xml:lang")
+    ///
+    /// ## Memory Management
+    /// Returns Attr with ref_count=1. Caller MUST call `attr.node.release()`.
+    ///
+    /// ## Returns
+    /// New namespaced Attr node with empty value, ownerDocument=this
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-createattributens
+    /// - WebIDL: dom.idl:512
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const attr = try doc.createAttributeNS(
+    ///     "http://www.w3.org/XML/1998/namespace",
+    ///     "xml:lang"
+    /// );
+    /// defer attr.node.release();
+    ///
+    /// attr.setValue("en");
+    /// ```
+    pub fn createAttributeNS(
+        self: *Document,
+        namespace_uri: ?[]const u8,
+        qualified_name: []const u8,
+    ) !*Attr {
+        // Intern namespace URI and qualified name
+        const interned_ns = if (namespace_uri) |ns|
+            try self.string_pool.intern(ns)
+        else
+            null;
+        const interned_name = try self.string_pool.intern(qualified_name);
+
+        // Create namespaced Attr node
+        const attr = try Attr.createNS(
+            self.prototype.allocator,
+            interned_ns,
+            interned_name,
+        );
+        errdefer attr.node.release();
+
+        // Set owner document and assign node ID
+        attr.node.owner_document = &self.prototype;
+        attr.node.node_id = self.allocateNodeId();
+
+        // Increment document's node ref count
+        self.acquireNodeRef();
+
+        return attr;
     }
 
     /// Creates a new DocumentType node.

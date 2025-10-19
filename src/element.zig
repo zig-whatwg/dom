@@ -237,6 +237,9 @@ const node_mod = @import("node.zig");
 const Node = node_mod.Node;
 const NodeType = node_mod.NodeType;
 const NodeVTable = node_mod.NodeVTable;
+const Attr = @import("attr.zig").Attr;
+const NamedNodeMap = @import("named_node_map.zig").NamedNodeMap;
+const DOMError = @import("validation.zig").DOMError;
 
 /// Bloom filter for fast class name matching in querySelector.
 ///
@@ -1018,6 +1021,159 @@ pub const Element = struct {
         }
 
         return names;
+    }
+
+    // ========================================================================
+    // Attribute Node Methods
+    // ========================================================================
+
+    /// Returns a NamedNodeMap of all attributes.
+    ///
+    /// Implements WHATWG DOM Element.attributes property.
+    /// Returns a live NamedNodeMap that reflects the element's attributes.
+    ///
+    /// ## Returns
+    /// NamedNodeMap view of this element's attributes
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-element-attributes
+    ///
+    /// **WebIDL**: dom.idl:374 [SameObject]
+    pub fn getAttributes(self: *Element) NamedNodeMap {
+        return NamedNodeMap{ .element = self };
+    }
+
+    /// Returns the Attr node for the given attribute name.
+    ///
+    /// Implements WHATWG DOM Element.getAttributeNode() interface.
+    ///
+    /// ## Parameters
+    /// - `qualified_name`: Attribute name to look up
+    ///
+    /// ## Returns
+    /// Attr node with matching name, or null if not found
+    ///
+    /// ## Example
+    /// ```zig
+    /// if (try elem.getAttributeNode("id")) |attr| {
+    ///     defer attr.node.release();
+    ///     std.debug.print("ID: {s}\n", .{attr.value()});
+    /// }
+    /// ```
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-element-getattributenode
+    ///
+    /// **WebIDL**: dom.idl:386
+    pub fn getAttributeNode(self: *Element, qualified_name: []const u8) !?*Attr {
+        var attrs = self.getAttributes();
+        return try attrs.getNamedItem(qualified_name);
+    }
+
+    /// Returns the Attr node for the given namespaced attribute.
+    ///
+    /// Implements WHATWG DOM Element.getAttributeNodeNS() interface.
+    ///
+    /// ## Parameters
+    /// - `namespace_uri`: Namespace URI (nullable)
+    /// - `local_name`: Local name without prefix
+    ///
+    /// ## Returns
+    /// Attr node with matching namespace and local name, or null
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-element-getattributenodeNS
+    ///
+    /// **WebIDL**: dom.idl:387
+    pub fn getAttributeNodeNS(
+        self: *Element,
+        namespace_uri: ?[]const u8,
+        local_name: []const u8,
+    ) !?*Attr {
+        var attrs = self.getAttributes();
+        return try attrs.getNamedItemNS(namespace_uri, local_name);
+    }
+
+    /// Sets an Attr node on the element.
+    ///
+    /// Implements WHATWG DOM Element.setAttributeNode() interface.
+    /// If an attribute with the same name already exists, it is replaced.
+    ///
+    /// ## Parameters
+    /// - `attr`: Attr node to add
+    ///
+    /// ## Returns
+    /// The replaced Attr node if one existed, otherwise null
+    ///
+    /// ## Errors
+    /// - `InUseAttributeError`: If attr is already owned by another element
+    ///
+    /// ## Example
+    /// ```zig
+    /// const attr = try doc.createAttribute("class");
+    /// attr.setValue("highlight");
+    ///
+    /// const old = try elem.setAttributeNode(attr);
+    /// // old is null (no previous class attribute)
+    /// ```
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-element-setattributenode
+    ///
+    /// **WebIDL**: dom.idl:388 [CEReactions]
+    pub fn setAttributeNode(self: *Element, attr: *Attr) !?*Attr {
+        var attrs = self.getAttributes();
+        return try attrs.setNamedItem(attr);
+    }
+
+    /// Sets a namespaced Attr node on the element.
+    ///
+    /// Implements WHATWG DOM Element.setAttributeNodeNS() interface.
+    ///
+    /// ## Parameters
+    /// - `attr`: Namespaced Attr node to add
+    ///
+    /// ## Returns
+    /// The replaced Attr node if one existed, otherwise null
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-element-setattributenodeNS
+    ///
+    /// **WebIDL**: dom.idl:389 [CEReactions]
+    pub fn setAttributeNodeNS(self: *Element, attr: *Attr) !?*Attr {
+        var attrs = self.getAttributes();
+        return try attrs.setNamedItemNS(attr);
+    }
+
+    /// Removes an Attr node from the element.
+    ///
+    /// Implements WHATWG DOM Element.removeAttributeNode() interface.
+    ///
+    /// ## Parameters
+    /// - `attr`: Attr node to remove
+    ///
+    /// ## Returns
+    /// The removed Attr node (same as input)
+    ///
+    /// ## Errors
+    /// - `NotFoundError`: If attr is not an attribute of this element
+    ///
+    /// ## Example
+    /// ```zig
+    /// if (try elem.getAttributeNode("class")) |attr| {
+    ///     const removed = try elem.removeAttributeNode(attr);
+    ///     defer removed.node.release();
+    ///     std.debug.assert(removed == attr);
+    /// }
+    /// ```
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-element-removeattributenode
+    ///
+    /// **WebIDL**: dom.idl:390 [CEReactions]
+    pub fn removeAttributeNode(self: *Element, attr: *Attr) !*Attr {
+        // Verify attr belongs to this element
+        if (attr.owner_element != self) {
+            return DOMError.NotFoundError;
+        }
+
+        // Remove the attribute by name
+        var attrs = self.getAttributes();
+        return try attrs.removeNamedItem(attr.name());
     }
 
     // ========================================================================

@@ -9,6 +9,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 14: Attribute Node APIs** 🎉
+  - **Attr Interface (WHATWG DOM §4.10)** ✅ NEW
+    - `Attr` - Node subclass representing element attributes
+    - `Attr.create(allocator, localName)` - Create attribute node
+    - `Attr.createNS(allocator, namespace, qualifiedName)` - Create namespaced attribute
+    - `Attr.name()` - Get qualified attribute name (includes prefix)
+    - `Attr.localName` - Get local name without prefix
+    - `Attr.value()` - Get attribute value
+    - `Attr.setValue(value)` - Set attribute value
+    - `Attr.ownerElement` - Get element this attribute belongs to
+    - `Attr.namespaceURI` - Get namespace URI (null for non-namespaced)
+    - `Attr.prefix` - Get namespace prefix (null if none)
+    - `Attr.specified()` - Always returns true (legacy property)
+    - Extends Node with full cloning and adoption support
+  - **NamedNodeMap Interface (WHATWG DOM §4.10)** ✅ NEW
+    - `NamedNodeMap` - Collection view of element attributes as Attr nodes
+    - `length()` - Get attribute count
+    - `item(index)` - Get attribute by numeric index
+    - `getNamedItem(name)` - Get attribute by name
+    - `getNamedItemNS(namespace, localName)` - Get namespaced attribute
+    - `setNamedItem(attr)` - Set attribute node (replaces if exists)
+    - `setNamedItemNS(attr)` - Set namespaced attribute node
+    - `removeNamedItem(name)` - Remove and return attribute
+    - `removeNamedItemNS(namespace, localName)` - Remove namespaced attribute
+    - Provides object-oriented view of attributes vs string-based API
+    - Creates Attr nodes on-demand from Element's AttributeMap
+  - **Element Attribute Node Methods (WHATWG DOM §4.10)** ✅ NEW
+    - `getAttributes()` - Returns NamedNodeMap of all attributes
+    - `getAttributeNode(name)` - Get Attr node for attribute
+    - `getAttributeNodeNS(namespace, localName)` - Get namespaced Attr node
+    - `setAttributeNode(attr)` - Set attribute via Attr node
+    - `setAttributeNodeNS(attr)` - Set namespaced attribute via Attr node
+    - `removeAttributeNode(attr)` - Remove attribute by Attr node
+  - **Document Attribute Factory Methods (WHATWG DOM §4.10)** ✅ NEW
+    - `createAttribute(localName)` - Create Attr node with string interning
+    - `createAttributeNS(namespace, qualifiedName)` - Create namespaced Attr node
+    - Automatic string interning via document.string_pool
+    - Sets ownerDocument and assigns node IDs
+  - **Known Limitation**: Attr caching not yet implemented (TODO)
+    - NamedNodeMap creates new Attr nodes on each access
+    - May cause memory leaks if Attr nodes not properly released
+    - Future: Add Attr cache to Element for efficient reuse
+  - **Test Coverage**: Core functionality tested, all passing ✅
+  - **Spec References**:
+    - Attr: https://dom.spec.whatwg.org/#interface-attr
+    - NamedNodeMap: https://dom.spec.whatwg.org/#interface-namednodemap
+    - Element.attributes: https://dom.spec.whatwg.org/#dom-element-attributes
+    - Element.getAttributeNode: https://dom.spec.whatwg.org/#dom-element-getattributenode
+    - Element.setAttributeNode: https://dom.spec.whatwg.org/#dom-element-setattributenode
+    - Element.removeAttributeNode: https://dom.spec.whatwg.org/#dom-element-removeattributenode
+    - Document.createAttribute: https://dom.spec.whatwg.org/#dom-document-createattribute
+    - Document.createAttributeNS: https://dom.spec.whatwg.org/#dom-document-createattributens
+    - WebIDL: dom.idl:374, dom.idl:386-390, dom.idl:420-429, dom.idl:432-442, dom.idl:511-512
+
 - **Phase 13: Legacy API & CustomEvent** 🎉
   - **CustomEvent Interface (WHATWG DOM §2.2)** ✅ NEW
     - `CustomEvent` - Event subclass with arbitrary detail data
