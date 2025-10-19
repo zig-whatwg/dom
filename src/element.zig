@@ -308,6 +308,53 @@ pub const AttributeMap = struct {
     }
 };
 
+/// Attr node cache for [SameObject] semantics.
+///
+/// Caches Attr nodes to ensure repeated calls to getAttributeNode()
+/// return the same Attr object. Cache holds strong references to Attr nodes.
+pub const AttrCache = struct {
+    map: std.StringHashMap(*Attr),
+
+    pub fn init(allocator: Allocator) AttrCache {
+        return .{
+            .map = std.StringHashMap(*Attr).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *AttrCache) void {
+        // Release all cached Attr nodes
+        var iter = self.map.valueIterator();
+        while (iter.next()) |attr_ptr| {
+            attr_ptr.*.node.release();
+        }
+        self.map.deinit();
+    }
+
+    pub fn get(self: *const AttrCache, name: []const u8) ?*Attr {
+        return self.map.get(name);
+    }
+
+    pub fn put(self: *AttrCache, name: []const u8, attr: *Attr) !void {
+        try self.map.put(name, attr);
+    }
+
+    pub fn remove(self: *AttrCache, name: []const u8) ?*Attr {
+        if (self.map.fetchRemove(name)) |entry| {
+            return entry.value;
+        }
+        return null;
+    }
+
+    pub fn clearAll(self: *AttrCache) void {
+        var iter = self.map.valueIterator();
+        while (iter.next()) |attr_ptr| {
+            attr_ptr.*.owner_element = null;
+            attr_ptr.*.node.release();
+        }
+        self.map.clearRetainingCapacity();
+    }
+};
+
 /// Element node representing an HTML/XML element.
 ///
 /// Embeds Node as first field for vtable polymorphism.
@@ -327,6 +374,11 @@ pub const Element = struct {
     /// Bloom filter for class names (8 bytes)
     /// Enables fast rejection in querySelector(".class")
     class_bloom: BloomFilter,
+
+    /// Attr node cache (optional, 8 bytes)
+    /// Lazy allocation: null until first getAttributeNode() call
+    /// Ensures [SameObject] semantics - repeated calls return same Attr
+    attr_cache: ?AttrCache = null,
 
     /// Vtable for Element nodes.
     const vtable = NodeVTable{
@@ -448,6 +500,7 @@ pub const Element = struct {
         elem.tag_name = tag_name;
         elem.attributes = AttributeMap.init(allocator);
         elem.class_bloom = .{};
+        elem.attr_cache = null;
 
         return elem;
     }
@@ -523,6 +576,9 @@ pub const Element = struct {
 
         // Set the attribute
         try self.attributes.set(name, value);
+
+        // Invalidate cached Attr for this name
+        self.invalidateCachedAttr(name);
 
         // Update bloom filter for class attribute (Phase 3: class_map removed, bloom filter still used)
         if (std.mem.eql(u8, name, "class")) {
@@ -645,6 +701,11 @@ pub const Element = struct {
         }
 
         const removed = self.attributes.remove(name);
+
+        // Invalidate cached Attr for this name
+        if (removed) {
+            self.invalidateCachedAttr(name);
+        }
 
         // Clear bloom filter if removing class attribute (Phase 3: class_map removed, bloom filter still used)
         if (removed and std.mem.eql(u8, name, "class")) {
@@ -1040,6 +1101,68 @@ pub const Element = struct {
     /// **WebIDL**: dom.idl:374 [SameObject]
     pub fn getAttributes(self: *Element) NamedNodeMap {
         return NamedNodeMap{ .element = self };
+    }
+
+    /// Gets or creates a cached Attr node for the given attribute.
+    ///
+    /// Implements [SameObject] semantics - repeated calls return the same Attr instance.
+    ///
+    /// ## Parameters
+    /// - `name`: Attribute name
+    /// - `value`: Current attribute value
+    ///
+    /// ## Returns
+    /// Cached Attr node (creates if not cached)
+    ///
+    /// ## Memory Management
+    /// - Returns Attr with INCREMENTED ref_count (caller must release)
+    /// - Cache holds its own reference (released on invalidation or deinit)
+    /// - This ensures [SameObject] while allowing caller to safely release
+    pub fn getOrCreateCachedAttr(self: *Element, name: []const u8, value: []const u8) !*Attr {
+        // Lazy initialize cache on first access
+        if (self.attr_cache == null) {
+            self.attr_cache = AttrCache.init(self.prototype.allocator);
+        }
+
+        // Check cache first
+        if (self.attr_cache.?.get(name)) |cached| {
+            // Update value if it changed (AttributeMap is source of truth)
+            if (!std.mem.eql(u8, cached.value(), value)) {
+                try cached.setValue(value);
+            }
+            // Acquire reference for caller (they must release)
+            cached.node.acquire();
+            return cached;
+        }
+
+        // Not in cache - create new Attr (ref_count=1)
+        const attr = try Attr.create(self.prototype.allocator, name);
+        errdefer attr.node.release();
+
+        try attr.setValue(value);
+        attr.owner_element = self;
+
+        // Add to cache (cache holds one strong reference)
+        attr.node.acquire(); // Cache's reference
+        try self.attr_cache.?.put(name, attr);
+
+        // Return to caller (they hold the original ref_count=1)
+        return attr;
+    }
+
+    /// Invalidates a single cached Attr node.
+    ///
+    /// Called when an attribute is modified or removed via setAttribute/removeAttribute.
+    /// Removes from cache and releases the cache's reference.
+    fn invalidateCachedAttr(self: *Element, name: []const u8) void {
+        // Access cache through pointer capture to avoid alignment issues
+        const cache_ptr = &self.attr_cache;
+        if (cache_ptr.*) |*cache| {
+            if (cache.remove(name)) |attr| {
+                attr.owner_element = null;
+                attr.node.release(); // Release cache's reference
+            }
+        }
     }
 
     /// Returns the Attr node for the given attribute name.
@@ -3714,6 +3837,11 @@ pub const Element = struct {
             child.setHasParent(false);
             child.release(); // Release parent's ownership
             current = next;
+        }
+
+        // Clean up attr cache if allocated
+        if (elem.attr_cache) |*cache| {
+            cache.deinit();
         }
 
         elem.attributes.deinit();

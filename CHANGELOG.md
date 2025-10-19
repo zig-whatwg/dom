@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 14.2: Attr Node Caching for [SameObject] Semantics** 🎉
+  - **AttrCache Implementation** ✅ NEW
+    - `AttrCache` - HashMap wrapper for managing cached Attr nodes
+    - Cache holds strong references to Attr nodes (ref_count management)
+    - Automatic cleanup on Element destruction
+    - Cache invalidation on setAttribute/removeAttribute
+  - **Element Caching Methods** ✅ NEW
+    - `getOrCreateCachedAttr(name, value)` - Get cached or create new Attr
+    - `invalidateCachedAttr(name)` - Remove from cache when attribute changes
+    - Lazy cache allocation (null until first getAttributeNode call)
+    - Cache integrated with NamedNodeMap for consistent behavior
+  - **[SameObject] Semantics** ✅ COMPLIANT
+    - Repeated calls to `getAttributeNode(name)` return same Attr instance
+    - Attr nodes persist until attribute modified or element destroyed
+    - Caller receives acquired reference (must release)
+    - Cache holds separate reference for reuse
+  - **Memory Management** ✅ TESTED
+    - Zero memory leaks in all test cases
+    - Proper reference counting: cache + caller references
+    - Automatic invalidation prevents stale Attr nodes
+    - Element.deinitImpl releases all cached Attrs
+  - **Element Initialization Fix** ✅ CRITICAL
+    - Fixed uninitialized `attr_cache` field causing alignment panics
+    - Explicit initialization in `createWithVTable` prevents undefined behavior
+    - Optional field properly initialized to null
+  - **Test Coverage**: All 116 tests passing, 0 leaks ✅
+  - **Spec References**:
+    - [SameObject]: https://webidl.spec.whatwg.org/#SameObject
+    - Element.attributes: https://dom.spec.whatwg.org/#dom-element-attributes
+    - WebIDL: dom.idl:432 ([SameObject] NamedNodeMap attributes)
+
 - **Phase 14.1: Namespace Support for Attribute Node APIs** 🎉
   - **NamedNodeMap Namespace Methods (WHATWG DOM §4.10)** ✅ ENHANCED
     - `getNamedItemNS(namespace, localName)` - Get attribute by namespace and local name
@@ -62,10 +93,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `createAttributeNS(namespace, qualifiedName)` - Create namespaced Attr node
     - Automatic string interning via document.string_pool
     - Sets ownerDocument and assigns node IDs
-  - **Known Limitation**: Attr caching not yet implemented (TODO)
-    - NamedNodeMap creates new Attr nodes on each access
-    - May cause memory leaks if Attr nodes not properly released
-    - Future: Add Attr cache to Element for efficient reuse
   - **Test Coverage**: Core functionality tested, all passing ✅
   - **Spec References**:
     - Attr: https://dom.spec.whatwg.org/#interface-attr
