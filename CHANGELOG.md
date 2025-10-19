@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 14.1: Namespace Support for Attribute Node APIs** 🎉
+  - **NamedNodeMap Namespace Methods (WHATWG DOM §4.10)** ✅ ENHANCED
+    - `getNamedItemNS(namespace, localName)` - Get attribute by namespace and local name
+    - `setNamedItemNS(attr)` - Set namespaced attribute with proper matching
+    - `removeNamedItemNS(namespace, localName)` - Remove by namespace and local name
+    - Proper namespace matching: null namespace != empty string
+    - Parses qualified names to extract prefix and local name
+    - Matches attributes by (namespace, localName) tuple
+  - **Test Coverage**: Namespace tests added ✅
+  - **Spec References**:
+    - NamedNodeMap.getNamedItemNS: https://dom.spec.whatwg.org/#dom-namednodemap-getnameditemns
+    - NamedNodeMap.setNamedItemNS: https://dom.spec.whatwg.org/#dom-namednodemap-setnameditemns
+    - NamedNodeMap.removeNamedItemNS: https://dom.spec.whatwg.org/#dom-namednodemap-removenameditemns
+    - WebIDL: dom.idl:424, 426, 428
+
 - **Phase 14: Attribute Node APIs** 🎉
   - **Attr Interface (WHATWG DOM §4.10)** ✅ NEW
     - `Attr` - Node subclass representing element attributes

@@ -384,10 +384,48 @@ pub const NamedNodeMap = struct {
         namespace_uri: ?[]const u8,
         local_name: []const u8,
     ) !?*Attr {
-        // TODO: Implement namespace support
-        // For now, fall back to getNamedItem
-        _ = namespace_uri;
-        return try self.getNamedItem(local_name);
+        // Iterate through all attributes to find matching (namespace, localName) pair
+        // Note: null namespace is different from empty string per WHATWG spec
+        const attrs = &self.element.attributes;
+        var iter = attrs.map.iterator();
+
+        while (iter.next()) |entry| {
+            const name = entry.key_ptr.*;
+            const value = entry.value_ptr.*;
+
+            // Parse the attribute name to check if it matches
+            // For namespaced attributes, name is "prefix:localName"
+            const has_colon = std.mem.indexOf(u8, name, ":");
+
+            if (has_colon) |colon_idx| {
+                const attr_local = name[colon_idx + 1 ..];
+
+                // Check if local names match
+                if (std.mem.eql(u8, attr_local, local_name)) {
+                    // Get or create the attr to check its namespace
+                    const attr = try self.getOrCreateAttr(name, value);
+
+                    // Match namespace (null vs null, or string equality)
+                    const ns_match = if (namespace_uri == null and attr.namespace_uri == null)
+                        true
+                    else if (namespace_uri != null and attr.namespace_uri != null)
+                        std.mem.eql(u8, namespace_uri.?, attr.namespace_uri.?)
+                    else
+                        false;
+
+                    if (ns_match) {
+                        return attr;
+                    }
+                }
+            } else {
+                // Non-namespaced attribute - only matches if namespace is null
+                if (namespace_uri == null and std.mem.eql(u8, name, local_name)) {
+                    return try self.getOrCreateAttr(name, value);
+                }
+            }
+        }
+
+        return null;
     }
 
     /// Sets an attribute node in the map.
@@ -449,9 +487,36 @@ pub const NamedNodeMap = struct {
     ///
     /// **WebIDL**: dom.idl:426 [CEReactions]
     pub fn setNamedItemNS(self: *NamedNodeMap, attr: *Attr) !?*Attr {
-        // For now, delegate to setNamedItem
-        // TODO: Implement proper namespace handling
-        return try self.setNamedItem(attr);
+        // Check if attr is already in use by another element
+        if (attr.owner_element) |owner| {
+            if (owner != self.element) {
+                return DOMError.InUseAttributeError;
+            }
+        }
+
+        // For namespaced attributes, check for existing by (namespace, localName)
+        const old_attr = if (attr.namespace_uri != null or attr.prefix != null)
+            try self.getNamedItemNS(attr.namespace_uri, attr.local_name)
+        else
+            try self.getNamedItem(attr.local_name);
+
+        // Detach old attr if exists
+        if (old_attr) |old| {
+            old.owner_element = null;
+            // Remove from attribute map using its full name
+            self.element.removeAttribute(old.name());
+        }
+
+        // Set the new attribute value using full qualified name
+        const attr_name = attr.name();
+        try self.element.setAttribute(attr_name, attr.value());
+
+        // Update attr's owner_element
+        attr.owner_element = self.element;
+
+        // TODO: Fire CEReactions
+
+        return old_attr;
     }
 
     /// Removes the attribute with the specified name.
@@ -503,10 +568,18 @@ pub const NamedNodeMap = struct {
         namespace_uri: ?[]const u8,
         local_name: []const u8,
     ) !*Attr {
-        // For now, delegate to removeNamedItem
-        // TODO: Implement proper namespace handling
-        _ = namespace_uri;
-        return try self.removeNamedItem(local_name);
+        // Get the namespaced Attr node before removing
+        const attr = try self.getNamedItemNS(namespace_uri, local_name) orelse return DOMError.NotFoundError;
+
+        // Remove from element using full qualified name
+        self.element.removeAttribute(attr.name());
+
+        // Detach from element
+        attr.owner_element = null;
+
+        // TODO: Fire CEReactions
+
+        return attr;
     }
 
     // Helper methods
@@ -682,4 +755,67 @@ test "NamedNodeMap: memory leak check" {
     _ = try attrs.getNamedItem("c");
 
     // Verify no leaks via testing allocator
+}
+
+test "NamedNodeMap: getNamedItemNS with namespaces" {
+    const allocator = testing.allocator;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.prototype.release();
+
+    // Add a namespaced attribute via setAttribute (simulates xml:lang)
+    try elem.setAttribute("xml:lang", "en");
+    try elem.setAttribute("id", "main");
+
+    var attrs = NamedNodeMap{ .element = elem };
+
+    // Get non-namespaced attribute
+    const id_attr = try attrs.getNamedItemNS(null, "id");
+    defer if (id_attr) |a| a.node.release();
+    try expect(id_attr != null);
+    try expectEqualStrings("main", id_attr.?.value());
+
+    // Try to get namespaced attribute by localName
+    // Note: This will find "xml:lang" but match fails due to null namespace
+    const lang_no_ns = try attrs.getNamedItemNS(null, "lang");
+    defer if (lang_no_ns) |a| a.node.release();
+    try expect(lang_no_ns == null); // Doesn't match - needs namespace
+
+    // Get by full name works
+    const lang_full = try attrs.getNamedItem("xml:lang");
+    defer if (lang_full) |a| a.node.release();
+    try expect(lang_full != null);
+    try expectEqualStrings("en", lang_full.?.value());
+}
+
+test "NamedNodeMap: setNamedItemNS and removeNamedItemNS" {
+    const allocator = testing.allocator;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.prototype.release();
+
+    // Create a namespaced attribute
+    const attr = try Attr.createNS(
+        allocator,
+        "http://www.w3.org/XML/1998/namespace",
+        "xml:lang",
+    );
+    defer attr.node.release();
+    try attr.setValue("fr");
+
+    var attrs = NamedNodeMap{ .element = elem };
+
+    // Set namespaced attribute
+    const old = try attrs.setNamedItemNS(attr);
+    try expect(old == null);
+    try expectEqualStrings("fr", elem.getAttribute("xml:lang").?);
+
+    // Remove by namespace
+    const removed = try attrs.removeNamedItemNS(
+        "http://www.w3.org/XML/1998/namespace",
+        "lang",
+    );
+    defer removed.node.release();
+    try expectEqualStrings("fr", removed.value());
+    try expect(elem.getAttribute("xml:lang") == null);
 }
