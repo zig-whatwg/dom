@@ -42,6 +42,8 @@ pub fn main() !void {
                 return "Full Benchmarks (Construction + Query)";
             if (std.mem.startsWith(u8, name, "SPA:"))
                 return "SPA Patterns";
+            if (std.mem.startsWith(u8, name, "Attribute:"))
+                return "Attribute Operations (Phase 15)";
             return null;
         }
     };

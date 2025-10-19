@@ -214,6 +214,20 @@ pub fn runAllBenchmarks(allocator: std.mem.Allocator) ![]BenchmarkResult {
     try results.append(allocator, try benchmarkWithSetup(allocator, "Complex: Attribute selector (div[data-id])", 100000, setupAttributeSelector, benchAttributeSelector));
     try results.append(allocator, try benchmarkWithSetup(allocator, "Complex: Multi-component (article#main > header h1.title)", 100000, setupComplexMultiComponent, benchComplexMultiComponent));
 
+    // Phase 15: Attribute benchmarks
+    std.debug.print("Running attribute benchmarks (Phase 15)...\n", .{});
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Attribute: getAttribute (3 attrs, inline)", 1000000, setupAttributeFew, benchGetAttributeFew));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Attribute: getAttribute (5 attrs, heap)", 1000000, setupAttributeModerate, benchGetAttributeModerate));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Attribute: getAttribute (10 attrs, heap)", 1000000, setupAttributeMany, benchGetAttributeMany));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Attribute: setAttribute (3 attrs, inline)", 1000000, setupAttributeFew, benchSetAttributeFew));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Attribute: setAttribute (5 attrs, heap)", 1000000, setupAttributeModerate, benchSetAttributeModerate));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Attribute: setAttribute (10 attrs, heap)", 1000000, setupAttributeMany, benchSetAttributeMany));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Attribute: getAttributeNS (namespace)", 1000000, setupAttributeFew, benchGetAttributeNS));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Attribute: setAttributeNS (validation)", 1000000, setupAttributeFew, benchSetAttributeNS));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Attribute: hasAttribute", 1000000, setupAttributeFew, benchHasAttribute));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Attribute: removeAttribute", 1000000, setupAttributeFew, benchRemoveAttribute));
+    try results.append(allocator, try benchmarkWithSetup(allocator, "Attribute: cloneNode with attrs", 100000, setupAttributeModerate, benchCloneNodeWithAttrs));
+
     return results.toOwnedSlice(allocator);
 }
 
@@ -918,4 +932,151 @@ fn benchAttributeSelector(doc: *Document) !void {
 fn benchComplexMultiComponent(doc: *Document) !void {
     const result = try doc.querySelector("article#main > header h1.title");
     _ = result;
+}
+
+// ============================================================================
+// Attribute Benchmarks (Phase 15)
+// ============================================================================
+
+/// Setup: Element with few attributes (typical case: 3 attrs)
+fn setupAttributeFew(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Create element with 3 attributes (typical case)
+    const elem = try doc.createElement("element");
+    try elem.setAttribute("id", "test");
+    try elem.setAttribute("class", "container");
+    try elem.setAttribute("data-id", "123");
+    _ = try root.prototype.appendChild(&elem.prototype);
+
+    return doc;
+}
+
+/// Setup: Element with moderate attributes (5 attrs, triggers heap migration)
+fn setupAttributeModerate(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Create element with 5 attributes (heap storage)
+    const elem = try doc.createElement("element");
+    try elem.setAttribute("id", "test");
+    try elem.setAttribute("class", "container");
+    try elem.setAttribute("data-id", "123");
+    try elem.setAttribute("data-name", "test");
+    try elem.setAttribute("title", "Test Element");
+    _ = try root.prototype.appendChild(&elem.prototype);
+
+    return doc;
+}
+
+/// Setup: Element with many attributes (10 attrs)
+fn setupAttributeMany(allocator: std.mem.Allocator) !*Document {
+    const doc = try Document.init(allocator);
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Create element with 10 attributes
+    const elem = try doc.createElement("element");
+    try elem.setAttribute("id", "test");
+    try elem.setAttribute("class", "container");
+    try elem.setAttribute("data-id", "123");
+    try elem.setAttribute("data-name", "test");
+    try elem.setAttribute("title", "Test Element");
+    try elem.setAttribute("data-index", "5");
+    try elem.setAttribute("data-type", "widget");
+    try elem.setAttribute("data-value", "100");
+    try elem.setAttribute("aria-label", "Widget");
+    try elem.setAttribute("role", "button");
+    _ = try root.prototype.appendChild(&elem.prototype);
+
+    return doc;
+}
+
+/// Benchmark getAttribute with few attributes (inline storage)
+fn benchGetAttributeFew(doc: *Document) !void {
+    const elem = doc.prototype.first_child.?.first_child.?;
+    const element: *Element = @fieldParentPtr("prototype", elem);
+    const value = element.getAttribute("data-id");
+    _ = value;
+}
+
+/// Benchmark getAttribute with moderate attributes (heap storage)
+fn benchGetAttributeModerate(doc: *Document) !void {
+    const elem = doc.prototype.first_child.?.first_child.?;
+    const element: *Element = @fieldParentPtr("prototype", elem);
+    const value = element.getAttribute("title");
+    _ = value;
+}
+
+/// Benchmark getAttribute with many attributes
+fn benchGetAttributeMany(doc: *Document) !void {
+    const elem = doc.prototype.first_child.?.first_child.?;
+    const element: *Element = @fieldParentPtr("prototype", elem);
+    const value = element.getAttribute("role");
+    _ = value;
+}
+
+/// Benchmark setAttribute with few attributes (inline storage)
+fn benchSetAttributeFew(doc: *Document) !void {
+    const elem = doc.prototype.first_child.?.first_child.?;
+    const element: *Element = @fieldParentPtr("prototype", elem);
+    try element.setAttribute("data-id", "456");
+}
+
+/// Benchmark setAttribute with moderate attributes (heap storage)
+fn benchSetAttributeModerate(doc: *Document) !void {
+    const elem = doc.prototype.first_child.?.first_child.?;
+    const element: *Element = @fieldParentPtr("prototype", elem);
+    try element.setAttribute("title", "Updated");
+}
+
+/// Benchmark setAttribute with many attributes
+fn benchSetAttributeMany(doc: *Document) !void {
+    const elem = doc.prototype.first_child.?.first_child.?;
+    const element: *Element = @fieldParentPtr("prototype", elem);
+    try element.setAttribute("role", "textbox");
+}
+
+/// Benchmark getAttributeNS (namespace support)
+fn benchGetAttributeNS(doc: *Document) !void {
+    const elem = doc.prototype.first_child.?.first_child.?;
+    const element: *Element = @fieldParentPtr("prototype", elem);
+    const xml_ns = "http://www.w3.org/XML/1998/namespace";
+    const value = element.getAttributeNS(xml_ns, "lang");
+    _ = value;
+}
+
+/// Benchmark setAttributeNS (namespace support with validation)
+fn benchSetAttributeNS(doc: *Document) !void {
+    const elem = doc.prototype.first_child.?.first_child.?;
+    const element: *Element = @fieldParentPtr("prototype", elem);
+    const xml_ns = "http://www.w3.org/XML/1998/namespace";
+    try element.setAttributeNS(xml_ns, "xml:lang", "en");
+}
+
+/// Benchmark hasAttribute
+fn benchHasAttribute(doc: *Document) !void {
+    const elem = doc.prototype.first_child.?.first_child.?;
+    const element: *Element = @fieldParentPtr("prototype", elem);
+    const has = element.hasAttribute("class");
+    _ = has;
+}
+
+/// Benchmark removeAttribute
+fn benchRemoveAttribute(doc: *Document) !void {
+    const elem = doc.prototype.first_child.?.first_child.?;
+    const element: *Element = @fieldParentPtr("prototype", elem);
+    element.removeAttribute("class");
+    // Re-add for next iteration
+    try element.setAttribute("class", "container");
+}
+
+/// Benchmark cloneNode with attributes
+fn benchCloneNodeWithAttrs(doc: *Document) !void {
+    const elem = doc.prototype.first_child.?.first_child.?;
+    const clone = try elem.cloneNode(false);
+    clone.release();
 }
