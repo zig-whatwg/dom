@@ -213,6 +213,244 @@ pub const DocumentType = struct {
         allocator.destroy(doctype);
     }
 
+    // ========================================================================
+    // ChildNode Mixin (WHATWG DOM §4.2.8)
+    // ========================================================================
+
+    /// Type for representing either a Node or a DOMString in variadic methods.
+    pub const NodeOrString = union(enum) {
+        node: *Node,
+        string: []const u8,
+    };
+
+    /// Removes this DocumentType from its parent.
+    ///
+    /// Implements WHATWG DOM ChildNode.remove() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined remove();
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - remove(): https://developer.mozilla.org/en-US/docs/Web/API/DocumentType/remove
+    ///
+    /// ## Algorithm (from spec §4.2.8)
+    /// If this's parent is null, return. Otherwise, remove this from its parent.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-remove
+    /// - WebIDL: dom.idl:148
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// const doctype = try DocumentType.create(allocator, "html", "", "");
+    /// _ = try doc.prototype.appendChild(&doctype.prototype);
+    ///
+    /// // Remove doctype from document
+    /// try doctype.remove();
+    /// try std.testing.expect(doc.prototype.first_child == null);
+    /// ```
+    pub fn remove(self: *DocumentType) !void {
+        if (self.prototype.parent_node) |parent| {
+            _ = try parent.removeChild(&self.prototype);
+        }
+    }
+
+    /// Inserts nodes before this DocumentType node.
+    ///
+    /// Implements WHATWG DOM ChildNode.before() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined before((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - before(): https://developer.mozilla.org/en-US/docs/Web/API/DocumentType/before
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-before
+    /// - WebIDL: dom.idl:145
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to insert before this DocumentType
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// const doctype = try DocumentType.create(allocator, "html", "", "");
+    /// _ = try doc.prototype.appendChild(&doctype.prototype);
+    ///
+    /// const comment = try doc.createComment("Before doctype");
+    /// try doctype.before(&[_]NodeOrString{.{ .node = &comment.prototype }});
+    /// ```
+    pub fn before(self: *DocumentType, nodes: []const NodeOrString) !void {
+        const parent = self.prototype.parent_node orelse return;
+
+        const result = try convertNodesToNode(&self.prototype, nodes);
+        if (result == null) return;
+
+        const node_to_insert = result.?.node;
+        const should_release = result.?.should_release_after_insert;
+
+        const returned_node = try parent.insertBefore(node_to_insert, &self.prototype);
+
+        if (should_release) {
+            returned_node.release();
+        }
+    }
+
+    /// Inserts nodes after this DocumentType node.
+    ///
+    /// Implements WHATWG DOM ChildNode.after() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined after((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - after(): https://developer.mozilla.org/en-US/docs/Web/API/DocumentType/after
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-after
+    /// - WebIDL: dom.idl:146
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to insert after this DocumentType
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// const doctype = try DocumentType.create(allocator, "html", "", "");
+    /// _ = try doc.prototype.appendChild(&doctype.prototype);
+    ///
+    /// const comment = try doc.createComment("After doctype");
+    /// try doctype.after(&[_]NodeOrString{.{ .node = &comment.prototype }});
+    /// ```
+    pub fn after(self: *DocumentType, nodes: []const NodeOrString) !void {
+        const parent = self.prototype.parent_node orelse return;
+
+        const result = try convertNodesToNode(&self.prototype, nodes);
+        if (result == null) return;
+
+        const node_to_insert = result.?.node;
+        const should_release = result.?.should_release_after_insert;
+
+        const returned_node = try parent.insertBefore(node_to_insert, self.prototype.next_sibling);
+
+        if (should_release) {
+            returned_node.release();
+        }
+    }
+
+    /// Replaces this DocumentType node with other nodes.
+    ///
+    /// Implements WHATWG DOM ChildNode.replaceWith() per §4.2.8.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined replaceWith((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - replaceWith(): https://developer.mozilla.org/en-US/docs/Web/API/DocumentType/replaceWith
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-replacewith
+    /// - WebIDL: dom.idl:147
+    ///
+    /// ## Parameters
+    /// - `nodes`: Slice of nodes or strings to replace this DocumentType with
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// const doctype = try DocumentType.create(allocator, "html", "", "");
+    /// _ = try doc.prototype.appendChild(&doctype.prototype);
+    ///
+    /// const new_doctype = try DocumentType.create(allocator, "xml", "", "");
+    /// try doctype.replaceWith(&[_]NodeOrString{.{ .node = &new_doctype.prototype }});
+    /// ```
+    pub fn replaceWith(self: *DocumentType, nodes: []const NodeOrString) !void {
+        const parent = self.prototype.parent_node orelse return;
+
+        const result = try convertNodesToNode(&self.prototype, nodes);
+
+        if (result) |r| {
+            _ = try parent.replaceChild(r.node, &self.prototype);
+            if (r.should_release_after_insert) {
+                r.node.release();
+            }
+        } else {
+            _ = try parent.removeChild(&self.prototype);
+        }
+    }
+
+    /// Result of converting nodes/strings
+    const ConvertResult = struct {
+        node: *Node,
+        should_release_after_insert: bool,
+    };
+
+    /// Helper: Convert slice of nodes/strings into a single node.
+    fn convertNodesToNode(parent: *Node, items: []const NodeOrString) !?ConvertResult {
+        if (items.len == 0) return null;
+
+        const owner_doc = parent.owner_document orelse {
+            return error.InvalidStateError;
+        };
+
+        const Document = @import("document.zig").Document;
+        if (owner_doc.node_type != .document) {
+            return error.InvalidStateError;
+        }
+        const doc: *Document = @fieldParentPtr("prototype", owner_doc);
+
+        if (items.len == 1) {
+            switch (items[0]) {
+                .node => |n| {
+                    return ConvertResult{
+                        .node = n,
+                        .should_release_after_insert = false,
+                    };
+                },
+                .string => |s| {
+                    const text = try doc.createTextNode(s);
+                    return ConvertResult{
+                        .node = &text.prototype,
+                        .should_release_after_insert = false,
+                    };
+                },
+            }
+        }
+
+        // Multiple items: create DocumentFragment
+        const fragment = try doc.createDocumentFragment();
+
+        for (items) |item| {
+            const child = switch (item) {
+                .node => |n| n,
+                .string => |s| blk: {
+                    const text = try doc.createTextNode(s);
+                    break :blk &text.prototype;
+                },
+            };
+            _ = try fragment.prototype.appendChild(child);
+        }
+
+        return ConvertResult{
+            .node = &fragment.prototype,
+            .should_release_after_insert = true,
+        };
+    }
+
+    // ========================================================================
+    // Vtable Implementations
+    // ========================================================================
+
     /// Vtable implementation: nodeName
     /// Returns the document type name
     fn nodeNameImpl(node: *const Node) []const u8 {
@@ -343,4 +581,88 @@ test "DocumentType - node_type is correct" {
     defer doctype.prototype.release();
 
     try std.testing.expect(doctype.prototype.node_type == .document_type);
+}
+
+test "DocumentType - remove from document" {
+    const allocator = std.testing.allocator;
+
+    const Document = @import("document.zig").Document;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const doctype = try DocumentType.create(allocator, "html", "", "");
+    _ = try doc.prototype.appendChild(&doctype.prototype);
+
+    try std.testing.expect(doc.prototype.first_child == &doctype.prototype);
+
+    try doctype.remove();
+
+    try std.testing.expect(doc.prototype.first_child == null);
+}
+
+test "DocumentType - before inserts node" {
+    const allocator = std.testing.allocator;
+
+    const Document = @import("document.zig").Document;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const doctype = try DocumentType.create(allocator, "html", "", "");
+    _ = try doc.prototype.appendChild(&doctype.prototype);
+
+    const comment = try doc.createComment("before");
+    try doctype.before(&[_]DocumentType.NodeOrString{.{ .node = &comment.prototype }});
+
+    try std.testing.expect(doc.prototype.first_child == &comment.prototype);
+    try std.testing.expect(comment.prototype.next_sibling == &doctype.prototype);
+}
+
+test "DocumentType - after inserts node" {
+    const allocator = std.testing.allocator;
+
+    const Document = @import("document.zig").Document;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const doctype = try DocumentType.create(allocator, "html", "", "");
+    _ = try doc.prototype.appendChild(&doctype.prototype);
+
+    const comment = try doc.createComment("after");
+    try doctype.after(&[_]DocumentType.NodeOrString{.{ .node = &comment.prototype }});
+
+    try std.testing.expect(doc.prototype.first_child == &doctype.prototype);
+    try std.testing.expect(doctype.prototype.next_sibling == &comment.prototype);
+}
+
+test "DocumentType - replaceWith single node" {
+    const allocator = std.testing.allocator;
+
+    const Document = @import("document.zig").Document;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const doctype = try DocumentType.create(allocator, "html", "", "");
+    _ = try doc.prototype.appendChild(&doctype.prototype);
+
+    const new_doctype = try DocumentType.create(allocator, "xml", "", "");
+    try doctype.replaceWith(&[_]DocumentType.NodeOrString{.{ .node = &new_doctype.prototype }});
+
+    try std.testing.expect(doc.prototype.first_child == &new_doctype.prototype);
+    try std.testing.expect(doctype.prototype.parent_node == null);
+}
+
+test "DocumentType - replaceWith string creates text node" {
+    const allocator = std.testing.allocator;
+
+    const Document = @import("document.zig").Document;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const doctype = try DocumentType.create(allocator, "html", "", "");
+    _ = try doc.prototype.appendChild(&doctype.prototype);
+
+    try doctype.replaceWith(&[_]DocumentType.NodeOrString{.{ .string = "text" }});
+
+    try std.testing.expect(doc.prototype.first_child != null);
+    try std.testing.expect(doc.prototype.first_child.?.node_type == .text);
 }

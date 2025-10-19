@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 11: DOM Convenience Methods Complete** 🎉
+  - **ChildNode Mixin (WHATWG DOM §4.2.8)** - Complete on all types
+    - `remove()` - Remove node from parent (simpler than `parent.removeChild(node)`)
+    - `before(nodes...)` - Insert nodes before this node
+    - `after(nodes...)` - Insert nodes after this node
+    - `replaceWith(nodes...)` - Replace this node with other nodes
+    - **Implemented on**: DocumentType ✅, Element ✅, Text ✅, Comment ✅
+    - **NEW**: Added all 4 methods to DocumentType (previously missing)
+    - Accepts both Node and DOMString (auto-converts to Text)
+    - Variadic arguments via slices: `&[_]NodeOrString{}`
+  - **ParentNode Mixin (WHATWG DOM §4.2.7)** - Complete on all types
+    - `prepend(nodes...)` - Insert nodes before first child
+    - `append(nodes...)` - Insert nodes after last child
+    - **Implemented on**: Document ✅, DocumentFragment ✅, Element ✅
+    - Accepts both Node and DOMString (auto-converts to Text)
+    - More convenient than `appendChild()` for multiple nodes
+  - **Element Selector Matching (WHATWG DOM §4.4)** - Complete
+    - `matches(selectors)` - Test if element matches CSS selector
+    - `closest(selectors)` - Find nearest ancestor matching selector
+    - Both use existing querySelector infrastructure
+    - Full CSS selector support (same as querySelector)
+  - **Test Coverage**: 5 new DocumentType ChildNode tests, all passing, 0 leaks ✅
+  - **Spec References**:
+    - ChildNode: https://dom.spec.whatwg.org/#interface-childnode
+    - ParentNode: https://dom.spec.whatwg.org/#interface-parentnode
+    - Element.matches(): https://dom.spec.whatwg.org/#dom-element-matches
+    - Element.closest(): https://dom.spec.whatwg.org/#dom-element-closest
+    - WebIDL: dom.idl:118-152, 397-398
+
 - **Document.importNode() Implementation** 🎉
   - **Cross-Document Node Cloning (WHATWG DOM §4.4)**
     - `Document.importNode(node, deep)` - Import nodes from other documents
