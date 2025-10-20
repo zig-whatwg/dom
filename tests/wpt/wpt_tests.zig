@@ -45,17 +45,22 @@ test {
 
 // Element tests
 test {
+    _ = @import("nodes/Element-attributes.zig");
     _ = @import("nodes/Element-childElement-null.zig");
     _ = @import("nodes/Element-childElementCount.zig");
     _ = @import("nodes/Element-childElementCount-nochild.zig");
     _ = @import("nodes/Element-children.zig");
+    _ = @import("nodes/Element-className.zig");
     _ = @import("nodes/Element-firstElementChild.zig");
     _ = @import("nodes/Element-getElementsByClassName.zig");
     _ = @import("nodes/Element-getElementsByTagName.zig");
     _ = @import("nodes/Element-hasAttribute.zig");
     _ = @import("nodes/Element-hasAttributes.zig");
+    _ = @import("nodes/Element-id.zig");
     _ = @import("nodes/Element-lastElementChild.zig");
+    _ = @import("nodes/Element-namespaceURI.zig");
     _ = @import("nodes/Element-nextElementSibling.zig");
+    _ = @import("nodes/Element-prefix.zig");
     _ = @import("nodes/Element-previousElementSibling.zig");
     _ = @import("nodes/Element-removeAttribute.zig");
     _ = @import("nodes/Element-setAttribute.zig");
@@ -98,6 +103,7 @@ test {
 
 // DocumentType tests
 test {
+    _ = @import("nodes/DocumentType-literal.zig");
     _ = @import("nodes/DocumentType-remove.zig");
 }
 
@@ -111,6 +117,11 @@ test {
     _ = @import("nodes/Text-constructor.zig");
     _ = @import("nodes/Text-splitText.zig");
     _ = @import("nodes/Text-wholeText.zig");
+}
+
+// ProcessingInstruction tests
+test {
+    _ = @import("nodes/ProcessingInstruction-target.zig");
 }
 
 // DOMTokenList tests
