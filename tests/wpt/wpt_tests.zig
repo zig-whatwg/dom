@@ -36,6 +36,7 @@ test {
     _ = @import("nodes/CharacterData-data.zig");
     _ = @import("nodes/CharacterData-deleteData.zig");
     _ = @import("nodes/CharacterData-insertData.zig");
+    _ = @import("nodes/CharacterData-remove.zig");
     _ = @import("nodes/CharacterData-replaceData.zig");
     _ = @import("nodes/CharacterData-substringData.zig");
 }
