@@ -252,6 +252,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Document operations: adoptNode ✅
     - Additional operations: textContent setter, normalize, etc. (optional, deferred to Phase 5+)
 
+- **Custom Elements - Phase 5 Batch 1: ParentNode [CEReactions]** 🎉 NEW
+  - **[CEReactions] Integration for ParentNode Mixin**
+    - `prepend(...nodes)` - [CEReactions] scope added, delegates to insertBefore
+    - `append(...nodes)` - [CEReactions] scope added, delegates to appendChild
+    - `replaceChildren(...nodes)` - [CEReactions] scope added, removes old + appends new
+    - `moveBefore(node, child)` - [CEReactions] scope added (no connected/disconnected callbacks)
+  - **Implementation Details**
+    - All methods check document type and enter [CEReactions] scope via `getCEReactionsStack()`
+    - `prepend()` and `append()` delegate to existing `insertBefore()`/`appendChild()` (which handle reactions)
+    - `replaceChildren()` calls `removeChild()` in loop, then `appendChild()` (both handle reactions)
+    - `moveBefore()` moves node within same parent (no disconnection, so no connected/disconnected callbacks)
+  - **Test Coverage**: 4 new comprehensive tests (62 total) ✅
+    - `prepend() enqueues connected reaction` - Verifies connected callback fired
+    - `append() enqueues connected reaction` - Verifies connected callback fired
+    - `replaceChildren() enqueues disconnected and connected reactions` - Verifies both callbacks
+    - `moveBefore() does NOT enqueue reactions (same parent)` - Verifies no callbacks (same parent)
+  - **Memory Management**: All tests pass with zero memory leaks ✅
+  - **Spec References**:
+    - WHATWG DOM: https://dom.spec.whatwg.org/#interface-parentnode
+    - WebIDL: dom.idl:124-128 (prepend, append, replaceChildren, moveBefore)
+    - MDN ParentNode: https://developer.mozilla.org/en-US/docs/Web/API/Element/prepend
+  - **Implementation Status**: Phase 5 Batch 1 of 5 complete ✅
+    - Batch 1: ParentNode mixin ✅ (prepend, append, replaceChildren, moveBefore)
+    - Batch 2: ChildNode mixin (before, after, replaceWith, remove) - TODO
+    - Batch 3: Element attributes (setAttributeNS, removeAttributeNS, toggleAttribute) - TODO
+    - Batch 4: Node text/clone (textContent setter, nodeValue setter, normalize) - TODO
+    - Batch 5: NamedNodeMap (setNamedItem, removeNamedItem, etc.) - OPTIONAL
+
 - **AbortSignal.any() - Composite Signal Support** 🎉 ✅ COMPLETE
   - **AbortSignal.any(signals)** - Creates dependent signal that aborts when ANY source signal aborts
     - Implements WHATWG DOM §3.2.2 specification exactly

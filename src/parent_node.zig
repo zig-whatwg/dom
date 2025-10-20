@@ -259,11 +259,23 @@ fn convertNodesToNode(
 /// // Result: <container><item2/><item1/></container>
 /// ```
 pub fn prepend(self: *Node, nodes: []const NodeOrString) !void {
-    const owner_doc = self.ownerDocument() orelse return;
+    // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+    const doc_node = self.owner_document orelse self;
+    const is_document = doc_node.node_type == .document;
+
+    if (!is_document) return;
+
+    const owner_doc: *Document = @fieldParentPtr("prototype", doc_node);
+
+    // Enter [CEReactions] scope
+    const stack = owner_doc.getCEReactionsStack();
+    try stack.enter();
+    defer stack.leave();
 
     const node = try convertNodesToNode(owner_doc, nodes) orelse return;
 
     // Insert before first child
+    // insertBefore will handle enqueuing reactions
     _ = try self.insertBefore(node, self.first_child);
 }
 
@@ -316,11 +328,23 @@ pub fn prepend(self: *Node, nodes: []const NodeOrString) !void {
 /// // Result: <container><item1/><item2/></container>
 /// ```
 pub fn append(self: *Node, nodes: []const NodeOrString) !void {
-    const owner_doc = self.ownerDocument() orelse return;
+    // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+    const doc_node = self.owner_document orelse self;
+    const is_document = doc_node.node_type == .document;
+
+    if (!is_document) return;
+
+    const owner_doc: *Document = @fieldParentPtr("prototype", doc_node);
+
+    // Enter [CEReactions] scope
+    const stack = owner_doc.getCEReactionsStack();
+    try stack.enter();
+    defer stack.leave();
 
     const node = try convertNodesToNode(owner_doc, nodes) orelse return;
 
     // Append to end
+    // appendChild will handle enqueuing reactions
     _ = try self.appendChild(node);
 }
 
@@ -371,14 +395,30 @@ pub fn append(self: *Node, nodes: []const NodeOrString) !void {
 /// // Result: <container><new/></container> (old is detached)
 /// ```
 pub fn replaceChildren(self: *Node, nodes: []const NodeOrString) !void {
+    // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+    const doc_node = self.owner_document orelse self;
+    const is_document = doc_node.node_type == .document;
+
+    if (!is_document) return;
+
+    const owner_doc: *Document = @fieldParentPtr("prototype", doc_node);
+
+    // Enter [CEReactions] scope
+    const stack = owner_doc.getCEReactionsStack();
+    try stack.enter();
+    defer stack.leave();
+
     // Remove all existing children
+    // removeChild will handle enqueuing disconnected reactions
     while (self.first_child) |child| {
         _ = try self.removeChild(child);
     }
 
     // Append new nodes (if any)
+    // append will handle enqueuing connected reactions
     if (nodes.len > 0) {
-        try append(self, nodes);
+        const node = try convertNodesToNode(owner_doc, nodes) orelse return;
+        _ = try self.appendChild(node);
     }
 }
 
@@ -434,6 +474,25 @@ pub fn replaceChildren(self: *Node, nodes: []const NodeOrString) !void {
 /// // Order: third, first, second
 /// ```
 pub fn moveBefore(self: *Node, node: *Node, child: ?*Node) !void {
+    // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+    const doc_node = self.owner_document orelse self;
+    const is_document = doc_node.node_type == .document;
+
+    if (is_document) {
+        const owner_doc: *Document = @fieldParentPtr("prototype", doc_node);
+        const stack = owner_doc.getCEReactionsStack();
+        try stack.enter();
+        defer stack.leave();
+
+        // Note: moveBefore does NOT enqueue connected/disconnected callbacks
+        // because the node stays in the same parent (remains connected)
+        return try moveBeforeImpl(self, node, child);
+    } else {
+        return try moveBeforeImpl(self, node, child);
+    }
+}
+
+fn moveBeforeImpl(self: *Node, node: *Node, child: ?*Node) !void {
     // Step 1: Verify node is a child of this
     if (node.parent_node != self) {
         return error.NotFoundError;
