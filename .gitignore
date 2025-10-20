@@ -46,3 +46,16 @@ benchmarks/js/benchmark.html
 
 # Benchmark results (generated, not source)
 benchmark_results/
+
+# Daemon runtime files
+.beads/daemon.log
+.beads/daemon.pid
+.beads/bd.sock
+
+# .beads directory files (keep JSONL only)
+.beads/.gitignore
+.beads/db.sqlite
+.beads/bd.db
+
+# Keep JSONL exports (source of truth for git)
+!.beads/*.jsonl

@@ -4,7 +4,7 @@ This document maps WPT (Web Platform Tests) for MutationObserver to our Zig unit
 
 ## Overview
 
-WPT has 12 MutationObserver test files at `/Users/bcardarella/projects/wpt/dom/nodes/`:
+WPT has 12 MutationObserver test files at `/Users/bcardarella/projects/wpt/dom/`:
 1. MutationObserver-attributes.html
 2. MutationObserver-callback-arguments.html
 3. MutationObserver-characterData.html

@@ -12,17 +12,21 @@ The Web Platform Tests (WPT) for DOM provide comprehensive test coverage for the
 
 ### WPT Structure
 
+**IMPORTANT**: Search the ENTIRE `/Users/bcardarella/projects/wpt/dom/` directory for tests, not just `nodes/`.
+
 ```
 /Users/bcardarella/projects/wpt/dom/
-├── nodes/           339 tests (core DOM - our focus)
-├── events/          175 tests (event system)
-├── ranges/           45 tests (Range API)
-├── traversal/        28 tests (TreeWalker, NodeIterator)
-├── abort/            10 tests (AbortController/Signal)
-├── collections/      10 tests (HTMLCollection)
-├── lists/             5 tests (NodeList)
-└── (root)            11 tests (IDL harness)
+├── nodes/           163 tests (Node, Element, Document, CharacterData, etc.)
+├── events/          ~50 tests (Event, EventTarget, event dispatch)
+├── ranges/           7 tests (Range API)
+├── traversal/        7 tests (TreeWalker, NodeIterator)
+├── abort/            3 tests (AbortController/Signal)
+├── collections/      4 tests (HTMLCollection)
+├── lists/            2 tests (NodeList, DOMTokenList)
+└── (root)           ~10 tests (IDL interfaces, misc)
 ```
+
+**Total**: ~250+ test files across all DOM APIs
 
 ---
 
@@ -100,14 +104,23 @@ Major features needing implementation:
 
 ### Step 1: Identify Test File
 
+**Search the entire WPT DOM directory** for relevant tests:
+
 ```bash
-ls /Users/bcardarella/projects/wpt/dom/nodes/*.html | grep <feature>
+# Search all DOM tests by feature name
+find /Users/bcardarella/projects/wpt/dom -name "*<feature>*.html"
+
+# List tests in specific subdirectories
+ls /Users/bcardarella/projects/wpt/dom/nodes/*.html      # Node tests (163 files)
+ls /Users/bcardarella/projects/wpt/dom/events/*.html     # Event tests
+ls /Users/bcardarella/projects/wpt/dom/ranges/*.html     # Range tests
+ls /Users/bcardarella/projects/wpt/dom/traversal/*.html  # TreeWalker/NodeIterator tests
 ```
 
 ### Step 2: Read Original Test
 
 ```bash
-cat /Users/bcardarella/projects/wpt/dom/nodes/<test-name>.html
+cat /Users/bcardarella/projects/wpt/dom/<test-name>.html
 ```
 
 Understand:
@@ -348,7 +361,7 @@ If feature isn't implemented:
 
 ### File Locations
 
-- **WPT Source**: `/Users/bcardarella/projects/wpt/dom/nodes/`
+- **WPT Source**: `/Users/bcardarella/projects/wpt/dom/`
 - **Test Destination**: `/Users/bcardarella/projects/dom/tests/wpt/nodes/`
 - **Test Runner**: `/Users/bcardarella/projects/dom/tests/wpt/wpt_tests.zig`
 - **Implementation**: `/Users/bcardarella/projects/dom/src/`
@@ -357,7 +370,7 @@ If feature isn't implemented:
 
 ```bash
 # View WPT test
-cat /Users/bcardarella/projects/wpt/dom/nodes/<test>.html
+cat /Users/bcardarella/projects/wpt/dom/<test>.html
 
 # Check if feature exists
 grep "pub fn <method>" src/*.zig
@@ -390,7 +403,7 @@ Let's migrate `CharacterData-insertData.html` step-by-step:
 ### 1. Read Original
 
 ```bash
-cat /Users/bcardarella/projects/wpt/dom/nodes/CharacterData-insertData.html
+cat /Users/bcardarella/projects/wpt/dom/CharacterData-insertData.html
 ```
 
 Key observations:
