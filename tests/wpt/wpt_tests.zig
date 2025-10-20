@@ -60,6 +60,11 @@ test {
     _ = @import("nodes/ParentNode-replaceChildren.zig");
 }
 
+// ChildNode tests
+test {
+    _ = @import("nodes/ChildNode-before.zig");
+}
+
 // Document tests
 test {
     _ = @import("nodes/Document-createComment.zig");

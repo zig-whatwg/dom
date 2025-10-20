@@ -708,15 +708,43 @@ pub const Comment = struct {
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-before
     /// - WebIDL: dom.idl:145
     pub fn before(self: *Comment, nodes: []const NodeOrString) !void {
+        // WHATWG DOM § 4.5 ChildNode.before() algorithm
+        // 1. Let parent be this's parent
         const parent = self.prototype.parent_node orelse return;
 
+        // 2. If parent is null, then return (handled above)
+
+        // 3. Let viablePreviousSibling be this's previous sibling not in nodes
+        var viable_prev = self.prototype.previous_sibling;
+        while (viable_prev) |prev| {
+            // Check if prev is in nodes
+            var is_in_nodes = false;
+            for (nodes) |item| {
+                if (item == .node and item.node == prev) {
+                    is_in_nodes = true;
+                    break;
+                }
+            }
+            if (!is_in_nodes) break;
+            viable_prev = prev.previous_sibling;
+        }
+
+        // 4. Let node be the result of converting nodes into a node
         const result = try convertNodesToNode(&self.prototype, nodes);
         if (result == null) return;
 
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try parent.insertBefore(node_to_insert, &self.prototype);
+        // 5. If viablePreviousSibling is null, set it to parent's first child
+        //    Otherwise set it to viablePreviousSibling's next sibling
+        const reference_child = if (viable_prev == null)
+            parent.first_child
+        else
+            viable_prev.?.next_sibling;
+
+        // 6. Pre-insert node into parent before viablePreviousSibling
+        const returned_node = try parent.insertBefore(node_to_insert, reference_child);
 
         if (should_release) {
             returned_node.release();
