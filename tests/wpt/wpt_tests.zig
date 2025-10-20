@@ -72,6 +72,7 @@ test {
     _ = @import("nodes/Element-className.zig");
     _ = @import("nodes/Element-className-property.zig");
     _ = @import("nodes/Element-classlist.zig");
+    _ = @import("nodes/Element-closest.zig");
     _ = @import("nodes/Element-firstElementChild.zig");
     _ = @import("nodes/Element-getAttribute-variations.zig");
     _ = @import("nodes/Element-getElementsByClassName.zig");
@@ -84,6 +85,7 @@ test {
     _ = @import("nodes/Element-lastElementChild.zig");
     _ = @import("nodes/Element-localName.zig");
     _ = @import("nodes/Element-localName-basic.zig");
+    _ = @import("nodes/Element-matches.zig");
     _ = @import("nodes/Element-namespaceURI.zig");
     _ = @import("nodes/Element-nextElementSibling.zig");
     _ = @import("nodes/Element-prefix.zig");
