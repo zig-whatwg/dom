@@ -38,7 +38,60 @@ test "element test" {  // ✅ CORRECT LOCATION
 - ✅ `tests/wpt/` - Web Platform Tests (converted from upstream)
 - ❌ NEVER in `src/` - Source files are for implementation ONLY
 
-### Rule #2: Generic DOM Library - No HTML Names
+### Rule #2: Test ONLY Public APIs
+
+**❌ NEVER test private/internal implementation details**
+
+```zig
+// ❌ WRONG - Testing internal functions
+const internal_func = @import("../../src/element.zig").internalHelper;
+
+test "internal helper" {  // ❌ FORBIDDEN!
+    try std.testing.expect(internal_func(123));
+}
+```
+
+```zig
+// ✅ CORRECT - Test only public API through @import("dom")
+const dom = @import("dom");
+const Element = dom.Element;
+
+test "Element public API" {  // ✅ CORRECT
+    const elem = try Element.create(allocator, "item");
+    defer elem.node.release();
+    
+    // Test only what users can access through @import("dom")
+    try std.testing.expectEqualStrings("item", elem.tag_name);
+}
+```
+
+**WHAT IS PUBLIC API:**
+- ✅ Types exported from `src/root.zig` (accessible via `@import("dom")`)
+- ✅ `pub const` structs, enums, functions at module level
+- ✅ `pub fn` methods on exported types
+- ✅ `pub` fields on exported structs
+
+**WHAT IS PRIVATE/INTERNAL:**
+- ❌ Functions without `pub` keyword
+- ❌ Functions in other modules not exported by `root.zig`
+- ❌ Helper functions used internally
+- ❌ Implementation details (internal state, algorithms)
+
+**WHY THIS RULE EXISTS:**
+1. **Refactoring freedom** - Internal details can change without breaking tests
+2. **Test stability** - Tests won't break when implementation changes
+3. **Clear contract** - Tests document what users can actually use
+4. **Maintainability** - Don't need to update tests when refactoring internals
+
+**HOW TO VERIFY:**
+```zig
+// Can you import it through @import("dom")?
+const dom = @import("dom");
+const MyType = dom.MyType;  // ✅ Public - can test
+const helper = dom.helper;  // ❌ Error = internal - don't test
+```
+
+### Rule #3: Generic DOM Library - No HTML Names
 
 **THIS IS A GENERIC DOM LIBRARY** - Tests MUST use generic element/attribute names.
 
@@ -95,10 +148,37 @@ test "Element.setAttribute - sets attribute value" {
 
 ## Before Writing ANY Test
 
-**🛑 STOP - Check this first:**
+**🛑 STOP - Check these first:**
+
+### 1. Can users access this through @import("dom")?
+
+```zig
+// Try importing in a test file
+const dom = @import("dom");
+const MyType = dom.MyType;  // ✅ Compiles = Public API = Test it
+const helper = dom.helper;  // ❌ Error = Internal = Don't test
+```
+
+**If it's not exported from `src/root.zig`, DON'T TEST IT.**
+
+### 2. Is this implementation detail or public behavior?
+
+```zig
+// ❌ WRONG - Testing internal algorithm
+test "internal sorting uses quicksort" {
+    // This tests HOW it works, not WHAT it does
+}
+
+// ✅ CORRECT - Testing public behavior
+test "children returns elements in document order" {
+    // This tests WHAT users can rely on
+}
+```
+
+### 3. Is there already a test file?
 
 ```bash
-# Is there already a test file?
+# Check if test file exists
 ls tests/unit/my_module_test.zig
 
 # If YES → Add tests there
@@ -107,23 +187,114 @@ ls tests/unit/my_module_test.zig
 
 **❌ NEVER add `test "..."` blocks to src/ files!**
 
-## When to use this skill
+---
 
-Load this skill when:
-- Writing new tests
-- Ensuring test coverage
-- Verifying memory safety (no leaks)
-- Implementing TDD workflows
-- Testing spec compliance
+## What to Test vs What NOT to Test
 
-## What this skill provides
+### ✅ DO Test: Public API Behavior
 
-Testing standards and patterns for DOM implementation:
-- Test coverage requirements (happy path, edge cases, errors, memory safety, spec compliance)
-- Memory leak testing with `std.testing.allocator`
-- Test organization patterns
-- TDD workflow
-- Refactoring rules (never modify existing tests)
+Test what users can see and rely on:
+
+```zig
+// ✅ CORRECT - Testing public method behavior
+test "Element.appendChild - adds child to parent" {
+    const allocator = std.testing.allocator;
+    const parent = try Element.create(allocator, "parent");
+    defer parent.node.release();
+    
+    const child = try Element.create(allocator, "child");
+    defer child.node.release();
+    
+    _ = try parent.node.appendChild(&child.node);
+    
+    // Test observable public behavior
+    try std.testing.expectEqual(@as(usize, 1), parent.node.childNodes().length());
+    try std.testing.expect(child.node.parent_node == &parent.node);
+}
+```
+
+### ❌ DON'T Test: Internal Implementation
+
+Don't test how it works internally:
+
+```zig
+// ❌ WRONG - Testing internal data structures
+test "internal bloom filter has correct bits set" {
+    const elem = try Element.create(allocator, "item");
+    defer elem.node.release();
+    
+    // Testing internal bloom filter state = FORBIDDEN
+    try std.testing.expect(elem.internal_bloom_filter.bits[3] == 0x42);
+}
+
+// ❌ WRONG - Testing internal helper functions
+test "internal string escaping helper" {
+    const escaped = escapeString("test"); // Internal function
+    try std.testing.expectEqualStrings("test", escaped);
+}
+
+// ❌ WRONG - Testing private fields
+test "element internal cache state" {
+    const elem = try Element.create(allocator, "item");
+    defer elem.node.release();
+    
+    // Testing internal cache state = FORBIDDEN
+    try std.testing.expect(elem.cache_dirty == false);
+}
+```
+
+### Examples of Public vs Private
+
+**Public API (✅ Test these):**
+- `Element.create()` - Factory function
+- `Element.setAttribute()` - Public method
+- `Element.getAttribute()` - Public method
+- `elem.tag_name` - Public field (if `pub`)
+- Return values and errors from public methods
+
+**Private/Internal (❌ Don't test these):**
+- `validateElementName()` - Internal helper (no `pub`)
+- `elem.attribute_map` - Internal data structure
+- `elem.updateBloomFilter()` - Internal optimization
+- Algorithm choices (hash function, sorting method, etc.)
+- Memory layout, cache state, internal flags
+
+### How to Tell if Something is Public
+
+**Method 1: Try to import it**
+```zig
+const dom = @import("dom");
+const thing = dom.Thing;  // Compiles? = Public. Error? = Private.
+```
+
+**Method 2: Check src/root.zig**
+```zig
+// src/root.zig
+pub const Element = @import("element.zig").Element;  // ✅ Public
+// If it's not here, it's private
+```
+
+**Method 3: Check for `pub` keyword**
+```zig
+pub fn createElement(...) !*Element { }  // ✅ Public
+fn internalHelper(...) void { }          // ❌ Private
+```
+
+### Why This Matters
+
+**Testing public API:**
+- ✅ Tests remain stable during refactoring
+- ✅ Tests document what users can rely on
+- ✅ Tests won't break when internal implementation changes
+- ✅ Encourages good API design
+
+**Testing private internals:**
+- ❌ Tests break during refactoring
+- ❌ Tests expose implementation details
+- ❌ Makes refactoring harder and more expensive
+- ❌ Tests don't reflect user experience
+
+---
 
 ## Test Coverage Requirements
 
