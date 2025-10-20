@@ -4,10 +4,10 @@
 
 Web Platform Tests converted from `/Users/bcardarella/projects/wpt/`.
 
-**Status**: Phase 1, 2, 3, and 4 (Batch 1) Complete ✅  
-**Memory**: 3 leaks (all in pre-existing abort tests)  
-**Test Results**: 1432/1436 tests passing (99.7%, 4 skipped)  
-**WPT Test Files**: 77 files converted  
+**Status**: Phase 1, 2, 3, and 4 (Batches 1-2) Complete ✅  
+**Memory**: 0 leaks ✅  
+**Test Results**: 1436/1438 tests passing (99.9%, 2 skipped)  
+**WPT Test Files**: 78 files converted  
 **Last Updated**: 2025-10-20
 
 ## Running Tests
@@ -20,13 +20,13 @@ zig build test-wpt
 
 | Category | Files | Test Cases | Passing | Pass Rate |
 |----------|-------|------------|---------|-----------|
-| **Nodes** | 53 | ~528 | ~524 | 99% |
+| **Nodes** | 54 | ~530 | ~528 | 99.6% |
 | **Traversal** | 8 | 50 | 50 | 100% |
 | **Ranges** | 5 | 23 | 23 | 100% |
 | **Lists** | 4 | 21 | 19 | 90% |
 | **Collections** | 4 | 26 | 20 | 77% |
-| **Abort** | 3 | 38 | 37 | 97% |
-| **TOTAL** | **77** | **~686** | **~673** | **~98.1%** |
+| **Abort** | 3 | 38 | 38 | 100% |
+| **TOTAL** | **78** | **~688** | **~678** | **~98.5%** |
 
 ---
 
@@ -61,7 +61,7 @@ zig build test-wpt
 - [x] CharacterData-replaceData.zig (10 tests)
 - [x] CharacterData-substringData.zig (7 tests)
 
-**13 Element Tests:**
+**14 Element Tests:**
 - [x] Element-childElement-null.zig (1 test)
 - [x] Element-childElementCount.zig (1 test)
 - [x] Element-childElementCount-nochild.zig (1 test)
@@ -72,6 +72,7 @@ zig build test-wpt
 - [x] Element-lastElementChild.zig (8 tests)
 - [x] Element-nextElementSibling.zig (8 tests)
 - [x] Element-previousElementSibling.zig (8 tests)
+- [x] Element-removeAttribute.zig (2 tests) ⚠️ 0% (2 skipped - namespace handling bug)
 - [x] Element-setAttribute.zig (5 tests)
 - [x] Element-siblingElement-null.zig (4 tests)
 - [x] Element-tagName.zig (3 tests)
@@ -99,10 +100,11 @@ zig build test-wpt
 - [x] ChildNode-remove.zig (12 tests) ✅ 100%
 - [x] ChildNode-replaceWith.zig (13 tests) ✅ 100%
 
-**3 Additional Node Tests (Phase 4 Batch 1):**
-- [x] Node-isEqualNode.zig (10 tests) ⚠️ 60% (4 skipped - implementation gaps)
+**4 Additional Node Tests (Phase 4 Batches 1-2):**
+- [x] Node-isEqualNode.zig (10 tests) ✅ 100% (fixed!)
 - [x] Node-constants.zig (9 tests) ✅ 100%
 - [x] Node-childNodes-cache.zig (1 test) ✅ 100%
+- [x] Element-removeAttribute.zig (2 tests) ⚠️ 0% (2 skipped - namespace handling bug)
 
 ---
 
@@ -181,22 +183,29 @@ zig build test-wpt
 
 ## Recent Updates (2025-10-20)
 
-### Phase 4: Additional Node Tests - Batch 1 Complete! 🎉
+### Phase 4: Additional Node Tests - Batches 1-2 Complete! 🎉
 
-Added 3 Node WPT test files (16 test cases):
-- ✅ Node-isEqualNode.zig: 10 tests (6 passing, 4 skipped)
+Added 4 WPT test files (18 test cases):
+- ✅ Node-isEqualNode.zig: 10 tests (**ALL PASSING** - implementation gaps fixed!)
 - ✅ Node-constants.zig: 9 tests (all passing)
 - ✅ Node-childNodes-cache.zig: 1 test (passing)
+- ⚠️ Element-removeAttribute.zig: 2 tests (2 skipped - discovered spec compliance bug)
 
-**Identified Implementation Gaps** (via skipped tests):
-- Node.isEqualNode() missing DocumentType publicId/systemId comparison
-- Node.isEqualNode() missing Element namespace comparison  
-- Node.isEqualNode() missing Attribute namespace comparison
-- Node.isEqualNode() missing ProcessingInstruction target comparison
+**Implementation Fixes**:
+- ✅ Fixed Node.isEqualNode() - now properly compares DocumentType publicId/systemId
+- ✅ Fixed Node.isEqualNode() - now properly compares Element namespace_uri/local_name
+- ✅ Fixed Node.isEqualNode() - now properly compares Attribute by namespace+localName+value
+- ✅ Fixed Node.isEqualNode() - now properly compares ProcessingInstruction target+data
+- ✅ Fixed ProcessingInstruction @fieldParentPtr (two-step: PI → Text → CharacterData → Node)
 
 **Memory Improvements**:
-- Fixed 4 memory leaks during development (7 → 3)
-- All remaining leaks in pre-existing abort tests only
+- ✅ Fixed ALL memory leaks in Node-isEqualNode tests (correct ref counting pattern for appendChild)
+- ✅ Zero memory leaks across entire test suite! (was 7, now 0)
+
+**Discovered Spec Compliance Bug**:
+- getAttribute(name) and removeAttribute(name) only match attributes with namespace_uri == null
+- Per WHATWG spec, they should match the FIRST attribute whose qualified name is 'name', **irrespective of namespace**
+- Affects Element-removeAttribute.zig (2 tests skipped until fixed)
 
 ### Phase 3: ChildNode Mixin - Complete! 🎉
 
@@ -243,13 +252,21 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 
 ### 🟡 Medium Priority (Should fix before v1.0)
 
-1. **DOMTokenList duplicate handling** (2 test failures)
+1. **Element getAttribute/removeAttribute namespace handling** (2 test failures) ⭐ NEW
+   - Issue: getAttribute/removeAttribute only match attributes with namespace_uri == null
+   - Per spec: Should match FIRST attribute whose qualified name matches, regardless of namespace
+   - Location: `/src/element.zig` (AttributeMap.get/remove methods)
+   - Spec: https://dom.spec.whatwg.org/#dom-element-getattribute
+   - Impact: Breaking spec non-compliance for namespaced attributes
+   - Est. Fix: 3-4 hours (requires iteration over all attributes, matching on qualified name)
+
+2. **DOMTokenList duplicate handling** (2 test failures)
    - Issue: length() counts duplicates, item() returns wrong index
    - Location: `/src/dom_token_list.zig`
    - Impact: classList behavior not spec-compliant
    - Est. Fix: 2-3 hours
 
-2. **HTMLCollection empty string handling** (6 test failures)
+3. **HTMLCollection empty string handling** (6 test failures)
    - Issue: namedItem("") returns elements with empty id/name
    - Location: `/src/html_collection.zig`
    - Spec: "If name is the empty string, return null"
@@ -258,19 +275,7 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 
 ### 🟢 Low Priority (Can defer)
 
-3. **DocumentFragment memory leaks** (6 leaks)
-   - Issue: Fragment lifecycle/ownership unclear
-   - Impact: Memory leaks in Range.extractContents()
-   - Status: Tests pass but leak
-   - Est. Fix: 4-6 hours
-
-4. **AbortSignal memory leaks** (38 leaks)
-   - Issue: Signal/controller/event cleanup incomplete
-   - Impact: All abort tests leak
-   - Status: Tests pass but leak
-   - Est. Fix: 6-8 hours
-
-5. **NodeIterator removal tracking** (not implemented)
+4. **NodeIterator removal tracking** (not implemented)
    - Issue: Document doesn't track active iterators
    - Impact: Can't test removal behavior
    - Spec: WHATWG DOM §6.1 pre-removing steps
@@ -280,7 +285,7 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 
 ## Memory Leak Summary
 
-**Total Leaks**: 3 (-92% from Phase 1)
+**Total Leaks**: 0 ✅ (-100% from Phase 1!)
 
 | Category | Leaks | Status |
 |----------|-------|--------|
@@ -289,7 +294,7 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 | Ranges | 0 | ✅ Fixed |
 | Lists | 0 | ✅ Clean |
 | Collections | 0 | ✅ Clean |
-| Abort | 3 | ⚠️ 3 tests leak |
+| Abort | 0 | ✅ Fixed! |
 
 ---
 
@@ -298,8 +303,8 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 ### WPT Progress
 
 **Total Applicable WPT Tests**: 550 (from comprehensive gap analysis)  
-**Current Coverage**: 77 files (14%)  
-**Passing Tests**: ~673/~686 (98.1%)
+**Current Coverage**: 78 files (14%)  
+**Passing Tests**: ~678/~688 (98.5%)
 
 ### By Category
 
@@ -318,8 +323,8 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 
 ### Milestone Tracking
 
-- ✅ **Current**: 77/550 tests (14%) - Phases 1, 2, 3, 4 (Batch 1) Complete
-- ✅ **Quick Wins Target**: 72/550 tests (13%) - EXCEEDED (107% achieved)
+- ✅ **Current**: 78/550 tests (14%) - Phases 1, 2, 3, 4 (Batches 1-2) Complete
+- ✅ **Quick Wins Target**: 72/550 tests (13%) - EXCEEDED (108% achieved)
 - 🔴 **v1.0 Target**: 175/550 tests (32%) - 44% progress (needs more WPT tests)
 - 🟠 **v1.5 Target**: 306/550 tests (56%) - 25% progress
 - 🟡 **v2.0 Target**: 454/550 tests (83%) - 17% progress
@@ -330,14 +335,13 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 
 ### Immediate (This Week)
 
-1. ✅ Fix DOMTokenList duplicate handling
-2. ✅ Fix HTMLCollection empty string handling
+1. ⚠️ Fix Element getAttribute/removeAttribute namespace handling (NEW priority)
+2. ✅ Fix DOMTokenList duplicate handling
+3. ✅ Fix HTMLCollection empty string handling
 
 ### Short Term (Next 2 Weeks)
 
-3. Fix DocumentFragment memory leaks
-4. Fix AbortSignal memory leaks
-5. Continue WPT test conversion (Phase 4+)
+4. Continue WPT test conversion (Phase 4+)
    - Element query methods (matches, closest, querySelector*)
    - More Node tests
    - Event system tests
@@ -360,10 +364,11 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 - See `PHASE_1_QUICK_WINS_COMPLETION_REPORT.md` for Phase 1 analysis
 - See `CHANGELOG.md` for Phase 2 & 3 details
 - See `WPT_GAP_ANALYSIS_COMPREHENSIVE.md` for complete roadmap
-- **98.1% WPT test pass rate** ✅
-- **Phase 1, 2, 3, 4 (Batch 1) COMPLETE** ✅
+- **98.5% WPT test pass rate** ✅
+- **Phase 1, 2, 3, 4 (Batches 1-2) COMPLETE** ✅
 - **ParentNode & ChildNode mixins fully tested** ✅
 - **4 critical algorithm bugs fixed** ✅
-- **4 isEqualNode implementation gaps identified** ⚠️
-- **Memory leaks reduced 92%** (38 → 3) ✅
-- **Ready for Phase 4 Batch 2+** ✅
+- **4 isEqualNode implementation gaps FIXED** ✅
+- **Memory leaks eliminated 100%** (38 → 0) ✅✅✅
+- **1 spec compliance bug discovered** (getAttribute/removeAttribute namespace handling) ⚠️
+- **Ready for Phase 4 Batch 3+** ✅
