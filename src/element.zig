@@ -243,6 +243,7 @@ const DOMError = @import("validation.zig").DOMError;
 const AttributeArray = @import("attribute_array.zig").AttributeArray;
 const CustomElementDefinition = @import("custom_element_registry.zig").CustomElementDefinition;
 const CustomElementReactionQueue = @import("custom_element_registry.zig").CustomElementReactionQueue;
+const CEReactionsStack = @import("custom_element_registry.zig").CEReactionsStack;
 
 // ============================================================================
 // Custom Element State (Phase 2)
@@ -1139,11 +1140,35 @@ pub const Element = struct {
         qualified_name: []const u8,
         value: []const u8,
     ) !void {
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+        if (self.prototype.owner_document) |doc_node| {
+            if (doc_node.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", doc_node);
+                const stack = doc.getCEReactionsStack();
+                try stack.enter();
+                defer stack.leave();
+
+                return try setAttributeNSImpl(self, namespace, qualified_name, value, stack);
+            }
+        }
+
+        // No owner document - just set the attribute
+        return try setAttributeNSImpl(self, namespace, qualified_name, value, null);
+    }
+
+    fn setAttributeNSImpl(
+        self: *Element,
+        namespace: ?[]const u8,
+        qualified_name: []const u8,
+        value: []const u8,
+        stack: ?*CEReactionsStack,
+    ) !void {
         // Step 1: Validate and extract namespace, prefix, and localName
         const validation = @import("validation.zig");
         const components = try validation.validateAndExtract(namespace, qualified_name);
 
-        // Capture old value for mutation observers (before modification)
+        // Capture old value for mutation observers AND custom element reactions
         const old_value = self.getAttributeNS(namespace, components.local_name);
 
         // Intern the strings via document's string pool if we have an owner document
@@ -1191,6 +1216,12 @@ pub const Element = struct {
             components.namespace, // attribute_namespace
             old_value, // old_value
         ) catch {}; // Best effort
+
+        // Enqueue attribute_changed reaction for custom elements (Phase 5)
+        if (stack) |s| {
+            const custom_elements = @import("custom_element_registry.zig");
+            try custom_elements.enqueueAttributeChangedReaction(self, components.local_name, old_value, value, components.namespace, s);
+        }
     }
 
     /// Removes an attribute by namespace and local name.
@@ -1228,7 +1259,31 @@ pub const Element = struct {
         namespace: ?[]const u8,
         local_name: []const u8,
     ) void {
-        // Capture old value for mutation observers (before removal)
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+        if (self.prototype.owner_document) |doc_node| {
+            if (doc_node.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", doc_node);
+                const stack = doc.getCEReactionsStack();
+                stack.enter() catch return; // Ignore allocation errors (shouldn't happen)
+                defer stack.leave();
+
+                removeAttributeNSImpl(self, namespace, local_name, stack);
+                return;
+            }
+        }
+
+        // No owner document - just remove the attribute
+        removeAttributeNSImpl(self, namespace, local_name, null);
+    }
+
+    fn removeAttributeNSImpl(
+        self: *Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+        stack: ?*CEReactionsStack,
+    ) void {
+        // Capture old value for mutation observers AND custom element reactions
         const old_value = self.getAttributeNS(namespace, local_name);
 
         const removed = self.attributes.array.remove(local_name, namespace);
@@ -1246,6 +1301,12 @@ pub const Element = struct {
                 namespace, // attribute_namespace
                 old_value, // old_value
             ) catch {}; // Best effort
+
+            // Enqueue attribute_changed reaction for custom elements (Phase 5)
+            if (stack) |s| {
+                const custom_elements = @import("custom_element_registry.zig");
+                custom_elements.enqueueAttributeChangedReaction(self, local_name, old_value, null, namespace, s) catch {}; // Best effort
+            }
         }
     }
 

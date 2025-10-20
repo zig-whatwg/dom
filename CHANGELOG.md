@@ -310,6 +310,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Batch 4: Node text/clone (textContent setter, nodeValue setter, normalize) - TODO
     - Batch 5: NamedNodeMap (setNamedItem, removeNamedItem, etc.) - OPTIONAL
 
+- **Custom Elements - Phase 5 Batch 3: Element Attribute [CEReactions]** 🎉 NEW
+  - **[CEReactions] Integration for Element Namespaced Attributes**
+    - `setAttributeNS(namespace, qualifiedName, value)` - [CEReactions] scope added for namespaced attributes
+    - `removeAttributeNS(namespace, localName)` - [CEReactions] scope added for namespaced attribute removal
+    - `toggleAttribute(qualifiedName, force?)` - Already works via delegation to setAttribute/removeAttribute
+  - **Implementation Details**
+    - `setAttributeNS()` enters [CEReactions] scope, then calls impl that enqueues attributeChangedCallback
+    - `removeAttributeNS()` enters [CEReactions] scope, then calls impl that enqueues attributeChangedCallback
+    - `toggleAttribute()` delegates to `setAttribute()`/`removeAttribute()` which already have [CEReactions]
+    - All methods validate namespace and qualified name per spec before setting
+    - Callbacks only enqueued for observed attributes (checked via CustomElementDefinition)
+  - **Test Coverage**: 4 new comprehensive tests (70 total) ✅
+    - `setAttributeNS() enqueues attribute_changed reaction for observed attributes` - Verifies callback with namespace
+    - `removeAttributeNS() enqueues attribute_changed reaction` - Verifies callback when removing namespaced attribute
+    - `toggleAttribute() enqueues attribute_changed reaction when adding` - Verifies callback when toggling on
+    - `toggleAttribute() enqueues attribute_changed reaction when removing` - Verifies callback when toggling off
+  - **Memory Management**: All tests pass with zero memory leaks ✅
+  - **Spec References**:
+    - WHATWG DOM: https://dom.spec.whatwg.org/#element
+    - WebIDL: dom.idl:379-382 (setAttributeNS, removeAttributeNS, toggleAttribute)
+    - MDN Element: https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttributeNS
+  - **Implementation Status**: Phase 5 Batch 3 of 5 complete ✅
+    - Batch 1: ParentNode mixin ✅ (prepend, append, replaceChildren, moveBefore)
+    - Batch 2: ChildNode mixin ✅ (before, after, replaceWith, remove)
+    - Batch 3: Element attributes ✅ (setAttributeNS, removeAttributeNS, toggleAttribute)
+    - Batch 4: Node text/clone (textContent setter, nodeValue setter, normalize) - TODO
+    - Batch 5: NamedNodeMap (setNamedItem, removeNamedItem, etc.) - OPTIONAL
+
 - **AbortSignal.any() - Composite Signal Support** 🎉 ✅ COMPLETE
   - **AbortSignal.any(signals)** - Creates dependent signal that aborts when ANY source signal aborts
     - Implements WHATWG DOM §3.2.2 specification exactly

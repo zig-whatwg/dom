@@ -3669,3 +3669,254 @@ test "remove() enqueues disconnected reaction" {
     // Clean up removed element
     elem.prototype.release();
 }
+
+test "setAttributeNS() enqueues attribute_changed reaction for observed attributes" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var attr_changed_called: bool = false;
+        var attr_name: ?[]const u8 = null;
+        var attr_old_value: ?[]const u8 = null;
+        var attr_new_value: ?[]const u8 = null;
+        var attr_namespace: ?[]const u8 = null;
+
+        fn attributeChangedCallback(
+            element: *Element,
+            name: []const u8,
+            old_value: ?[]const u8,
+            new_value: ?[]const u8,
+            namespace: ?[]const u8,
+        ) !void {
+            _ = element;
+            attr_changed_called = true;
+            attr_name = name;
+            attr_old_value = old_value;
+            attr_new_value = new_value;
+            attr_namespace = namespace;
+        }
+
+        fn reset() void {
+            attr_changed_called = false;
+            attr_name = null;
+            attr_old_value = null;
+            attr_new_value = null;
+            attr_namespace = null;
+        }
+    };
+
+    State.reset();
+
+    // Register custom element with observed attribute
+    try registry.define("x-widget", .{
+        .attribute_changed_callback = State.attributeChangedCallback,
+    }, .{
+        .observed_attributes = &[_][]const u8{"data-id"},
+    });
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Set namespaced attribute (observed)
+    const test_ns = "http://example.com/ns";
+    try elem.setAttributeNS(test_ns, "data-id", "123");
+
+    // Callback should have been called
+    try std.testing.expect(State.attr_changed_called);
+    try std.testing.expectEqualStrings("data-id", State.attr_name.?);
+    try std.testing.expect(State.attr_old_value == null);
+    try std.testing.expectEqualStrings("123", State.attr_new_value.?);
+    try std.testing.expectEqualStrings(test_ns, State.attr_namespace.?);
+}
+
+test "removeAttributeNS() enqueues attribute_changed reaction" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var attr_changed_called: bool = false;
+        var attr_name: ?[]const u8 = null;
+        var attr_old_value: ?[]const u8 = null;
+        var attr_new_value: ?[]const u8 = null;
+
+        fn attributeChangedCallback(
+            element: *Element,
+            name: []const u8,
+            old_value: ?[]const u8,
+            new_value: ?[]const u8,
+            namespace: ?[]const u8,
+        ) !void {
+            _ = element;
+            _ = namespace;
+            attr_changed_called = true;
+            attr_name = name;
+            attr_old_value = old_value;
+            attr_new_value = new_value;
+        }
+
+        fn reset() void {
+            attr_changed_called = false;
+            attr_name = null;
+            attr_old_value = null;
+            attr_new_value = null;
+        }
+    };
+
+    State.reset();
+
+    // Register custom element with observed attribute
+    try registry.define("x-widget", .{
+        .attribute_changed_callback = State.attributeChangedCallback,
+    }, .{
+        .observed_attributes = &[_][]const u8{"data-id"},
+    });
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Set attribute first
+    const test_ns = "http://example.com/ns";
+    try elem.setAttributeNS(test_ns, "data-id", "123");
+
+    State.reset();
+
+    // Remove namespaced attribute
+    elem.removeAttributeNS(test_ns, "data-id");
+
+    // Callback should have been called
+    try std.testing.expect(State.attr_changed_called);
+    try std.testing.expectEqualStrings("data-id", State.attr_name.?);
+    try std.testing.expectEqualStrings("123", State.attr_old_value.?);
+    try std.testing.expect(State.attr_new_value == null);
+}
+
+test "toggleAttribute() enqueues attribute_changed reaction when adding" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var attr_changed_called: bool = false;
+
+        fn attributeChangedCallback(
+            element: *Element,
+            name: []const u8,
+            old_value: ?[]const u8,
+            new_value: ?[]const u8,
+            namespace: ?[]const u8,
+        ) !void {
+            _ = element;
+            _ = name;
+            _ = old_value;
+            _ = new_value;
+            _ = namespace;
+            attr_changed_called = true;
+        }
+
+        fn reset() void {
+            attr_changed_called = false;
+        }
+    };
+
+    State.reset();
+
+    // Register custom element with observed attribute
+    try registry.define("x-widget", .{
+        .attribute_changed_callback = State.attributeChangedCallback,
+    }, .{
+        .observed_attributes = &[_][]const u8{"disabled"},
+    });
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Toggle attribute (should add it)
+    const is_present = try elem.toggleAttribute("disabled", null);
+
+    // Should be added
+    try std.testing.expect(is_present);
+
+    // Callback should have been called
+    try std.testing.expect(State.attr_changed_called);
+}
+
+test "toggleAttribute() enqueues attribute_changed reaction when removing" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var attr_changed_called: bool = false;
+
+        fn attributeChangedCallback(
+            element: *Element,
+            name: []const u8,
+            old_value: ?[]const u8,
+            new_value: ?[]const u8,
+            namespace: ?[]const u8,
+        ) !void {
+            _ = element;
+            _ = name;
+            _ = old_value;
+            _ = new_value;
+            _ = namespace;
+            attr_changed_called = true;
+        }
+
+        fn reset() void {
+            attr_changed_called = false;
+        }
+    };
+
+    State.reset();
+
+    // Register custom element with observed attribute
+    try registry.define("x-widget", .{
+        .attribute_changed_callback = State.attributeChangedCallback,
+    }, .{
+        .observed_attributes = &[_][]const u8{"disabled"},
+    });
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Add attribute first
+    try elem.setAttribute("disabled", "");
+
+    State.reset();
+
+    // Toggle attribute (should remove it)
+    const is_present = try elem.toggleAttribute("disabled", null);
+
+    // Should be removed
+    try std.testing.expect(!is_present);
+
+    // Callback should have been called
+    try std.testing.expect(State.attr_changed_called);
+}
