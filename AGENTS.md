@@ -1,3 +1,5 @@
+We track work in Beads instead of Markdown. Run \`bd quickstart\` to see how.
+
 # Agent Guidelines for WHATWG DOM Implementation in Zig
 
 ## ⚠️ CRITICAL: Ask Clarifying Questions When Unclear
