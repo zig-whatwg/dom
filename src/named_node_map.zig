@@ -430,6 +430,25 @@ pub const NamedNodeMap = struct {
     ///
     /// **WebIDL**: dom.idl:425 [CEReactions]
     pub fn setNamedItem(self: *NamedNodeMap, attr: *Attr) !?*Attr {
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+        // Note: setAttribute() already has [CEReactions], so this creates nested scope
+        // which is harmless and ensures spec compliance
+        if (self.element.prototype.owner_document) |doc_node| {
+            if (doc_node.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", doc_node);
+                const stack = doc.getCEReactionsStack();
+                try stack.enter();
+                defer stack.leave();
+
+                return try setNamedItemImpl(self, attr);
+            }
+        }
+
+        return try setNamedItemImpl(self, attr);
+    }
+
+    fn setNamedItemImpl(self: *NamedNodeMap, attr: *Attr) !?*Attr {
         // Check if attr is already in use by another element
         if (attr.owner_element) |owner| {
             if (owner != self.element) {
@@ -448,13 +467,11 @@ pub const NamedNodeMap = struct {
             }
         }
 
-        // Set the new attribute value
+        // Set the new attribute value (already has [CEReactions])
         try self.element.setAttribute(attr_name, attr.value());
 
         // Update attr's owner_element
         attr.owner_element = self.element;
-
-        // TODO: Fire CEReactions
 
         return old_attr;
     }
@@ -471,6 +488,23 @@ pub const NamedNodeMap = struct {
     ///
     /// **WebIDL**: dom.idl:426 [CEReactions]
     pub fn setNamedItemNS(self: *NamedNodeMap, attr: *Attr) !?*Attr {
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+        if (self.element.prototype.owner_document) |doc_node| {
+            if (doc_node.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", doc_node);
+                const stack = doc.getCEReactionsStack();
+                try stack.enter();
+                defer stack.leave();
+
+                return try setNamedItemNSImpl(self, attr);
+            }
+        }
+
+        return try setNamedItemNSImpl(self, attr);
+    }
+
+    fn setNamedItemNSImpl(self: *NamedNodeMap, attr: *Attr) !?*Attr {
         // Check if attr is already in use by another element
         if (attr.owner_element) |owner| {
             if (owner != self.element) {
@@ -505,8 +539,6 @@ pub const NamedNodeMap = struct {
         // Update attr's owner_element
         attr.owner_element = self.element;
 
-        // TODO: Fire CEReactions
-
         return old_attr;
     }
 
@@ -525,16 +557,31 @@ pub const NamedNodeMap = struct {
     ///
     /// **WebIDL**: dom.idl:427 [CEReactions]
     pub fn removeNamedItem(self: *NamedNodeMap, qualified_name: []const u8) !*Attr {
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+        if (self.element.prototype.owner_document) |doc_node| {
+            if (doc_node.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", doc_node);
+                const stack = doc.getCEReactionsStack();
+                try stack.enter();
+                defer stack.leave();
+
+                return try removeNamedItemImpl(self, qualified_name);
+            }
+        }
+
+        return try removeNamedItemImpl(self, qualified_name);
+    }
+
+    fn removeNamedItemImpl(self: *NamedNodeMap, qualified_name: []const u8) !*Attr {
         // Get the Attr node before removing
         const attr = try self.getNamedItem(qualified_name) orelse return DOMError.NotFoundError;
 
-        // Remove from element
+        // Remove from element (already has [CEReactions])
         self.element.removeAttribute(qualified_name);
 
         // Detach from element
         attr.owner_element = null;
-
-        // TODO: Fire CEReactions
 
         return attr;
     }
@@ -559,16 +606,35 @@ pub const NamedNodeMap = struct {
         namespace_uri: ?[]const u8,
         local_name: []const u8,
     ) !*Attr {
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+        if (self.element.prototype.owner_document) |doc_node| {
+            if (doc_node.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", doc_node);
+                const stack = doc.getCEReactionsStack();
+                try stack.enter();
+                defer stack.leave();
+
+                return try removeNamedItemNSImpl(self, namespace_uri, local_name);
+            }
+        }
+
+        return try removeNamedItemNSImpl(self, namespace_uri, local_name);
+    }
+
+    fn removeNamedItemNSImpl(
+        self: *NamedNodeMap,
+        namespace_uri: ?[]const u8,
+        local_name: []const u8,
+    ) !*Attr {
         // Get the namespaced Attr node before removing
         const attr = try self.getNamedItemNS(namespace_uri, local_name) orelse return DOMError.NotFoundError;
 
-        // Remove from element using full qualified name
+        // Remove from element using full qualified name (already has [CEReactions])
         self.element.removeAttribute(attr.name());
 
         // Detach from element
         attr.owner_element = null;
-
-        // TODO: Fire CEReactions
 
         return attr;
     }

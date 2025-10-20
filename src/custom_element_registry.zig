@@ -2820,6 +2820,126 @@ test "normalize() enqueues disconnected reactions when removing empty text nodes
     try std.testing.expect(parent.prototype.first_child == parent.prototype.last_child);
 }
 
+test "NamedNodeMap.setNamedItem() enqueues attribute_changed reaction via delegation" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var attr_changed_called: bool = false;
+
+        fn attributeChangedCallback(
+            element: *Element,
+            name: []const u8,
+            old_value: ?[]const u8,
+            new_value: ?[]const u8,
+            namespace: ?[]const u8,
+        ) !void {
+            _ = element;
+            _ = name;
+            _ = old_value;
+            _ = new_value;
+            _ = namespace;
+            attr_changed_called = true;
+        }
+
+        fn reset() void {
+            attr_changed_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .attribute_changed_callback = State.attributeChangedCallback,
+    }, .{
+        .observed_attributes = &[_][]const u8{"data-id"},
+    });
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Create an Attr node
+    const Attr = @import("attr.zig").Attr;
+    const attr = try Attr.create(allocator, "data-id");
+    defer attr.node.release();
+
+    // Set value
+    try attr.setValue("123");
+
+    // Get NamedNodeMap and set via setNamedItem (delegates to setAttribute which has [CEReactions])
+    var named_node_map = elem.getAttributes();
+    _ = try named_node_map.setNamedItem(attr);
+
+    // Callback should have been called via delegation
+    try std.testing.expect(State.attr_changed_called);
+}
+
+test "NamedNodeMap.removeNamedItem() enqueues attribute_changed reaction via delegation" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var attr_changed_called: bool = false;
+
+        fn attributeChangedCallback(
+            element: *Element,
+            name: []const u8,
+            old_value: ?[]const u8,
+            new_value: ?[]const u8,
+            namespace: ?[]const u8,
+        ) !void {
+            _ = element;
+            _ = name;
+            _ = old_value;
+            _ = new_value;
+            _ = namespace;
+            attr_changed_called = true;
+        }
+
+        fn reset() void {
+            attr_changed_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .attribute_changed_callback = State.attributeChangedCallback,
+    }, .{
+        .observed_attributes = &[_][]const u8{"data-id"},
+    });
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Set attribute first
+    try elem.setAttribute("data-id", "123");
+
+    State.reset();
+
+    // Get NamedNodeMap and remove via removeNamedItem (delegates to removeAttribute which has [CEReactions])
+    var named_node_map = elem.getAttributes();
+    const removed_attr = try named_node_map.removeNamedItem("data-id");
+    defer removed_attr.node.release();
+
+    // Callback should have been called via delegation
+    try std.testing.expect(State.attr_changed_called);
+}
+
 test "setAttribute does NOT enqueue for non-observed attributes" {
     const allocator = std.testing.allocator;
 

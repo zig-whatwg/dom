@@ -365,6 +365,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Batch 4: Node text/clone ✅ (setNodeValue, setTextContent, normalize)
     - Batch 5: NamedNodeMap (setNamedItem, removeNamedItem, etc.) - OPTIONAL
 
+- **Custom Elements - Phase 5 Batch 5: NamedNodeMap [CEReactions]** 🎉 NEW ✅ COMPLETE
+  - **[CEReactions] Integration for NamedNodeMap (Legacy API)**
+    - `setNamedItem(attr)` - [CEReactions] scope added (delegates to setAttribute)
+    - `setNamedItemNS(attr)` - [CEReactions] scope added (delegates to setAttributeNS)
+    - `removeNamedItem(qualifiedName)` - [CEReactions] scope added (delegates to removeAttribute)
+    - `removeNamedItemNS(namespace, localName)` - [CEReactions] scope added (delegates to removeAttributeNS)
+  - **Implementation Details**
+    - All methods enter [CEReactions] scope before delegating to Element attribute methods
+    - Element methods (setAttribute, etc.) already have [CEReactions], creating nested scopes
+    - Nested scopes are harmless (CEReactionsStack handles depth counting)
+    - Callbacks already working through delegation - explicit scopes ensure strict spec compliance
+    - Removed TODO comments - [CEReactions] now fully implemented
+  - **Test Coverage**: 2 new comprehensive tests (74 total) ✅
+    - `setNamedItem() enqueues attribute_changed reaction via delegation` - Verifies callback through setAttribute
+    - `removeNamedItem() enqueues attribute_changed reaction via delegation` - Verifies callback through removeAttribute
+  - **Memory Management**: All tests pass with zero memory leaks ✅
+  - **Spec References**:
+    - WHATWG DOM: https://dom.spec.whatwg.org/#namednodemap
+    - WebIDL: dom.idl:425-428 (setNamedItem, setNamedItemNS, removeNamedItem, removeNamedItemNS)
+    - MDN NamedNodeMap: https://developer.mozilla.org/en-US/docs/Web/API/NamedNodeMap
+  - **Implementation Status**: Phase 5 ALL BATCHES COMPLETE ✅ 🎉
+    - Batch 1: ParentNode mixin ✅ (prepend, append, replaceChildren, moveBefore)
+    - Batch 2: ChildNode mixin ✅ (before, after, replaceWith, remove)
+    - Batch 3: Element attributes ✅ (setAttributeNS, removeAttributeNS, toggleAttribute)
+    - Batch 4: Node text/clone ✅ (setNodeValue, setTextContent, normalize)
+    - Batch 5: NamedNodeMap ✅ (setNamedItem, setNamedItemNS, removeNamedItem, removeNamedItemNS)
+
 - **AbortSignal.any() - Composite Signal Support** 🎉 ✅ COMPLETE
   - **AbortSignal.any(signals)** - Creates dependent signal that aborts when ANY source signal aborts
     - Implements WHATWG DOM §3.2.2 specification exactly
