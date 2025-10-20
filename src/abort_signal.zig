@@ -54,14 +54,36 @@
 //! // Useful for immediately cancelled operations
 //! ```
 //!
-//! ### Timeout Signal
-//! Create a signal that aborts after a timeout:
+//! ### Timeout Signal (NOT YET IMPLEMENTED)
+//!
+//! **Status**: Waiting for Zig async/await support
+//!
+//! The `AbortSignal.timeout(milliseconds)` static method is specified in WHATWG DOM
+//! but requires timer/event loop integration from the HTML spec. This cannot be
+//! implemented in a generic DOM library without:
+//! 1. Forcing a specific event loop implementation on users (breaks generality)
+//! 2. Using std.time.Timer with threads (adds complexity, not zero-cost)
+//! 3. Requiring user-provided timer callbacks (breaks spec API)
+//!
+//! The most appropriate solution is to wait for Zig's async/await to stabilize,
+//! which will provide language-level support for timeout/timer operations without
+//! forcing implementation details on library users.
+//!
+//! **Spec Reference**: https://dom.spec.whatwg.org/#dom-abortsignal-timeout
+//!
+//! **WebIDL**:
+//! ```webidl
+//! [Exposed=(Window,Worker), NewObject]
+//! static AbortSignal timeout([EnforceRange] unsigned long long milliseconds);
+//! ```
+//!
+//! **Future API** (when async/await is available):
 //! ```zig
 //! const signal = try AbortSignal.timeout(allocator, 1000); // 1 second
-//! defer signal.deinit();
+//! defer signal.release();
 //!
 //! // After 1 second, signal.aborted becomes true
-//! // and "abort" event fires
+//! // and "abort" event fires with TimeoutError
 //! ```
 //!
 //! ## AbortSignal Structure
@@ -76,7 +98,8 @@
 //! - Immutable once aborted (aborted flag never resets)
 //! - Abort algorithms run before abort event fires
 //! - Can be created pre-aborted (AbortSignal.abort())
-//! - Supports timeout-based abort (AbortSignal.timeout())
+//! - Supports composite signals (AbortSignal.any())
+//! - Timeout-based abort (AbortSignal.timeout()) - NOT YET IMPLEMENTED (waiting for Zig async/await)
 //!
 //! ## Memory Management
 //!
@@ -127,13 +150,23 @@
 //! controller.abort();
 //! ```
 //!
-//! ### Timeout Pattern
+//! ### Composite Signal Pattern (ANY of multiple signals)
 //! ```zig
-//! fn fetchWithTimeout(url: []const u8, timeout_ms: u32, allocator: Allocator) ![]u8 {
-//!     const signal = try AbortSignal.timeout(allocator, timeout_ms);
-//!     defer signal.deinit();
+//! fn fetchWithTimeout(controller: *AbortController, timeout_ms: u64) !void {
+//!     // Create manual timeout signal (user-managed)
+//!     const timeout_controller = try AbortController.init(allocator);
+//!     defer timeout_controller.deinit();
 //!
-//!     return fetchWithAbort(url, signal);
+//!     // Composite: abort on EITHER user cancel OR timeout
+//!     const composite = try AbortSignal.any(allocator, &[_]*AbortSignal{
+//!         controller.signal,
+//!         timeout_controller.signal,
+//!     });
+//!     defer composite.release();
+//!
+//!     // User triggers their own timeout logic
+//!     // (AbortSignal.timeout() not yet available - see documentation above)
+//!     return fetchWithAbort(url, composite);
 //! }
 //! ```
 //!
@@ -215,9 +248,10 @@
 //!   return zig.abortsignal_abort(reason);
 //! };
 //!
-//! // Create signal that aborts after timeout
+//! // Create signal that aborts after timeout (NOT YET IMPLEMENTED)
+//! // Waiting for Zig async/await support
 //! AbortSignal.timeout = function(milliseconds) {
-//!   return zig.abortsignal_timeout(milliseconds);
+//!   throw new Error("AbortSignal.timeout() not yet implemented in Zig DOM library");
 //! };
 //!
 //! // Create composite signal from multiple signals (future)
@@ -291,8 +325,11 @@
 //! const abortedSignal = AbortSignal.abort('Already done');
 //! console.log(abortedSignal.aborted); // true
 //!
-//! // Timeout signal
-//! const timeoutSignal = AbortSignal.timeout(5000); // Aborts after 5 seconds
+//! // Composite signal (combines multiple abort sources)
+//! const controller2 = new AbortController();
+//! const compositeSignal = AbortSignal.any([signal, controller2.signal]);
+//!
+//! // Note: AbortSignal.timeout() not yet implemented (waiting for Zig async/await)
 //! ```
 //!
 //! See `JS_BINDINGS.md` for complete binding patterns and memory management.
@@ -303,7 +340,10 @@
 //! - aborted flag is immutable once set (never goes from true → false)
 //! - Abort algorithms run BEFORE abort event fires
 //! - reason defaults to DOMException("AbortError") if not specified
-//! - AbortSignal.timeout() uses internal timer (implementation-specific)
+//! - AbortSignal.timeout() NOT YET IMPLEMENTED (waiting for Zig async/await)
+//!   - Spec requires HTML event loop integration
+//!   - Cannot implement in generic DOM library without forcing event loop choice
+//!   - Will be added when Zig async/await stabilizes
 //! - SignalRareData stores event listeners and abort algorithms
 //! - Not reference counted (use explicit deinit())
 //! - Thread-safety not guaranteed (single-threaded by default)

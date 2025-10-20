@@ -152,3 +152,154 @@ test "QualifiedName: memory layout size" {
     // This is larger than browsers (16-24 bytes) but acceptable for Zig
     try expect(size == 48);
 }
+
+// === parse() function tests ===
+
+test "parse: simple name without prefix" {
+    const result = try dom.qualified_name.parse("div");
+    
+    try expect(result.prefix == null);
+    try expectEqualStrings("div", result.local_name);
+}
+
+test "parse: qualified name with prefix" {
+    const result = try dom.qualified_name.parse("svg:circle");
+    
+    try expectEqualStrings("svg", result.prefix.?);
+    try expectEqualStrings("circle", result.local_name);
+}
+
+test "parse: xml prefix" {
+    const result = try dom.qualified_name.parse("xml:lang");
+    
+    try expectEqualStrings("xml", result.prefix.?);
+    try expectEqualStrings("lang", result.local_name);
+}
+
+test "parse: xlink prefix" {
+    const result = try dom.qualified_name.parse("xlink:href");
+    
+    try expectEqualStrings("xlink", result.prefix.?);
+    try expectEqualStrings("href", result.local_name);
+}
+
+test "parse: name with hyphens and underscores" {
+    const result = try dom.qualified_name.parse("data-user_id");
+    
+    try expect(result.prefix == null);
+    try expectEqualStrings("data-user_id", result.local_name);
+}
+
+test "parse: name with periods" {
+    const result = try dom.qualified_name.parse("com.example.attr");
+    
+    try expect(result.prefix == null);
+    try expectEqualStrings("com.example.attr", result.local_name);
+}
+
+test "parse: prefixed name with hyphens" {
+    const result = try dom.qualified_name.parse("my-prefix:local-name");
+    
+    try expectEqualStrings("my-prefix", result.prefix.?);
+    try expectEqualStrings("local-name", result.local_name);
+}
+
+// === parse() error cases ===
+
+test "parse: empty string error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.parse(""));
+}
+
+test "parse: starts with colon error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.parse(":div"));
+}
+
+test "parse: ends with colon error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.parse("div:"));
+}
+
+test "parse: multiple colons error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.parse("a:b:c"));
+}
+
+test "parse: starts with digit error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.parse("123div"));
+}
+
+test "parse: starts with hyphen error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.parse("-div"));
+}
+
+test "parse: contains space error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.parse("div span"));
+}
+
+test "parse: contains special characters error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.parse("div@id"));
+}
+
+test "parse: prefix starts with digit error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.parse("123:div"));
+}
+
+test "parse: local name starts with digit error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.parse("svg:123"));
+}
+
+// === validateXMLName() tests ===
+
+test "validateXMLName: valid simple name" {
+    try dom.qualified_name.validateXMLName("div");
+}
+
+test "validateXMLName: valid name with underscore" {
+    try dom.qualified_name.validateXMLName("_private");
+}
+
+test "validateXMLName: valid name with hyphens" {
+    try dom.qualified_name.validateXMLName("my-element");
+}
+
+test "validateXMLName: valid name with digits" {
+    try dom.qualified_name.validateXMLName("h1");
+}
+
+test "validateXMLName: valid name with periods" {
+    try dom.qualified_name.validateXMLName("com.example");
+}
+
+test "validateXMLName: valid mixed case" {
+    try dom.qualified_name.validateXMLName("MyElement");
+}
+
+test "validateXMLName: valid all uppercase" {
+    try dom.qualified_name.validateXMLName("DIV");
+}
+
+test "validateXMLName: empty string error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.validateXMLName(""));
+}
+
+test "validateXMLName: starts with digit error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.validateXMLName("123"));
+}
+
+test "validateXMLName: starts with hyphen error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.validateXMLName("-name"));
+}
+
+test "validateXMLName: starts with period error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.validateXMLName(".name"));
+}
+
+test "validateXMLName: contains space error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.validateXMLName("my element"));
+}
+
+test "validateXMLName: contains special character error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.validateXMLName("my@element"));
+}
+
+test "validateXMLName: contains bracket error" {
+    try testing.expectError(error.InvalidCharacterError, dom.qualified_name.validateXMLName("my[element]"));
+}

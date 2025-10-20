@@ -247,6 +247,7 @@ const Node = node_mod.Node;
 const NodeType = node_mod.NodeType;
 const NodeVTable = node_mod.NodeVTable;
 const Element = @import("element.zig").Element;
+const AttributeMap = @import("element.zig").AttributeMap;
 const Text = @import("text.zig").Text;
 const Comment = @import("comment.zig").Comment;
 const Attr = @import("attr.zig").Attr;
@@ -543,6 +544,14 @@ pub const Document = struct {
     text_factory: ?*const fn (Allocator, []const u8) anyerror!*Text = null,
     comment_factory: ?*const fn (Allocator, []const u8) anyerror!*Comment = null,
 
+    /// Pre-interned common namespace URIs for performance
+    /// Initialized in init(), enables O(1) pointer comparison
+    html_namespace: []const u8 = undefined,
+    svg_namespace: []const u8 = undefined,
+    mathml_namespace: []const u8 = undefined,
+    xml_namespace: []const u8 = undefined,
+    xmlns_namespace: []const u8 = undefined,
+
     /// Vtable for Document nodes.
     const vtable = NodeVTable{
         .deinit = deinitImpl,
@@ -625,11 +634,11 @@ pub const Document = struct {
         errdefer node_arena.deinit();
 
         // Initialize string pool
-        const string_pool = StringPool.init(allocator);
+        var string_pool = StringPool.init(allocator);
         errdefer string_pool.deinit();
 
         // Initialize selector cache
-        const selector_cache = SelectorCache.init(allocator);
+        var selector_cache = SelectorCache.init(allocator);
         errdefer selector_cache.deinit();
 
         // Initialize ID map
@@ -679,6 +688,13 @@ pub const Document = struct {
         doc.element_factory = factories.element_factory;
         doc.text_factory = factories.text_factory;
         doc.comment_factory = factories.comment_factory;
+
+        // Pre-intern common namespace URIs for O(1) comparison
+        doc.html_namespace = try doc.string_pool.intern("http://www.w3.org/1999/xhtml");
+        doc.svg_namespace = try doc.string_pool.intern("http://www.w3.org/2000/svg");
+        doc.mathml_namespace = try doc.string_pool.intern("http://www.w3.org/1998/Math/MathML");
+        doc.xml_namespace = try doc.string_pool.intern("http://www.w3.org/XML/1998/namespace");
+        doc.xmlns_namespace = try doc.string_pool.intern("http://www.w3.org/2000/xmlns/");
 
         return doc;
     }
@@ -778,6 +794,121 @@ pub const Document = struct {
         // NOTE: We don't add to tag_map here anymore!
         // Elements are added to tag_map when inserted into the document tree (appendChild/insertBefore)
         // This matches browser behavior and ensures only connected elements are in the map.
+
+        return elem;
+    }
+
+    /// Creates a new namespaced Element with the specified namespace and qualified name.
+    ///
+    /// Implements WHATWG DOM Document.createElementNS() per §4.10.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, NewObject] Element createElementNS(DOMString? namespace, DOMString qualifiedName);
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.10)
+    /// 1. Let namespace, prefix, and localName be the result of passing namespace and qualifiedName to validate and extract.
+    /// 2. Return the result of creating an element given this, localName, namespace, prefix, and is.
+    ///
+    /// ## Memory Management
+    /// Returns Element with ref_count=1. Caller MUST call `element.prototype.release()`.
+    /// All strings (namespace, prefix, localName) are interned via string_pool.
+    ///
+    /// ## Parameters
+    /// - `namespace_uri`: Namespace URI (nullable). Common values:
+    ///   - `"http://www.w3.org/1999/xhtml"` - HTML
+    ///   - `"http://www.w3.org/2000/svg"` - SVG
+    ///   - `"http://www.w3.org/1998/Math/MathML"` - MathML
+    /// - `qualified_name`: Qualified name ("prefix:localName" or "localName")
+    ///
+    /// ## Returns
+    /// New namespaced element with owner_document=this
+    ///
+    /// ## Errors
+    /// - `error.InvalidCharacterError`: Invalid qualified name format
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-createelementns
+    /// - WebIDL: dom.idl:290
+    ///
+    /// ## MDN
+    /// - Document.createElementNS(): https://developer.mozilla.org/en-US/docs/Web/API/Document/createElementNS
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// // Create SVG circle element
+    /// const circle = try doc.createElementNS("http://www.w3.org/2000/svg", "circle");
+    /// defer circle.prototype.release();
+    /// try circle.setAttribute("r", "50");
+    ///
+    /// // Create element with prefix
+    /// const svg_rect = try doc.createElementNS("http://www.w3.org/2000/svg", "svg:rect");
+    /// defer svg_rect.prototype.release();
+    /// // svg_rect.namespace_uri = "http://www.w3.org/2000/svg"
+    /// // svg_rect.prefix = "svg"
+    /// // svg_rect.local_name = "rect"
+    ///
+    /// // Create HTML element with explicit namespace
+    /// const html_div = try doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    /// defer html_div.prototype.release();
+    /// ```
+    pub fn createElementNS(
+        self: *Document,
+        namespace_uri: ?[]const u8,
+        qualified_name: []const u8,
+    ) !*Element {
+        const qualified_name_mod = @import("qualified_name.zig");
+
+        // Step 1: Validate and parse qualified name
+        const parsed = try qualified_name_mod.parse(qualified_name);
+
+        // Step 2: Intern namespace URI (with fast-path for common namespaces)
+        const interned_ns = if (namespace_uri) |ns| blk: {
+            // Fast path: Check common namespaces
+            if (std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml")) {
+                break :blk self.html_namespace;
+            } else if (std.mem.eql(u8, ns, "http://www.w3.org/2000/svg")) {
+                break :blk self.svg_namespace;
+            } else if (std.mem.eql(u8, ns, "http://www.w3.org/1998/Math/MathML")) {
+                break :blk self.mathml_namespace;
+            } else if (std.mem.eql(u8, ns, "http://www.w3.org/XML/1998/namespace")) {
+                break :blk self.xml_namespace;
+            } else if (std.mem.eql(u8, ns, "http://www.w3.org/2000/xmlns/")) {
+                break :blk self.xmlns_namespace;
+            }
+            // Slow path: Intern custom namespace
+            break :blk try self.string_pool.intern(ns);
+        } else null;
+
+        // Step 3: Intern prefix and localName
+        const interned_prefix = if (parsed.prefix) |p|
+            try self.string_pool.intern(p)
+        else
+            null;
+        const interned_local = try self.string_pool.intern(parsed.local_name);
+
+        // Step 4: Create namespaced element
+        // Note: Factory functions are not used for namespaced elements
+        // (would need different signature to support namespace data)
+        const elem = try Element.createNS(
+            self.prototype.allocator,
+            interned_ns,
+            interned_prefix,
+            interned_local,
+        );
+        errdefer elem.prototype.release();
+
+        // Set owner document and assign node ID
+        elem.prototype.owner_document = &self.prototype;
+        elem.prototype.node_id = self.allocateNodeId();
+
+        // Increment document's node ref count
+        self.acquireNodeRef();
 
         return elem;
     }
@@ -2216,6 +2347,76 @@ pub const Document = struct {
         // Use HTMLCollection's document-level class traversal
         // This traverses the entire document tree, using bloom filters for fast rejection
         return HTMLCollection.initDocumentByClassName(&self.prototype, class_name);
+    }
+
+    /// Returns all elements with the specified namespace URI and local name.
+    ///
+    /// Implements WHATWG DOM Document.getElementsByTagNameNS() interface.
+    ///
+    /// ## WebIDL
+    ///
+    /// ```webidl
+    /// HTMLCollection getElementsByTagNameNS(DOMString? namespace, DOMString localName);
+    /// ```
+    ///
+    /// ## Parameters
+    ///
+    /// - `namespace`: Namespace URI to match (null for no namespace, "*" for wildcard)
+    /// - `local_name`: Local name to match ("*" for wildcard)
+    ///
+    /// ## Returns
+    ///
+    /// Live HTMLCollection of matching elements
+    ///
+    /// ## Wildcard Support
+    ///
+    /// - `namespace = "*"`: Matches any namespace (including null)
+    /// - `local_name = "*"`: Matches any local name
+    /// - `namespace = "*", local_name = "*"`: Matches ALL elements
+    ///
+    /// ## Spec References
+    ///
+    /// **WHATWG DOM**:
+    /// > The getElementsByTagNameNS(namespace, localName) method steps are to return the list of
+    /// > elements with namespace namespace and local name localName for this.
+    ///
+    /// **MDN**: https://developer.mozilla.org/en-US/docs/Web/API/Document/getElementsByTagNameNS
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-document-getelementsbytagnamens
+    ///
+    /// **WebIDL**: dom.idl:519
+    ///
+    /// ## Example
+    ///
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const svg_ns = "http://www.w3.org/2000/svg";
+    ///
+    /// // Create some SVG elements
+    /// const circle1 = try doc.createElementNS(svg_ns, "circle");
+    /// const circle2 = try doc.createElementNS(svg_ns, "circle");
+    /// _ = try doc.prototype.appendChild(&circle1.prototype);
+    /// _ = try doc.prototype.appendChild(&circle2.prototype);
+    ///
+    /// // Find all SVG circle elements
+    /// const circles = doc.getElementsByTagNameNS(svg_ns, "circle");
+    /// try std.testing.expectEqual(@as(usize, 2), circles.length());
+    ///
+    /// // Find all elements in SVG namespace (wildcard local name)
+    /// const all_svg = doc.getElementsByTagNameNS(svg_ns, "*");
+    /// try std.testing.expectEqual(@as(usize, 2), all_svg.length());
+    ///
+    /// // Find all elements regardless of namespace
+    /// const all_elements = doc.getElementsByTagNameNS("*", "*");
+    /// ```
+    pub fn getElementsByTagNameNS(
+        self: *const Document,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) HTMLCollection {
+        return HTMLCollection.initDocumentByTagNameNS(&self.prototype, namespace, local_name);
     }
 
     // ========================================================================

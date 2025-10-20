@@ -219,8 +219,8 @@ test "Document - string interning in createElement" {
     // Tag names should point to same interned string
     try std.testing.expectEqual(elem1.tag_name.ptr, elem2.tag_name.ptr);
 
-    // One string should be interned
-    try std.testing.expectEqual(@as(usize, 1), doc.string_pool.count());
+    // String pool should have: 5 pre-interned namespaces + 1 tag name = 6 total
+    try std.testing.expectEqual(@as(usize, 6), doc.string_pool.count());
 }
 
 test "Document - multiple node types" {
@@ -1415,4 +1415,130 @@ test "DOMImplementation.createDocument with doctype" {
     const root = newDoc.documentElement();
     try std.testing.expect(root != null);
     try std.testing.expectEqualStrings("html", root.?.tag_name);
+}
+
+// === Namespace Support Tests ===
+
+test "Document.createElementNS creates SVG element" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const circle = try doc.createElementNS("http://www.w3.org/2000/svg", "circle");
+    defer circle.prototype.release();
+
+    // Check namespace properties
+    try std.testing.expectEqualStrings("http://www.w3.org/2000/svg", circle.namespace_uri.?);
+    try std.testing.expect(circle.prefix == null);
+    try std.testing.expectEqualStrings("circle", circle.local_name);
+    try std.testing.expectEqualStrings("circle", circle.tag_name);
+}
+
+test "Document.createElementNS with prefix" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const svg_rect = try doc.createElementNS("http://www.w3.org/2000/svg", "svg:rect");
+    defer svg_rect.prototype.release();
+
+    // Check namespace properties
+    try std.testing.expectEqualStrings("http://www.w3.org/2000/svg", svg_rect.namespace_uri.?);
+    try std.testing.expectEqualStrings("svg", svg_rect.prefix.?);
+    try std.testing.expectEqualStrings("rect", svg_rect.local_name);
+    try std.testing.expectEqualStrings("svg:rect", svg_rect.tag_name);
+}
+
+test "Document.createElementNS with null namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElementNS(null, "custom");
+    defer elem.prototype.release();
+
+    // Check namespace properties
+    try std.testing.expect(elem.namespace_uri == null);
+    try std.testing.expect(elem.prefix == null);
+    try std.testing.expectEqualStrings("custom", elem.local_name);
+    try std.testing.expectEqualStrings("custom", elem.tag_name);
+}
+
+test "Document.createElementNS with HTML namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const div = try doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    defer div.prototype.release();
+
+    // Check namespace properties
+    try std.testing.expectEqualStrings("http://www.w3.org/1999/xhtml", div.namespace_uri.?);
+    try std.testing.expect(div.prefix == null);
+    try std.testing.expectEqualStrings("div", div.local_name);
+}
+
+test "Document.createElementNS with MathML namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const math = try doc.createElementNS("http://www.w3.org/1998/Math/MathML", "math");
+    defer math.prototype.release();
+
+    // Check namespace properties
+    try std.testing.expectEqualStrings("http://www.w3.org/1998/Math/MathML", math.namespace_uri.?);
+    try std.testing.expect(math.prefix == null);
+    try std.testing.expectEqualStrings("math", math.local_name);
+}
+
+test "Document.createElementNS invalid qualified name error" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Invalid: starts with digit
+    try std.testing.expectError(error.InvalidCharacterError, doc.createElementNS(null, "123div"));
+
+    // Invalid: starts with colon
+    try std.testing.expectError(error.InvalidCharacterError, doc.createElementNS(null, ":div"));
+
+    // Invalid: ends with colon
+    try std.testing.expectError(error.InvalidCharacterError, doc.createElementNS(null, "div:"));
+
+    // Invalid: multiple colons
+    try std.testing.expectError(error.InvalidCharacterError, doc.createElementNS(null, "a:b:c"));
+
+    // Invalid: contains space
+    try std.testing.expectError(error.InvalidCharacterError, doc.createElementNS(null, "div span"));
+}
+
+test "Document.createElementNS uses pre-interned common namespaces" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Create two SVG elements
+    const circle1 = try doc.createElementNS("http://www.w3.org/2000/svg", "circle");
+    defer circle1.prototype.release();
+
+    const circle2 = try doc.createElementNS("http://www.w3.org/2000/svg", "rect");
+    defer circle2.prototype.release();
+
+    // Both should use the same interned namespace string (pointer equality)
+    try std.testing.expectEqual(circle1.namespace_uri.?.ptr, circle2.namespace_uri.?.ptr);
+    try std.testing.expectEqual(doc.svg_namespace.ptr, circle1.namespace_uri.?.ptr);
+}
+
+test "Document common namespaces are interned on init" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Verify all common namespaces are pre-interned
+    try std.testing.expectEqualStrings("http://www.w3.org/1999/xhtml", doc.html_namespace);
+    try std.testing.expectEqualStrings("http://www.w3.org/2000/svg", doc.svg_namespace);
+    try std.testing.expectEqualStrings("http://www.w3.org/1998/Math/MathML", doc.mathml_namespace);
+    try std.testing.expectEqualStrings("http://www.w3.org/XML/1998/namespace", doc.xml_namespace);
+    try std.testing.expectEqualStrings("http://www.w3.org/2000/xmlns/", doc.xmlns_namespace);
 }

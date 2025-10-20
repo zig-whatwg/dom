@@ -487,13 +487,20 @@ pub const NamedNodeMap = struct {
         // Detach old attr if exists
         if (old_attr) |old| {
             old.owner_element = null;
-            // Remove from attribute map using its full name
-            self.element.removeAttribute(old.name());
+            // Remove from attribute map using namespace-aware method
+            if (old.namespace_uri != null or old.prefix != null) {
+                _ = self.element.attributes.removeNS(old.local_name, old.namespace_uri);
+            } else {
+                _ = self.element.attributes.remove(old.local_name);
+            }
         }
 
-        // Set the new attribute value using full qualified name
-        const attr_name = attr.name();
-        try self.element.setAttribute(attr_name, attr.value());
+        // Set the new attribute value using namespace-aware method
+        if (attr.namespace_uri != null or attr.prefix != null) {
+            try self.element.attributes.setNS(attr.local_name, attr.namespace_uri, attr.value());
+        } else {
+            try self.element.attributes.set(attr.local_name, attr.value());
+        }
 
         // Update attr's owner_element
         attr.owner_element = self.element;
@@ -580,4 +587,3 @@ pub const NamedNodeMap = struct {
         return try self.element.getOrCreateCachedAttr(name, value);
     }
 };
-

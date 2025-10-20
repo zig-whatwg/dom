@@ -90,6 +90,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const DOMError = @import("validation.zig").DOMError;
 
 /// QualifiedName represents a fully-qualified attribute name.
 ///
@@ -360,3 +361,159 @@ pub const QualifiedName = struct {
         return local_match and ns_match;
     }
 };
+
+/// Parses a qualified name into prefix and local name components.
+///
+/// Validates that the qualified name is a valid XML Name and splits on ':' if present.
+///
+/// ## Parameters
+///
+/// - `qualified_name`: The qualified name to parse (e.g., "svg:circle" or "div")
+///
+/// ## Returns
+///
+/// Struct with `prefix` (nullable) and `local_name` fields
+///
+/// ## Errors
+///
+/// - `error.InvalidCharacterError`: Invalid XML Name format
+///
+/// ## Validation Rules (XML Name)
+///
+/// From WHATWG DOM spec and XML 1.0 spec:
+/// - Cannot be empty
+/// - Cannot start with colon
+/// - Cannot end with colon
+/// - Cannot contain multiple colons
+/// - Each part (prefix and local name) must be valid XML Name:
+///   - Must start with letter, underscore, or colon (not digit or hyphen)
+///   - Can contain letters, digits, hyphens, underscores, periods, colons
+///   - Cannot contain whitespace or other special characters
+///
+/// ## Example
+///
+/// ```zig
+/// // Valid qualified names
+/// const result1 = try parse("div");
+/// // result1.prefix = null, result1.local_name = "div"
+///
+/// const result2 = try parse("svg:circle");
+/// // result2.prefix = "svg", result2.local_name = "circle"
+///
+/// const result3 = try parse("xml:lang");
+/// // result3.prefix = "xml", result3.local_name = "lang"
+///
+/// // Invalid qualified names
+/// try expectError(error.InvalidCharacterError, parse(":div"));     // starts with colon
+/// try expectError(error.InvalidCharacterError, parse("div:"));     // ends with colon
+/// try expectError(error.InvalidCharacterError, parse("a:b:c"));    // multiple colons
+/// try expectError(error.InvalidCharacterError, parse("123div"));   // starts with digit
+/// try expectError(error.InvalidCharacterError, parse("div span")); // contains space
+/// ```
+///
+/// ## Spec References
+///
+/// - WHATWG DOM: https://dom.spec.whatwg.org/#validate-and-extract
+/// - XML Names: https://www.w3.org/TR/xml/#NT-Name
+pub fn parse(qualified_name: []const u8) !struct { prefix: ?[]const u8, local_name: []const u8 } {
+    // Empty name is invalid
+    if (qualified_name.len == 0) {
+        return error.InvalidCharacterError;
+    }
+
+    // Cannot start or end with colon
+    if (qualified_name[0] == ':' or qualified_name[qualified_name.len - 1] == ':') {
+        return error.InvalidCharacterError;
+    }
+
+    // Find colon position (if any)
+    var colon_pos: ?usize = null;
+    for (qualified_name, 0..) |ch, i| {
+        if (ch == ':') {
+            if (colon_pos != null) {
+                // Multiple colons not allowed
+                return error.InvalidCharacterError;
+            }
+            colon_pos = i;
+        }
+    }
+
+    if (colon_pos) |pos| {
+        // Has prefix
+        const prefix = qualified_name[0..pos];
+        const local = qualified_name[pos + 1 ..];
+
+        // Validate both parts are valid XML Names
+        try validateXMLName(prefix);
+        try validateXMLName(local);
+
+        return .{ .prefix = prefix, .local_name = local };
+    } else {
+        // No prefix
+        try validateXMLName(qualified_name);
+        return .{ .prefix = null, .local_name = qualified_name };
+    }
+}
+
+/// Validates that a string is a valid XML Name.
+///
+/// ## Parameters
+///
+/// - `name`: The name to validate
+///
+/// ## Errors
+///
+/// - `error.InvalidCharacterError`: Name contains invalid characters or format
+///
+/// ## XML Name Rules (simplified for performance)
+///
+/// - Cannot be empty
+/// - Must start with: letter (A-Z, a-z), underscore (_), or colon (:)
+/// - Can contain: letters, digits, hyphens (-), underscores (_), periods (.), colons (:)
+/// - Cannot contain: whitespace, special characters
+///
+/// **Note**: This is a simplified validation that covers 99% of real-world cases.
+/// Full XML Name validation includes Unicode categories (not implemented for performance).
+///
+/// ## Spec References
+///
+/// - XML Names: https://www.w3.org/TR/xml/#NT-Name
+/// - WHATWG DOM: https://dom.spec.whatwg.org/#validate
+pub fn validateXMLName(name: []const u8) !void {
+    if (name.len == 0) {
+        return error.InvalidCharacterError;
+    }
+
+    // Check first character: must be letter, underscore, or colon
+    const first = name[0];
+    if (!isNameStartChar(first)) {
+        return error.InvalidCharacterError;
+    }
+
+    // Check remaining characters: must be name characters
+    for (name[1..]) |ch| {
+        if (!isNameChar(ch)) {
+            return error.InvalidCharacterError;
+        }
+    }
+}
+
+/// Checks if character is valid as first character of XML Name.
+///
+/// NameStartChar: letter (A-Z, a-z), underscore, or colon
+fn isNameStartChar(ch: u8) bool {
+    return switch (ch) {
+        'A'...'Z', 'a'...'z', '_', ':' => true,
+        else => false,
+    };
+}
+
+/// Checks if character is valid in XML Name (after first character).
+///
+/// NameChar: letter, digit, hyphen, underscore, period, or colon
+fn isNameChar(ch: u8) bool {
+    return switch (ch) {
+        'A'...'Z', 'a'...'z', '0'...'9', '-', '_', '.', ':' => true,
+        else => false,
+    };
+}

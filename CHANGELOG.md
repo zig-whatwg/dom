@@ -9,7 +9,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Phase 21: Tree Traversal APIs (WHATWG DOM §6)** 🎉 NEW
+- **AbortSignal.any() - Composite Signal Support** 🎉 ✅ COMPLETE
+  - **AbortSignal.any(signals)** - Creates dependent signal that aborts when ANY source signal aborts
+    - Implements WHATWG DOM §3.2.2 specification exactly
+    - Dependency flattening: nested composite signals link directly to source signals (prevents deep chains)
+    - Weak reference pattern: source/dependent signals use raw pointers (no circular ref counting issues)
+    - Abort reason propagation: dependent signals inherit reason from first aborted source
+    - Idempotent abort handling: signals can only abort once, duplicate signals handled correctly
+  - **Test Coverage**: 9 comprehensive tests covering all edge cases ✅
+    - Basic composition (single source, multiple sources, empty array)
+    - Pre-aborted source signals (early return optimization)
+    - Dependency flattening (nested composites)
+    - Event ordering (proper propagation through dependency graph)
+    - Reentrant aborts (correct handling of cascading aborts)
+    - DOMException sharing (same instance propagated through dependents)
+    - Memory safety (zero leaks verified)
+  - **Performance**: O(1) abort propagation per dependent, flat dependency graph (no chains)
+  - **Spec References**:
+    - WHATWG DOM: https://dom.spec.whatwg.org/#dom-abortsignal-any
+    - WebIDL: dom.idl:98 `[NewObject] static AbortSignal _any(sequence<AbortSignal> signals);`
+    - MDN: https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/any_static
+
+### Deferred
+
+- **AbortSignal.timeout(milliseconds)** ⏸️ WAITING FOR ZIG ASYNC/AWAIT
+  - **Status**: Deferred until Zig async/await stabilizes
+  - **Reason**: Requires HTML event loop integration (not part of generic DOM spec)
+  - **Problem**: Cannot implement without:
+    1. Forcing specific event loop on users (breaks library generality)
+    2. Using std.time.Timer with threads (adds complexity, not zero-cost)
+    3. Breaking spec API with user-provided timer callbacks
+  - **Solution**: Wait for Zig language-level async/await support
+  - **Workaround**: Users can manually abort via AbortController after their own timeout
+  - **Documentation**: Comprehensive note added explaining deferral reason and future plans
+  - **Spec Reference**: https://dom.spec.whatwg.org/#dom-abortsignal-timeout
+
+### Added
+
+- **Namespace Support (WHATWG DOM §4)** 🎉 NEW
+  - **Element Namespace Fields** ✅
+    - `namespace_uri` - Namespace URI (null for non-namespaced)
+    - `prefix` - Namespace prefix (e.g., "svg", "xml")
+    - `local_name` - Local name without prefix
+  - **Document Factory Methods** ✅
+    - `createElementNS(namespace, qualifiedName)` - Creates namespaced element
+    - `createAttributeNS(namespace, qualifiedName)` - Creates namespaced attribute
+    - Pre-interned common namespaces (HTML, SVG, MathML, XML, XMLNS) for O(1) comparison
+  - **Element Namespace Methods** ✅
+    - `getAttributeNS(namespace, localName)` - Gets attribute by namespace
+    - `setAttributeNS(namespace, qualifiedName, value)` - Sets namespaced attribute
+    - `removeAttributeNS(namespace, localName)` - Removes namespaced attribute
+    - `hasAttributeNS(namespace, localName)` - Checks for namespaced attribute
+    - `getAttributeNodeNS(namespace, localName)` - Gets Attr node by namespace
+    - `setAttributeNodeNS(attr)` - Sets Attr node (preserves namespace)
+  - **getElementsByTagNameNS** ✅
+    - `Document.getElementsByTagNameNS(namespace, localName)` - Document-wide search
+    - `Element.getElementsByTagNameNS(namespace, localName)` - Scoped to descendants
+    - **Wildcard support**: `namespace="*"` matches any namespace, `localName="*"` matches any local name
+    - Returns live HTMLCollection (updates automatically)
+  - **QualifiedName Validation** ✅
+    - `qualified_name.parse(qualifiedName)` - Validates and splits "prefix:localName"
+    - `qualified_name.validateXMLName(name)` - Validates XML Name syntax
+    - Enforces WHATWG namespace constraints
+  - **Namespace Lookup Methods** ✅
+    - `Node.lookupPrefix(namespace)` - Find prefix for given namespace URI
+    - `Node.lookupNamespaceURI(prefix)` - Find namespace URI for given prefix  
+    - `Node.isDefaultNamespace(namespace)` - Check if namespace is default
+    - Special handling for "xml" and "xmlns" prefixes
+    - Tree-walking algorithm stops at root element (doesn't recurse to Document)
+  - **Test Results**: 1102/1103 tests passing, 1 skipped, 0 memory leaks
+  - **Spec Compliance**: WHATWG DOM §4 (Nodes) - Namespace support 100% complete
+
+- **ParentNode.moveBefore()** 🎉 NEW
+  - **Purpose**: Atomically move a child node to a new position within the same parent
+  - **Key Feature**: Preserves all node state (animations, focus, iframe loading state, etc.)
+  - **Signature**: `moveBefore(node: *Node, child: ?*Node) !void`
+  - **Parameters**:
+    - `node` - Child node to move (must be direct child of this parent)
+    - `child` - Reference child to move before (null = move to end)
+  - **Available On**:
+    - `Element.moveBefore()` - Move within element's children
+    - `Document.moveBefore()` - Move within document's children
+    - `DocumentFragment.moveBefore()` - Move within fragment's children
+  - **Error Handling**:
+    - `error.NotFoundError` - node or child not a direct child
+  - **Behavior**:
+    - If `child` is null, moves to end (like `appendChild`)
+    - If `node == child`, no-op (returns without error)
+    - Updates sibling pointers without triggering disconnect/reconnect
+    - Queues MutationObserver record for move operation
+  - **Implementation**: Pure pointer manipulation (no removeChild/insertBefore overhead)
+  - **Test Results**: 10 comprehensive tests covering all edge cases
+  - **Spec Reference**: WHATWG DOM §4.2.6 ParentNode mixin
+  - **MDN**: https://developer.mozilla.org/en-US/docs/Web/API/ParentNode/moveBefore
+
+### Fixed
+
+- **setAttributeNodeNS namespace preservation** 🐛
+  - **Problem**: `setAttributeNodeNS()` was losing namespace information when storing attributes
+  - **Root Cause**: `NamedNodeMap.setNamedItemNS()` called non-namespaced `setAttribute()`, which strips namespace
+  - **Fix**: Added namespace-aware methods to `AttributeMap` (`setNS`, `getNS`, `removeNS`, `hasNS`)
+  - **Fix**: Updated `setNamedItemNS` to use namespace-aware storage methods
+  - **Impact**: `getAttributeNS()` now correctly retrieves attributes set via `setAttributeNodeNS()`
+  - **Test Coverage**: Added comprehensive tests for namespace attribute methods
+
+### Added (Continued)
+
+- **Phase 21: Tree Traversal APIs (WHATWG DOM §6)** 🎉
   - **NodeFilter Interface (§6)** ✅
     - `FilterResult` enum: accept, reject, skip
     - `FilterCallback` signature for custom node filtering

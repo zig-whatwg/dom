@@ -7,6 +7,7 @@ const Text = dom.Text;
 const Comment = dom.Comment;
 const Document = dom.Document;
 const DocumentFragment = dom.DocumentFragment;
+const DocumentType = dom.DocumentType;
 const Event = dom.Event;
 const EventTarget = dom.EventTarget;
 const NodeVTable = dom.NodeVTable;
@@ -2669,4 +2670,273 @@ test "Node.normalize - handles document fragments" {
     const merged = fragment.prototype.first_child.?;
     const merged_text: *Text = @fieldParentPtr("prototype", merged);
     try std.testing.expectEqualStrings("Fragment", merged_text.data);
+}
+
+// ============================================================================
+// Namespace Lookup Methods Tests
+// ============================================================================
+
+test "Node.lookupPrefix basic functionality" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const svg_ns = "http://www.w3.org/2000/svg";
+
+    // Create root
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Create SVG element with prefix
+    const svg_elem = try doc.createElementNS(svg_ns, "svg:circle");
+    _ = try root.prototype.appendChild(&svg_elem.prototype);
+
+    // lookupPrefix should find "svg" prefix
+    const prefix = svg_elem.prototype.lookupPrefix(svg_ns);
+    try std.testing.expect(prefix != null);
+    try std.testing.expectEqualStrings("svg", prefix.?);
+}
+
+test "Node.lookupPrefix returns null for non-existent namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Non-existent namespace
+    const prefix = root.prototype.lookupPrefix("http://example.com/unknown");
+    try std.testing.expect(prefix == null);
+}
+
+test "Node.lookupPrefix returns null for null namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Null namespace
+    const prefix = root.prototype.lookupPrefix(null);
+    try std.testing.expect(prefix == null);
+}
+
+test "Node.lookupPrefix returns null for empty namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Empty namespace
+    const prefix = root.prototype.lookupPrefix("");
+    try std.testing.expect(prefix == null);
+}
+
+test "Node.lookupPrefix walks up tree" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const svg_ns = "http://www.w3.org/2000/svg";
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Parent with SVG namespace
+    const parent = try doc.createElementNS(svg_ns, "svg:g");
+    _ = try root.prototype.appendChild(&parent.prototype);
+
+    // Child without namespace
+    const child = try doc.createElement("child");
+    _ = try parent.prototype.appendChild(&child.prototype);
+
+    // Child should find parent's prefix
+    const prefix = child.prototype.lookupPrefix(svg_ns);
+    try std.testing.expect(prefix != null);
+    try std.testing.expectEqualStrings("svg", prefix.?);
+}
+
+test "Node.lookupNamespaceURI basic functionality" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const svg_ns = "http://www.w3.org/2000/svg";
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Create SVG element with prefix
+    const svg_elem = try doc.createElementNS(svg_ns, "svg:circle");
+    _ = try root.prototype.appendChild(&svg_elem.prototype);
+
+    // lookupNamespaceURI should find SVG namespace for "svg" prefix
+    const ns = svg_elem.prototype.lookupNamespaceURI("svg");
+    try std.testing.expect(ns != null);
+    try std.testing.expectEqualStrings(svg_ns, ns.?);
+}
+
+test "Node.lookupNamespaceURI returns xml namespace for 'xml' prefix" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Special case: "xml" prefix
+    const ns = root.prototype.lookupNamespaceURI("xml");
+    try std.testing.expect(ns != null);
+    try std.testing.expectEqualStrings("http://www.w3.org/XML/1998/namespace", ns.?);
+}
+
+test "Node.lookupNamespaceURI returns xmlns namespace for 'xmlns' prefix" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Special case: "xmlns" prefix
+    const ns = root.prototype.lookupNamespaceURI("xmlns");
+    try std.testing.expect(ns != null);
+    try std.testing.expectEqualStrings("http://www.w3.org/2000/xmlns/", ns.?);
+}
+
+test "Node.lookupNamespaceURI returns null for non-existent prefix" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Non-existent prefix
+    const ns = root.prototype.lookupNamespaceURI("unknown");
+    try std.testing.expect(ns == null);
+}
+
+test "Node.lookupNamespaceURI with null prefix returns default namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const svg_ns = "http://www.w3.org/2000/svg";
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Element with no prefix (default namespace)
+    const svg_elem = try doc.createElementNS(svg_ns, "circle");
+    _ = try root.prototype.appendChild(&svg_elem.prototype);
+
+    // Null prefix should return default namespace
+    const ns = svg_elem.prototype.lookupNamespaceURI(null);
+    try std.testing.expect(ns != null);
+    try std.testing.expectEqualStrings(svg_ns, ns.?);
+}
+
+test "Node.lookupNamespaceURI walks up tree" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const svg_ns = "http://www.w3.org/2000/svg";
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Parent with SVG namespace
+    const parent = try doc.createElementNS(svg_ns, "svg:g");
+    _ = try root.prototype.appendChild(&parent.prototype);
+
+    // Child without namespace
+    const child = try doc.createElement("child");
+    _ = try parent.prototype.appendChild(&child.prototype);
+
+    // Child should find parent's namespace
+    const ns = child.prototype.lookupNamespaceURI("svg");
+    try std.testing.expect(ns != null);
+    try std.testing.expectEqualStrings(svg_ns, ns.?);
+}
+
+test "Node.isDefaultNamespace basic functionality" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const svg_ns = "http://www.w3.org/2000/svg";
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Element with SVG as default namespace (no prefix)
+    const svg_elem = try doc.createElementNS(svg_ns, "circle");
+    _ = try root.prototype.appendChild(&svg_elem.prototype);
+
+    // SVG should be default namespace
+    try std.testing.expect(svg_elem.prototype.isDefaultNamespace(svg_ns));
+
+    // Other namespaces should not be default
+    try std.testing.expect(!svg_elem.prototype.isDefaultNamespace("http://example.com"));
+}
+
+test "Node.isDefaultNamespace with null namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // Regular element with no namespace
+    const elem = try doc.createElement("element");
+    _ = try doc.prototype.appendChild(&elem.prototype);
+
+    // Null should be the default namespace for non-namespaced elements
+    try std.testing.expect(elem.prototype.isDefaultNamespace(null));
+}
+
+test "Node.isDefaultNamespace returns false for non-default namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const svg_ns = "http://www.w3.org/2000/svg";
+    const mathml_ns = "http://www.w3.org/1998/Math/MathML";
+
+    const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Element with SVG namespace
+    const svg_elem = try doc.createElementNS(svg_ns, "circle");
+    _ = try root.prototype.appendChild(&svg_elem.prototype);
+
+    // MathML is not the default namespace
+    try std.testing.expect(!svg_elem.prototype.isDefaultNamespace(mathml_ns));
+}
+
+test "Node.lookupPrefix returns null for DocumentType" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const doctype = try DocumentType.create(allocator, "html", "", "");
+    defer doctype.prototype.release();
+
+    // DocumentType always returns null
+    const prefix = doctype.prototype.lookupPrefix("http://www.w3.org/2000/svg");
+    try std.testing.expect(prefix == null);
+}
+
+test "Node.lookupNamespaceURI returns null for DocumentFragment" {
+    const allocator = std.testing.allocator;
+    const fragment = try DocumentFragment.create(allocator);
+    defer fragment.prototype.release();
+
+    // DocumentFragment always returns null
+    const ns = fragment.prototype.lookupNamespaceURI("svg");
+    try std.testing.expect(ns == null);
 }

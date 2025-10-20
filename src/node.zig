@@ -1124,6 +1124,237 @@ pub const Node = struct {
         return "";
     }
 
+    /// Returns the prefix for a given namespace URI, if present.
+    ///
+    /// Implements WHATWG DOM Node.lookupPrefix() per §4.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// DOMString? lookupPrefix(DOMString? namespace);
+    /// ```
+    ///
+    /// ## Parameters
+    /// - `namespace`: Namespace URI to look up prefix for (nullable)
+    ///
+    /// ## Returns
+    /// - Prefix string if found
+    /// - `null` if no prefix exists for the namespace
+    /// - `null` if namespace is null or empty string
+    /// - `null` if node is DocumentType or DocumentFragment
+    ///
+    /// ## Algorithm
+    /// Walks up the tree from this node, checking for elements with matching namespace.
+    /// When multiple prefixes are possible, returns the first one found.
+    ///
+    /// ## Spec References
+    /// **WHATWG DOM**: https://dom.spec.whatwg.org/#dom-node-lookupprefix
+    ///
+    /// **MDN**: https://developer.mozilla.org/en-US/docs/Web/API/Node/lookupPrefix
+    ///
+    /// **WebIDL**: dom.idl:246
+    ///
+    /// ## Example
+    /// ```zig
+    /// const svg_ns = "http://www.w3.org/2000/svg";
+    /// if (elem.lookupPrefix(svg_ns)) |prefix| {
+    ///     std.debug.print("Prefix for SVG namespace: {s}\n", .{prefix});
+    /// }
+    /// ```
+    pub fn lookupPrefix(self: *const Node, namespace: ?[]const u8) ?[]const u8 {
+        // Null or empty namespace returns null
+        if (namespace == null or namespace.?.len == 0) return null;
+
+        const ns = namespace.?;
+
+        // DocumentType and DocumentFragment always return null
+        if (self.node_type == .document_type or self.node_type == .document_fragment) {
+            return null;
+        }
+
+        // For Element nodes, check if this element's namespace matches
+        if (self.node_type == .element) {
+            const Element = @import("element.zig").Element;
+            const elem: *const Element = @fieldParentPtr("prototype", self);
+
+            if (elem.namespace_uri) |elem_ns| {
+                if (std.mem.eql(u8, elem_ns, ns) and elem.prefix != null) {
+                    return elem.prefix;
+                }
+            }
+        }
+
+        // Walk up the tree (but not to Document level - stop at root element)
+        if (self.parent_node) |parent| {
+            // Don't walk up to Document - namespace lookups stop at root element
+            if (parent.node_type != .document) {
+                return parent.lookupPrefix(namespace);
+            }
+        }
+
+        return null;
+    }
+
+    /// Returns the namespace URI for a given prefix.
+    ///
+    /// Implements WHATWG DOM Node.lookupNamespaceURI() per §4.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// DOMString? lookupNamespaceURI(DOMString? prefix);
+    /// ```
+    ///
+    /// ## Parameters
+    /// - `prefix`: Prefix to look up namespace URI for (nullable)
+    ///
+    /// ## Returns
+    /// - Namespace URI if found
+    /// - `"http://www.w3.org/XML/1998/namespace"` if prefix is "xml"
+    /// - `"http://www.w3.org/2000/xmlns/"` if prefix is "xmlns"
+    /// - Default namespace URI if prefix is null
+    /// - `null` if prefix not found
+    /// - `null` for DocumentFragment, DocumentType, Document with no documentElement, or Attr with no associated element
+    ///
+    /// ## Algorithm
+    /// Walks up the tree from this node, checking for elements with matching prefix.
+    ///
+    /// ## Spec References
+    /// **WHATWG DOM**: https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
+    ///
+    /// **MDN**: https://developer.mozilla.org/en-US/docs/Web/API/Node/lookupNamespaceURI
+    ///
+    /// **WebIDL**: dom.idl:247
+    ///
+    /// ## Example
+    /// ```zig
+    /// if (elem.lookupNamespaceURI("svg")) |ns| {
+    ///     std.debug.print("Namespace for 'svg' prefix: {s}\n", .{ns});
+    /// }
+    /// ```
+    pub fn lookupNamespaceURI(self: *const Node, prefix: ?[]const u8) ?[]const u8 {
+        // Special cases for xml and xmlns prefixes
+        if (prefix) |p| {
+            if (std.mem.eql(u8, p, "xml")) {
+                return "http://www.w3.org/XML/1998/namespace";
+            }
+            if (std.mem.eql(u8, p, "xmlns")) {
+                return "http://www.w3.org/2000/xmlns/";
+            }
+        }
+
+        // DocumentType and DocumentFragment always return null
+        if (self.node_type == .document_type or self.node_type == .document_fragment) {
+            return null;
+        }
+
+        // Document with no documentElement returns null
+        if (self.node_type == .document) {
+            const Document = @import("document.zig").Document;
+            const doc: *const Document = @fieldParentPtr("prototype", self);
+            if (doc.documentElement() == null) {
+                return null;
+            }
+            // Delegate to documentElement
+            if (doc.documentElement()) |doc_elem| {
+                return doc_elem.prototype.lookupNamespaceURI(prefix);
+            }
+        }
+
+        // Attr with no associated element returns null
+        if (self.node_type == .attribute) {
+            const Attr = @import("attr.zig").Attr;
+            const attr: *const Attr = @fieldParentPtr("node", self);
+            if (attr.owner_element == null) {
+                return null;
+            }
+            // Delegate to owner element
+            if (attr.owner_element) |owner| {
+                return owner.prototype.lookupNamespaceURI(prefix);
+            }
+        }
+
+        // For Element nodes, check if this element's prefix matches
+        if (self.node_type == .element) {
+            const Element = @import("element.zig").Element;
+            const elem: *const Element = @fieldParentPtr("prototype", self);
+
+            // If looking for null prefix (default namespace)
+            if (prefix == null) {
+                // Return this element's namespace if it has no prefix
+                if (elem.prefix == null and elem.namespace_uri != null) {
+                    return elem.namespace_uri;
+                }
+            } else {
+                // Looking for specific prefix
+                if (elem.prefix) |elem_prefix| {
+                    if (std.mem.eql(u8, elem_prefix, prefix.?)) {
+                        return elem.namespace_uri;
+                    }
+                }
+            }
+        }
+
+        // Walk up the tree (but not to Document level - stop at root element)
+        if (self.parent_node) |parent| {
+            // Don't walk up to Document - namespace lookups stop at root element
+            if (parent.node_type != .document) {
+                return parent.lookupNamespaceURI(prefix);
+            }
+        }
+
+        return null;
+    }
+
+    /// Checks if the given namespace is the default namespace on this node.
+    ///
+    /// Implements WHATWG DOM Node.isDefaultNamespace() per §4.4.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// boolean isDefaultNamespace(DOMString? namespace);
+    /// ```
+    ///
+    /// ## Parameters
+    /// - `namespace`: Namespace URI to check (nullable)
+    ///
+    /// ## Returns
+    /// - `true` if namespace is the default namespace
+    /// - `false` otherwise
+    ///
+    /// ## Algorithm
+    /// Checks if the default namespace (null prefix) matches the given namespace.
+    /// For HTML elements, default namespace is always "".
+    /// For SVG elements, default namespace is set by xmlns attribute.
+    ///
+    /// ## Spec References
+    /// **WHATWG DOM**: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
+    ///
+    /// **MDN**: https://developer.mozilla.org/en-US/docs/Web/API/Node/isDefaultNamespace
+    ///
+    /// **WebIDL**: dom.idl:248
+    ///
+    /// ## Example
+    /// ```zig
+    /// const svg_ns = "http://www.w3.org/2000/svg";
+    /// if (elem.isDefaultNamespace(svg_ns)) {
+    ///     std.debug.print("SVG is the default namespace\n", .{});
+    /// }
+    /// ```
+    pub fn isDefaultNamespace(self: *const Node, namespace: ?[]const u8) bool {
+        // Look up the default namespace (null prefix)
+        const default_ns = self.lookupNamespaceURI(null);
+
+        // Compare with the given namespace
+        if (namespace == null and default_ns == null) {
+            return true;
+        }
+
+        if (namespace != null and default_ns != null) {
+            return std.mem.eql(u8, namespace.?, default_ns.?);
+        }
+
+        return false;
+    }
+
     /// Returns the relative position of other compared to this node.
     ///
     /// Implements WHATWG DOM Node.compareDocumentPosition() per §4.4.

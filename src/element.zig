@@ -325,6 +325,24 @@ pub const AttributeMap = struct {
     pub fn iterator(self: *const AttributeMap) AttributeArray.Iterator {
         return self.array.iterator();
     }
+
+    // Namespace-aware methods
+
+    pub fn setNS(self: *AttributeMap, local_name: []const u8, namespace_uri: ?[]const u8, value: []const u8) !void {
+        try self.array.set(local_name, namespace_uri, value);
+    }
+
+    pub fn getNS(self: *const AttributeMap, local_name: []const u8, namespace_uri: ?[]const u8) ?[]const u8 {
+        return self.array.get(local_name, namespace_uri);
+    }
+
+    pub fn removeNS(self: *AttributeMap, local_name: []const u8, namespace_uri: ?[]const u8) bool {
+        return self.array.remove(local_name, namespace_uri);
+    }
+
+    pub fn hasNS(self: *const AttributeMap, local_name: []const u8, namespace_uri: ?[]const u8) bool {
+        return self.array.has(local_name, namespace_uri);
+    }
 };
 
 /// Attr node cache for [SameObject] semantics.
@@ -384,7 +402,27 @@ pub const Element = struct {
 
     /// Tag name (pointer to interned string, 8 bytes)
     /// e.g., "div", "span", "custom-element"
+    /// For namespaced elements, this is the qualified name (prefix:localName)
+    /// Deprecated in favor of localName for namespace-aware code
     tag_name: []const u8,
+
+    /// Namespace URI (8 bytes)
+    /// Null for non-namespaced elements (default)
+    /// Common values: "http://www.w3.org/2000/svg", "http://www.w3.org/1999/xhtml"
+    /// Frozen at element creation time (immutable)
+    namespace_uri: ?[]const u8 = null,
+
+    /// Namespace prefix (8 bytes)
+    /// Null for non-namespaced elements or default namespace
+    /// Examples: "svg", "xml", "xlink"
+    /// Extracted from qualified name during creation
+    prefix: ?[]const u8 = null,
+
+    /// Local name without prefix (8 bytes)
+    /// For non-namespaced elements, same as tag_name
+    /// For namespaced elements, the part after colon (e.g., "circle" from "svg:circle")
+    /// This is the primary name for namespace-aware operations
+    local_name: []const u8,
 
     /// Attribute map (16 bytes)
     /// Stores name→value pairs (both interned strings)
@@ -517,6 +555,84 @@ pub const Element = struct {
 
         // Initialize Element-specific fields
         elem.tag_name = tag_name;
+        elem.namespace_uri = null; // Non-namespaced by default
+        elem.prefix = null; // No prefix by default
+        elem.local_name = tag_name; // For non-namespaced, local_name == tag_name
+        elem.attributes = AttributeMap.init(allocator);
+        elem.class_bloom = .{};
+        elem.attr_cache = null;
+
+        return elem;
+    }
+
+    /// Creates a namespaced element with the specified namespace, prefix, and local name.
+    ///
+    /// Implements element creation for Document.createElementNS().
+    ///
+    /// ## Parameters
+    ///
+    /// - `allocator`: Memory allocator
+    /// - `namespace_uri`: Namespace URI (nullable, should be interned)
+    /// - `prefix`: Namespace prefix (nullable, should be interned)
+    /// - `local_name`: Local name without prefix (should be interned)
+    ///
+    /// ## Returns
+    ///
+    /// Element pointer with namespace data initialized
+    ///
+    /// ## Errors
+    ///
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Example
+    ///
+    /// ```zig
+    /// const svg_circle = try Element.createNS(
+    ///     allocator,
+    ///     "http://www.w3.org/2000/svg",  // namespace_uri
+    ///     "svg",                          // prefix
+    ///     "circle"                        // local_name
+    /// );
+    /// defer svg_circle.prototype.release();
+    /// ```
+    pub fn createNS(
+        allocator: Allocator,
+        namespace_uri: ?[]const u8,
+        prefix: ?[]const u8,
+        local_name: []const u8,
+    ) !*Element {
+        const elem = try allocator.create(Element);
+        errdefer allocator.destroy(elem);
+
+        // Initialize base Node
+        elem.prototype = .{
+            .prototype = .{
+                .vtable = &node_mod.eventtarget_vtable,
+            },
+            .vtable = &vtable,
+            .ref_count_and_parent = std.atomic.Value(u32).init(1),
+            .node_type = .element,
+            .flags = 0,
+            .node_id = 0,
+            .generation = 0,
+            .allocator = allocator,
+            .parent_node = null,
+            .previous_sibling = null,
+            .first_child = null,
+            .last_child = null,
+            .next_sibling = null,
+            .owner_document = null,
+            .rare_data = null,
+        };
+
+        // Initialize Element-specific fields with namespace data
+        elem.tag_name = if (prefix) |p|
+            try std.fmt.allocPrint(allocator, "{s}:{s}", .{ p, local_name })
+        else
+            local_name;
+        elem.namespace_uri = namespace_uri;
+        elem.prefix = prefix;
+        elem.local_name = local_name;
         elem.attributes = AttributeMap.init(allocator);
         elem.class_bloom = .{};
         elem.attr_cache = null;
@@ -1218,29 +1334,37 @@ pub const Element = struct {
     /// ```
     ///
     /// ## Algorithm (WHATWG DOM §4.9)
-    /// For elements without namespace support, localName is the same as tagName.
-    /// When namespace support is added (XML/SVG), this will return the local part
+    /// Returns the local name of the element without namespace prefix.
+    /// For non-namespaced elements, localName is the same as tagName.
+    /// For namespaced elements (XML/SVG), this returns the local part
     /// after the namespace prefix (e.g., "rect" from "svg:rect").
     ///
     /// ## Returns
-    /// Local name of the element (currently same as tagName)
+    /// Local name of the element (without namespace prefix)
     ///
     /// ## Spec References
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-element-localname
-    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:353
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:365
+    ///
+    /// ## MDN
+    /// - Element.localName: https://developer.mozilla.org/en-US/docs/Web/API/Element/localName
     ///
     /// ## Example
     /// ```zig
+    /// // Non-namespaced element
     /// const elem = try doc.createElement("div");
     /// defer elem.prototype.release();
-    ///
     /// const name = elem.localName();
-    /// // Returns "div" (same as tagName for non-namespaced elements)
+    /// // Returns "div"
+    ///
+    /// // Namespaced element
+    /// const svg_circle = try doc.createElementNS("http://www.w3.org/2000/svg", "svg:circle");
+    /// defer svg_circle.prototype.release();
+    /// const local = svg_circle.localName();
+    /// // Returns "circle" (without "svg:" prefix)
     /// ```
     pub fn localName(self: *const Element) []const u8 {
-        // For non-namespaced elements, localName === tagName
-        // When namespace support is added, this will extract the local part
-        return self.tag_name;
+        return self.local_name;
     }
 
     // === WHATWG DOM Convenience Properties ===
@@ -2738,6 +2862,76 @@ pub const Element = struct {
         return @import("html_collection.zig").HTMLCollection.initElementByClassName(self, class_name);
     }
 
+    /// Returns all descendant elements with the specified namespace URI and local name.
+    ///
+    /// Implements WHATWG DOM Element.getElementsByTagNameNS() interface.
+    ///
+    /// ## WebIDL
+    ///
+    /// ```webidl
+    /// HTMLCollection getElementsByTagNameNS(DOMString? namespace, DOMString localName);
+    /// ```
+    ///
+    /// ## Parameters
+    ///
+    /// - `namespace`: Namespace URI to match (null for no namespace, "*" for wildcard)
+    /// - `local_name`: Local name to match ("*" for wildcard)
+    ///
+    /// ## Returns
+    ///
+    /// Live HTMLCollection of matching descendant elements
+    ///
+    /// ## Wildcard Support
+    ///
+    /// - `namespace = "*"`: Matches any namespace (including null)
+    /// - `local_name = "*"`: Matches any local name
+    /// - `namespace = "*", local_name = "*"`: Matches ALL descendant elements
+    ///
+    /// ## Spec References
+    ///
+    /// **WHATWG DOM**:
+    /// > The getElementsByTagNameNS(namespace, localName) method steps are to return the list of
+    /// > elements with namespace namespace and local name localName for this.
+    ///
+    /// **MDN**: https://developer.mozilla.org/en-US/docs/Web/API/Element/getElementsByTagNameNS
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-element-getelementsbytagnamens
+    ///
+    /// **WebIDL**: dom.idl:393
+    ///
+    /// ## Example
+    ///
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const container = try doc.createElement("container");
+    /// _ = try doc.prototype.appendChild(&container.prototype);
+    ///
+    /// const svg_ns = "http://www.w3.org/2000/svg";
+    ///
+    /// // Create some SVG elements under container
+    /// const circle = try doc.createElementNS(svg_ns, "circle");
+    /// const rect = try doc.createElementNS(svg_ns, "rect");
+    /// _ = try container.prototype.appendChild(&circle.prototype);
+    /// _ = try container.prototype.appendChild(&rect.prototype);
+    ///
+    /// // Find all SVG circle elements in container
+    /// const circles = container.getElementsByTagNameNS(svg_ns, "circle");
+    /// try std.testing.expectEqual(@as(usize, 1), circles.length());
+    ///
+    /// // Find all elements in SVG namespace (wildcard local name)
+    /// const all_svg = container.getElementsByTagNameNS(svg_ns, "*");
+    /// try std.testing.expectEqual(@as(usize, 2), all_svg.length());
+    /// ```
+    pub fn getElementsByTagNameNS(
+        self: *Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) @import("html_collection.zig").HTMLCollection {
+        return @import("html_collection.zig").HTMLCollection.initElementByTagNameNS(self, namespace, local_name);
+    }
+
     // ========================================================================
     // Fast Path Query Methods (Phase 1 Optimizations)
     // ========================================================================
@@ -4154,6 +4348,13 @@ pub const Element = struct {
         // Clean up attr cache if allocated
         if (elem.attr_cache) |*cache| {
             cache.deinit();
+        }
+
+        // Free tag_name if it was allocated (namespaced element with prefix)
+        // For non-namespaced or namespaced without prefix: tag_name == local_name (interned, don't free)
+        // For namespaced with prefix: tag_name is allocated with fmt.allocPrint, must free
+        if (elem.prefix != null and elem.tag_name.ptr != elem.local_name.ptr) {
+            elem.prototype.allocator.free(elem.tag_name);
         }
 
         elem.attributes.deinit();

@@ -44,6 +44,7 @@ test {
     _ = @import("fast_path_test.zig");
     _ = @import("rare_data_test.zig");
     _ = @import("validation_test.zig");
+    _ = @import("qualified_name_test.zig");
 }
 
 // Specialized feature tests

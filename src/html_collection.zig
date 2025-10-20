@@ -216,6 +216,10 @@ const NodeType = @import("node.zig").NodeType;
 const Filter = union(enum) {
     tag_name: []const u8,
     class_name: []const u8,
+    tag_name_ns: struct {
+        namespace_uri: ?[]const u8,
+        local_name: []const u8,
+    },
 };
 
 pub const HTMLCollection = struct {
@@ -324,6 +328,56 @@ pub const HTMLCollection = struct {
                 .document_scoped = .{
                     .document = document,
                     .filter = .{ .class_name = class_name },
+                },
+            },
+        };
+    }
+
+    /// Creates a collection for Element.getElementsByTagNameNS (scoped to subtree).
+    ///
+    /// ## Parameters
+    /// - `root`: Root element whose descendants to search
+    /// - `namespace_uri`: Namespace URI to filter by (null for no namespace, "*" for wildcard)
+    /// - `local_name`: Local name to filter by ("*" for wildcard)
+    ///
+    /// ## Returns
+    /// HTMLCollection filtering root's descendants by namespace and local name
+    pub fn initElementByTagNameNS(root: *Element, namespace_uri: ?[]const u8, local_name: []const u8) HTMLCollection {
+        return .{
+            .impl = .{
+                .element_scoped = .{
+                    .root = root,
+                    .filter = .{
+                        .tag_name_ns = .{
+                            .namespace_uri = namespace_uri,
+                            .local_name = local_name,
+                        },
+                    },
+                },
+            },
+        };
+    }
+
+    /// Creates a collection for Document.getElementsByTagNameNS (document-wide search).
+    ///
+    /// ## Parameters
+    /// - `document`: Document node to search from
+    /// - `namespace_uri`: Namespace URI to filter by (null for no namespace, "*" for wildcard)
+    /// - `local_name`: Local name to filter by ("*" for wildcard)
+    ///
+    /// ## Returns
+    /// HTMLCollection filtering all document elements by namespace and local name
+    pub fn initDocumentByTagNameNS(document: *const Node, namespace_uri: ?[]const u8, local_name: []const u8) HTMLCollection {
+        return .{
+            .impl = .{
+                .document_scoped = .{
+                    .document = document,
+                    .filter = .{
+                        .tag_name_ns = .{
+                            .namespace_uri = namespace_uri,
+                            .local_name = local_name,
+                        },
+                    },
                 },
             },
         };
@@ -559,6 +613,32 @@ pub const HTMLCollection = struct {
                     }
                 }
                 return false;
+            },
+            .tag_name_ns => |ns_filter| {
+                // Handle wildcard "*" for namespace
+                const namespace_matches = if (ns_filter.namespace_uri) |ns| blk: {
+                    if (std.mem.eql(u8, ns, "*")) {
+                        break :blk true; // Wildcard matches any namespace (including null)
+                    }
+                    // Exact namespace match (null != "", per spec)
+                    if (elem.namespace_uri) |elem_ns| {
+                        break :blk std.mem.eql(u8, elem_ns, ns);
+                    }
+                    break :blk false; // elem has no namespace, filter requires one
+                } else blk: {
+                    // Filter requires null namespace
+                    break :blk elem.namespace_uri == null;
+                };
+
+                if (!namespace_matches) return false;
+
+                // Handle wildcard "*" for local_name
+                if (std.mem.eql(u8, ns_filter.local_name, "*")) {
+                    return true; // Wildcard matches any local name
+                }
+
+                // Exact local_name match
+                return std.mem.eql(u8, elem.local_name, ns_filter.local_name);
             },
         }
     }
