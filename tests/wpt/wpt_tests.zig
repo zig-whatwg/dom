@@ -76,6 +76,7 @@ test {
 test {
     _ = @import("nodes/Document-createComment.zig");
     _ = @import("nodes/Document-createElement.zig");
+    _ = @import("nodes/Document-createProcessingInstruction.zig");
     _ = @import("nodes/Document-createTextNode.zig");
     _ = @import("nodes/Document-getElementById.zig");
 }
