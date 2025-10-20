@@ -501,15 +501,37 @@ pub const DocumentType = struct {
     /// try doctype.after(&[_]NodeOrString{.{ .node = &comment.prototype }});
     /// ```
     pub fn after(self: *DocumentType, nodes: []const NodeOrString) !void {
+        // WHATWG DOM § 4.5 ChildNode.after() algorithm
+        // 1. Let parent be this's parent
         const parent = self.prototype.parent_node orelse return;
 
+        // 2. If parent is null, then return (handled above)
+
+        // 3. Let viableNextSibling be this's first following sibling not in nodes, or null
+        var viable_next = self.prototype.next_sibling;
+        while (viable_next) |next| {
+            // Check if next is in nodes
+            var is_in_nodes = false;
+            for (nodes) |item| {
+                if (item == .node and item.node == next) {
+                    is_in_nodes = true;
+                    break;
+                }
+            }
+            if (!is_in_nodes) break;
+            viable_next = next.next_sibling;
+        }
+
+        // 4. Let node be the result of converting nodes into a node
         const result = try convertNodesToNode(&self.prototype, nodes);
         if (result == null) return;
 
         const node_to_insert = result.?.node;
         const should_release = result.?.should_release_after_insert;
 
-        const returned_node = try parent.insertBefore(node_to_insert, self.prototype.next_sibling);
+        // 5. If viableNextSibling is null, set it to null (no-op in Zig)
+        // 6. Pre-insert node into parent before viableNextSibling
+        const returned_node = try parent.insertBefore(node_to_insert, viable_next);
 
         if (should_release) {
             returned_node.release();
