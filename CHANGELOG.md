@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 4: Batch 4 - Document WPT Tests** 🧪 NEW
+  - **Document-doctype.zig** (2 tests) - Document.doctype accessor
+    - Tests: Document with doctype returns DocumentType node
+    - Tests: Document without doctype returns null
+    - All tests passing ✅
+  - **Test Count**: +2 new WPT tests → **1451 total tests** (100% passing!)
+
 - **UTF-16 Offset Support for CharacterData and Text** ✨ NEW
   - **New Module**: `string_utils.zig` - UTF-8 ↔ UTF-16 offset conversion utilities
     - `utf16Length()` - Calculate string length in UTF-16 code units

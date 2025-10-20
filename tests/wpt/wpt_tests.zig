@@ -80,6 +80,7 @@ test {
     _ = @import("nodes/Document-createElement.zig");
     _ = @import("nodes/Document-createProcessingInstruction.zig");
     _ = @import("nodes/Document-createTextNode.zig");
+    _ = @import("nodes/Document-doctype.zig");
     _ = @import("nodes/Document-getElementById.zig");
 }
 

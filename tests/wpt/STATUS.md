@@ -6,8 +6,8 @@ Web Platform Tests converted from `/Users/bcardarella/projects/wpt/`.
 
 **Status**: Phase 1, 2, 3, and 4 (Batches 1-3) Complete ✅  
 **Memory**: 0 leaks ✅  
-**Test Results**: 1449/1449 tests passing (100%! 🎉)  
-**WPT Test Files**: 81 files converted  
+**Test Results**: 1451/1451 tests passing (100%! 🎉)  
+**WPT Test Files**: 82 files converted  
 **Last Updated**: 2025-10-20
 
 ## Running Tests
@@ -77,11 +77,12 @@ zig build test-wpt
 - [x] Element-siblingElement-null.zig (4 tests)
 - [x] Element-tagName.zig (3 tests)
 
-**5 Document Tests:**
+**6 Document Tests:**
 - [x] Document-createComment.zig
 - [x] Document-createElement.zig (10 tests)
-- [x] Document-createProcessingInstruction.zig (3 tests) ✅ NEW
+- [x] Document-createProcessingInstruction.zig (3 tests)
 - [x] Document-createTextNode.zig (8 tests)
+- [x] Document-doctype.zig (2 tests) ✅ NEW
 - [x] Document-getElementById.zig
 
 **2 DocumentFragment Tests:**
@@ -191,16 +192,17 @@ zig build test-wpt
 
 ## Recent Updates (2025-10-20)
 
-### Phase 4: Additional Node Tests - Batches 1-3 Complete! 🎉
+### Phase 4: Additional Node Tests - Batches 1-4 Complete! 🎉
 
-Added 7 WPT test files (28 test cases):
+Added 8 WPT test files (30 test cases):
 - ✅ Node-isEqualNode.zig: 10 tests (**ALL PASSING** - implementation gaps fixed!)
 - ✅ Node-constants.zig: 9 tests (all passing)
 - ✅ Node-childNodes-cache.zig: 1 test (passing)
 - ✅ Element-removeAttribute.zig: 2 tests (FIXED - now passing!)
-- ✅ Text-splitText.zig: 6 tests (all passing - note UTF-8/UTF-16 offset issue)
+- ✅ Text-splitText.zig: 6 tests (all passing - UTF-16 implemented!)
 - ✅ Text-wholeText.zig: 1 test (passing)
 - ✅ Document-createProcessingInstruction.zig: 3 tests (all passing)
+- ✅ Document-doctype.zig: 2 tests (NEW - all passing!)
 
 **Implementation Fixes**:
 - ✅ Fixed Node.isEqualNode() - now properly compares DocumentType publicId/systemId
