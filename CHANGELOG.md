@@ -9,6 +9,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 21: Tree Traversal APIs (WHATWG DOM §6)** 🎉 NEW
+  - **NodeFilter Interface (§6)** ✅
+    - `FilterResult` enum: accept, reject, skip
+    - `FilterCallback` signature for custom node filtering
+    - **SHOW_* constants** for whatToShow bitfield (12 constants)
+      * `SHOW_ALL`, `SHOW_ELEMENT`, `SHOW_TEXT`, `SHOW_COMMENT`
+      * `SHOW_DOCUMENT`, `SHOW_DOCUMENT_TYPE`, `SHOW_DOCUMENT_FRAGMENT`, etc.
+    - `isNodeVisible()` helper for filtering by node type
+    - Full support for implemented node types
+  - **NodeIterator Interface (§6.1)** ✅
+    - Sequential iteration through filtered DOM tree
+    - `nextNode()` - Forward iteration in document order
+    - `previousNode()` - Backward iteration
+    - Reference node tracking with pointer before/after flag
+    - Depth-first pre-order traversal per WHATWG algorithm
+    - `detach()` - No-op method for historical compatibility
+    - Properties: root, referenceNode, pointerBeforeReferenceNode, whatToShow, filter
+    - 5 comprehensive tests, zero memory leaks
+  - **TreeWalker Interface (§6.2)** ✅
+    - Flexible tree navigation with multiple movement methods
+    - **Navigation**: `parentNode()`, `firstChild()`, `lastChild()`
+    - **Siblings**: `previousSibling()`, `nextSibling()`
+    - **Document order**: `previousNode()`, `nextNode()`
+    - `currentNode` - Mutable position (can be set directly)
+    - Reject semantics - Skip entire subtrees when filter returns reject
+    - Properties: root, currentNode, whatToShow, filter
+    - 4 comprehensive tests, zero memory leaks
+  - **Document Factory Methods** ✅
+    - `createNodeIterator(root, whatToShow, filter)` - Creates NodeIterator
+    - `createTreeWalker(root, whatToShow, filter)` - Creates TreeWalker
+    - Arena-allocated: automatically freed with document (matches browser GC)
+  - **Test Results**: All 1015 tests passing, 0 memory leaks
+  - **Spec Compliance**: WHATWG DOM §6 (Traversal) - 100% compliant
+
+- **Phase 20: Document Metadata & DOMImplementation (WHATWG DOM §4.5-4.6)** 🎉
+  - **Document Metadata Properties (§4.5)** ✅
+    - `getURL()` / `getDocumentURI()` - Returns empty string (generic DOM, no browsing context)
+    - `getCompatMode()` - Returns "CSS1Compat" (standards mode)
+    - `getCharacterSet()` / `getCharset()` / `getInputEncoding()` - Returns "UTF-8"
+    - `getContentType()` - Returns "application/xml" (generic XML DOM)
+    - Sensible defaults for headless/generic DOM without HTML specifics
+    - 7 comprehensive tests
+  - **DOMImplementation Interface (§4.6)** ✅
+    - `Document.getImplementation()` - Returns DOMImplementation instance
+    - `createDocumentType(name, publicId, systemId)` - Creates DocumentType nodes
+    - `createDocument(namespace, qualifiedName, doctype)` - Creates XML documents
+      * Supports optional root element and DocumentType
+      * Proper doctype/element ordering (doctype before root)
+      * Handles cross-document string interning
+    - `hasFeature()` - Always returns true (deprecated API for compatibility)
+    - Document-specific: holds reference to parent document for string interning
+    - 7 comprehensive tests
+  - **Design Decisions**:
+    - Generic DOM library: Returns XML/standards defaults, not HTML-specific
+    - DOMImplementation is document-bound for proper string pool usage
+    - createDocument copies doctypes to target document's string pool
+  - **Test Results**: All 1013 tests passing, 0 memory leaks
+
 - **Phase 19: StaticRange API (WHATWG DOM §5.4)** 🎉 NEW
   - **StaticRange Interface (§5.4)** ✅ NEW
     - Lightweight, immutable range that does NOT track DOM mutations
