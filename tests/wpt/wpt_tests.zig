@@ -28,6 +28,7 @@ test {
     _ = @import("nodes/Node-replaceChild.zig");
     _ = @import("nodes/Node-textContent.zig");
     _ = @import("nodes/Node-properties.zig");
+    _ = @import("nodes/Node-childNodes-cache-2.zig");
 }
 
 // CharacterData tests
@@ -87,6 +88,7 @@ test {
     _ = @import("nodes/Document-getElementById.zig");
     _ = @import("nodes/Document-getElementsByClassName.zig");
     _ = @import("nodes/Document-getElementsByTagName.zig");
+    _ = @import("nodes/Document-importNode.zig");
 }
 
 // DocumentFragment tests
