@@ -8,12 +8,7 @@ const Element = dom.Element;
 const Node = dom.Node;
 const DocumentFragment = dom.DocumentFragment;
 
-// TODO: Re-enable when isEqualNode properly compares DocumentType publicId and systemId
-// See: https://dom.spec.whatwg.org/#concept-node-equals (step 2.2)
-// Current implementation only compares nodeName, missing publicId and systemId
 test "doctypes should be compared on name, public ID, and system ID" {
-    if (true) return error.SkipZigTest; // Skip until isEqualNode fixed
-
     const allocator = std.testing.allocator;
     const doc = try Document.init(allocator);
     defer doc.release();
@@ -40,12 +35,7 @@ test "doctypes should be compared on name, public ID, and system ID" {
     try std.testing.expect(!doctype1.prototype.isEqualNode(&doctype5.prototype));
 }
 
-// TODO: Re-enable when isEqualNode properly compares Element namespace and prefix
-// See: https://dom.spec.whatwg.org/#concept-node-equals (step 2.1)
-// Current implementation might not handle namespace comparisons correctly
 test "elements should be compared on namespace, namespace prefix, local name, and number of attributes" {
-    if (true) return error.SkipZigTest; // Skip until namespace handling verified
-
     const allocator = std.testing.allocator;
     const doc = try Document.init(allocator);
     defer doc.release();
@@ -78,12 +68,7 @@ test "elements should be compared on namespace, namespace prefix, local name, an
     try std.testing.expect(!element1.prototype.isEqualNode(&element6.prototype));
 }
 
-// TODO: Re-enable when isEqualNode properly compares Attr namespace and local name
-// See: https://dom.spec.whatwg.org/#concept-node-equals (step 2.3)
-// Current implementation uses getAttribute which doesn't preserve namespace info
 test "elements should be compared on attribute namespace, local name, and value" {
-    if (true) return error.SkipZigTest; // Skip until attribute namespace handling fixed
-
     const allocator = std.testing.allocator;
     const doc = try Document.init(allocator);
     defer doc.release();
@@ -125,12 +110,7 @@ test "elements should be compared on attribute namespace, local name, and value"
     try std.testing.expect(!element1.prototype.isEqualNode(&element6.prototype));
 }
 
-// TODO: Re-enable when isEqualNode properly compares ProcessingInstruction target
-// See: https://dom.spec.whatwg.org/#concept-node-equals (step 2.4)
-// Current implementation might not check target property
 test "processing instructions should be compared on target and data" {
-    if (true) return error.SkipZigTest; // Skip until PI target handling verified
-
     const allocator = std.testing.allocator;
     const doc = try Document.init(allocator);
     defer doc.release();

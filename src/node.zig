@@ -1581,42 +1581,98 @@ pub const Node = struct {
         // Check node types match
         if (self.node_type != other_node.node_type) return false;
 
-        // Check node names match
-        if (!std.mem.eql(u8, self.nodeName(), other_node.nodeName())) return false;
+        // Per WHATWG DOM § 4.2.2: Check type-specific properties
+        switch (self.node_type) {
+            .document_type => {
+                // DocumentType: compare name, publicId, systemId
+                const DocumentType = @import("document_type.zig").DocumentType;
+                const this_dt: *const DocumentType = @fieldParentPtr("prototype", self);
+                const other_dt: *const DocumentType = @fieldParentPtr("prototype", other_node);
 
-        // Check node values match (for text, comment, etc.)
-        const this_value = self.nodeValue();
-        const other_value = other_node.nodeValue();
-        if (this_value == null and other_value != null) return false;
-        if (this_value != null and other_value == null) return false;
-        if (this_value != null and other_value != null) {
-            if (!std.mem.eql(u8, this_value.?, other_value.?)) return false;
-        }
+                if (!std.mem.eql(u8, this_dt.name, other_dt.name)) return false;
+                if (!std.mem.eql(u8, this_dt.publicId, other_dt.publicId)) return false;
+                if (!std.mem.eql(u8, this_dt.systemId, other_dt.systemId)) return false;
+            },
+            .element => {
+                // Element: compare namespace, prefix, localName, attributes
+                const Element = @import("element.zig").Element;
+                const this_elem: *const Element = @fieldParentPtr("prototype", self);
+                const other_elem: *const Element = @fieldParentPtr("prototype", other_node);
 
-        // For elements, check attributes
-        if (self.node_type == .element) {
-            const Element = @import("element.zig").Element;
-            const this_elem: *const Element = @fieldParentPtr("prototype", self);
-            const other_elem: *const Element = @fieldParentPtr("prototype", other_node);
-
-            // Check attribute counts match
-            if (this_elem.attributeCount() != other_elem.attributeCount()) return false;
-
-            // Check all attributes match
-            const allocator = self.allocator;
-            const this_attrs = this_elem.getAttributeNames(allocator) catch return false;
-            defer allocator.free(this_attrs);
-
-            for (this_attrs) |name| {
-                const this_val = this_elem.getAttribute(name);
-                const other_val = other_elem.getAttribute(name);
-
-                if (this_val == null and other_val != null) return false;
-                if (this_val != null and other_val == null) return false;
-                if (this_val != null and other_val != null) {
-                    if (!std.mem.eql(u8, this_val.?, other_val.?)) return false;
+                // Compare namespace (nullable)
+                if (this_elem.namespace_uri == null and other_elem.namespace_uri != null) return false;
+                if (this_elem.namespace_uri != null and other_elem.namespace_uri == null) return false;
+                if (this_elem.namespace_uri != null and other_elem.namespace_uri != null) {
+                    if (!std.mem.eql(u8, this_elem.namespace_uri.?, other_elem.namespace_uri.?)) return false;
                 }
-            }
+
+                // Note: Prefix is not compared per spec (prefixes are namespace declarations)
+
+                // Compare local name (tag_name is the local name for elements)
+                if (!std.mem.eql(u8, this_elem.tag_name, other_elem.tag_name)) return false;
+
+                // Check attribute counts match
+                if (this_elem.attributeCount() != other_elem.attributeCount()) return false;
+
+                // Check all attributes match (namespace, local name, value)
+                // We need to compare attributes by their namespace+localName, not just name
+
+                // Get iterator for this element's attributes
+                var this_iter = this_elem.attributes.array.iterator();
+
+                while (this_iter.next()) |this_attr| {
+                    // Find matching attribute in other element by namespace+localName
+                    var found = false;
+                    var other_iter = other_elem.attributes.array.iterator();
+
+                    while (other_iter.next()) |other_attr| {
+                        // Compare namespace
+                        const ns_match = blk: {
+                            if (this_attr.name.namespace_uri == null and other_attr.name.namespace_uri == null) break :blk true;
+                            if (this_attr.name.namespace_uri == null or other_attr.name.namespace_uri == null) break :blk false;
+                            break :blk std.mem.eql(u8, this_attr.name.namespace_uri.?, other_attr.name.namespace_uri.?);
+                        };
+
+                        if (!ns_match) continue;
+
+                        // Compare local name
+                        if (!std.mem.eql(u8, this_attr.name.local_name, other_attr.name.local_name)) continue;
+
+                        // Found matching attribute - compare value
+                        if (!std.mem.eql(u8, this_attr.value, other_attr.value)) return false;
+
+                        found = true;
+                        break;
+                    }
+
+                    if (!found) return false; // Attribute not found in other element
+                }
+            },
+            .processing_instruction => {
+                // ProcessingInstruction: compare target and data
+                const Text = @import("text.zig").Text;
+                const ProcessingInstruction = @import("processing_instruction.zig").ProcessingInstruction;
+                const this_text: *const Text = @fieldParentPtr("prototype", self);
+                const this_pi: *const ProcessingInstruction = @fieldParentPtr("prototype", this_text);
+                const other_text: *const Text = @fieldParentPtr("prototype", other_node);
+                const other_pi: *const ProcessingInstruction = @fieldParentPtr("prototype", other_text);
+
+                if (!std.mem.eql(u8, this_pi.target, other_pi.target)) return false;
+                if (!std.mem.eql(u8, this_pi.prototype.data, other_pi.prototype.data)) return false;
+            },
+            .text, .comment => {
+                // Text and Comment: compare data
+                const this_value = self.nodeValue();
+                const other_value = other_node.nodeValue();
+                if (this_value == null and other_value != null) return false;
+                if (this_value != null and other_value == null) return false;
+                if (this_value != null and other_value != null) {
+                    if (!std.mem.eql(u8, this_value.?, other_value.?)) return false;
+                }
+            },
+            else => {
+                // Other node types (Document, DocumentFragment): no specific properties to compare
+            },
         }
 
         // Check children count matches
