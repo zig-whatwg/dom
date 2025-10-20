@@ -1388,6 +1388,303 @@ pub const Document = struct {
     }
 
     // ========================================================================
+    // Document Metadata Properties
+    // ========================================================================
+
+    /// Returns the document's URL.
+    ///
+    /// Implements WHATWG DOM Document.URL per §4.5.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute USVString URL;
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.5)
+    /// Return the document's URL.
+    ///
+    /// ## Returns
+    /// The document's URL as a string. For a generic DOM implementation without
+    /// a browsing context, this returns an empty string by default.
+    ///
+    /// ## Spec References
+    /// - Property: https://dom.spec.whatwg.org/#dom-document-url
+    /// - WebIDL: dom.idl:275
+    ///
+    /// ## Note
+    /// This is a generic DOM library without browser context. The URL property
+    /// returns an empty string by default. Applications can subclass Document
+    /// and override this method to provide a custom URL.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const url = doc.getURL();
+    /// // url = ""
+    /// ```
+    pub fn getURL(self: *const Document) []const u8 {
+        _ = self;
+        return "";
+    }
+
+    /// Returns the document's URI (alias for URL).
+    ///
+    /// Implements WHATWG DOM Document.documentURI per §4.5.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute USVString documentURI;
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.5)
+    /// Return the document's URL (same as URL property).
+    ///
+    /// ## Returns
+    /// The document's URI as a string. For a generic DOM implementation without
+    /// a browsing context, this returns an empty string by default.
+    ///
+    /// ## Spec References
+    /// - Property: https://dom.spec.whatwg.org/#dom-document-documenturi
+    /// - WebIDL: dom.idl:276
+    ///
+    /// ## Note
+    /// This property is functionally equivalent to URL. It exists for
+    /// historical reasons and compatibility.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const uri = doc.getDocumentURI();
+    /// // uri = ""
+    /// ```
+    pub fn getDocumentURI(self: *const Document) []const u8 {
+        return self.getURL();
+    }
+
+    /// Returns the document's compatibility mode.
+    ///
+    /// Implements WHATWG DOM Document.compatMode per §4.5.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute DOMString compatMode;
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.5)
+    /// Return "CSS1Compat" if the document is in standards mode,
+    /// "BackCompat" if in quirks mode.
+    ///
+    /// ## Returns
+    /// - "CSS1Compat" for standards mode (default for generic DOM)
+    /// - "BackCompat" for quirks mode (HTML-specific)
+    ///
+    /// ## Spec References
+    /// - Property: https://dom.spec.whatwg.org/#dom-document-compatmode
+    /// - WebIDL: dom.idl:277
+    ///
+    /// ## Note
+    /// This generic DOM library always returns "CSS1Compat" (standards mode).
+    /// Quirks mode is HTML-specific and not applicable to generic XML/DOM.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const mode = doc.getCompatMode();
+    /// // mode = "CSS1Compat"
+    /// ```
+    pub fn getCompatMode(self: *const Document) []const u8 {
+        _ = self;
+        return "CSS1Compat";
+    }
+
+    /// Returns the document's character encoding.
+    ///
+    /// Implements WHATWG DOM Document.characterSet per §4.5.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute DOMString characterSet;
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.5)
+    /// Return the document's encoding (typically "UTF-8").
+    ///
+    /// ## Returns
+    /// The character encoding as a string. This implementation always
+    /// returns "UTF-8" as it's the universal encoding for modern documents.
+    ///
+    /// ## Spec References
+    /// - Property: https://dom.spec.whatwg.org/#dom-document-characterset
+    /// - WebIDL: dom.idl:278
+    ///
+    /// ## Note
+    /// This is a generic DOM library that operates in memory without file I/O.
+    /// We always use UTF-8 encoding for string data (Zig's native encoding).
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const charset = doc.getCharacterSet();
+    /// // charset = "UTF-8"
+    /// ```
+    pub fn getCharacterSet(self: *const Document) []const u8 {
+        _ = self;
+        return "UTF-8";
+    }
+
+    /// Returns the document's character encoding (legacy alias).
+    ///
+    /// Implements WHATWG DOM Document.charset per §4.5.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute DOMString charset; // legacy alias of .characterSet
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.5)
+    /// Return the document's encoding (same as characterSet).
+    ///
+    /// ## Returns
+    /// The character encoding as a string (always "UTF-8").
+    ///
+    /// ## Spec References
+    /// - Property: https://dom.spec.whatwg.org/#dom-document-charset
+    /// - WebIDL: dom.idl:279
+    ///
+    /// ## Note
+    /// This is a legacy alias for characterSet. Provided for compatibility.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const charset = doc.getCharset();
+    /// // charset = "UTF-8"
+    /// ```
+    pub fn getCharset(self: *const Document) []const u8 {
+        return self.getCharacterSet();
+    }
+
+    /// Returns the document's input encoding (legacy alias).
+    ///
+    /// Implements WHATWG DOM Document.inputEncoding per §4.5.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute DOMString inputEncoding; // legacy alias of .characterSet
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.5)
+    /// Return the document's encoding (same as characterSet).
+    ///
+    /// ## Returns
+    /// The character encoding as a string (always "UTF-8").
+    ///
+    /// ## Spec References
+    /// - Property: https://dom.spec.whatwg.org/#dom-document-inputencoding
+    /// - WebIDL: dom.idl:280
+    ///
+    /// ## Note
+    /// This is a legacy alias for characterSet. Provided for compatibility.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const encoding = doc.getInputEncoding();
+    /// // encoding = "UTF-8"
+    /// ```
+    pub fn getInputEncoding(self: *const Document) []const u8 {
+        return self.getCharacterSet();
+    }
+
+    /// Returns the document's content type.
+    ///
+    /// Implements WHATWG DOM Document.contentType per §4.5.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute DOMString contentType;
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.5)
+    /// Return the document's content type.
+    ///
+    /// ## Returns
+    /// The MIME type for the document. This implementation returns
+    /// "application/xml" as the default for a generic XML DOM.
+    ///
+    /// ## Spec References
+    /// - Property: https://dom.spec.whatwg.org/#dom-document-contenttype
+    /// - WebIDL: dom.idl:281
+    ///
+    /// ## Note
+    /// This is a generic DOM library suitable for XML and custom document types.
+    /// The default content type is "application/xml". HTML-specific implementations
+    /// should return "text/html" by overriding this method.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const contentType = doc.getContentType();
+    /// // contentType = "application/xml"
+    /// ```
+    pub fn getContentType(self: *const Document) []const u8 {
+        _ = self;
+        return "application/xml";
+    }
+
+    /// Returns the document's DOMImplementation instance.
+    ///
+    /// Implements WHATWG DOM Document.implementation per §4.5.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [SameObject] readonly attribute DOMImplementation implementation;
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.5)
+    /// Return the document's DOMImplementation object.
+    ///
+    /// ## Returns
+    /// A DOMImplementation instance (zero-sized stateless factory).
+    ///
+    /// ## Spec References
+    /// - Property: https://dom.spec.whatwg.org/#dom-document-implementation
+    /// - WebIDL: dom.idl:274
+    ///
+    /// ## Note
+    /// The [SameObject] annotation means this should return the same object
+    /// on every call. Since DOMImplementation is zero-sized and stateless,
+    /// we can return a new instance each time (functionally equivalent).
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const impl = doc.getImplementation();
+    /// const doctype = try impl.createDocumentType(allocator, "html", "", "");
+    /// defer doctype.prototype.release();
+    /// ```
+    pub fn getImplementation(self: *Document) @import("dom_implementation.zig").DOMImplementation {
+        // Cast away const - DOMImplementation needs mutable access for string interning
+        return .{ .document = @constCast(self) };
+    }
+
+    // ========================================================================
     // Document Query Methods
     // ========================================================================
 

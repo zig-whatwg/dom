@@ -1238,3 +1238,181 @@ test "Document - importNode cloned node not connected" {
     _ = try doc2.prototype.appendChild(imported);
     try std.testing.expect(imported.isConnected());
 }
+
+// ============================================================================
+// Document Metadata Properties Tests
+// ============================================================================
+
+test "Document.getURL returns empty string by default" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const url = doc.getURL();
+    try std.testing.expectEqualStrings("", url);
+}
+
+test "Document.getDocumentURI returns same as URL" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const url = doc.getURL();
+    const uri = doc.getDocumentURI();
+    try std.testing.expectEqualStrings(url, uri);
+}
+
+test "Document.getCompatMode returns CSS1Compat" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const mode = doc.getCompatMode();
+    try std.testing.expectEqualStrings("CSS1Compat", mode);
+}
+
+test "Document.getCharacterSet returns UTF-8" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const charset = doc.getCharacterSet();
+    try std.testing.expectEqualStrings("UTF-8", charset);
+}
+
+test "Document.getCharset is alias for characterSet" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const characterSet = doc.getCharacterSet();
+    const charset = doc.getCharset();
+    try std.testing.expectEqualStrings(characterSet, charset);
+}
+
+test "Document.getInputEncoding is alias for characterSet" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const characterSet = doc.getCharacterSet();
+    const inputEncoding = doc.getInputEncoding();
+    try std.testing.expectEqualStrings(characterSet, inputEncoding);
+}
+
+test "Document.getContentType returns application/xml" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const contentType = doc.getContentType();
+    try std.testing.expectEqualStrings("application/xml", contentType);
+}
+
+// ============================================================================
+// DOMImplementation Tests
+// ============================================================================
+
+test "Document.getImplementation returns DOMImplementation" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const impl = doc.getImplementation();
+    // DOMImplementation is zero-sized, so just verify we can call methods on it
+    const supported = impl.hasFeature();
+    try std.testing.expect(supported);
+}
+
+test "DOMImplementation.hasFeature always returns true" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const impl = doc.getImplementation();
+    try std.testing.expect(impl.hasFeature());
+}
+
+test "DOMImplementation.createDocumentType creates DocumentType" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const impl = doc.getImplementation();
+    const doctype = try impl.createDocumentType("html", "", "");
+    defer doctype.prototype.release();
+
+    try std.testing.expectEqualStrings("html", doctype.name);
+    try std.testing.expectEqualStrings("", doctype.publicId);
+    try std.testing.expectEqualStrings("", doctype.systemId);
+}
+
+test "DOMImplementation.createDocument creates empty document" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const impl = doc.getImplementation();
+    const newDoc = try impl.createDocument(null, "", null);
+    defer newDoc.release();
+
+    // Empty document has no children
+    try std.testing.expect(newDoc.prototype.first_child == null);
+}
+
+test "DOMImplementation.createDocument with root element" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const impl = doc.getImplementation();
+    const newDoc = try impl.createDocument(null, "root", null);
+    defer newDoc.release();
+
+    // Document should have root element
+    const root = newDoc.documentElement();
+    try std.testing.expect(root != null);
+    try std.testing.expectEqualStrings("root", root.?.tag_name);
+}
+
+test "DOMImplementation.createDocument with namespace" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const impl = doc.getImplementation();
+    const newDoc = try impl.createDocument(
+        "http://www.w3.org/2000/svg",
+        "svg",
+        null,
+    );
+    defer newDoc.release();
+
+    // Document should have root element with namespace
+    const root = newDoc.documentElement();
+    try std.testing.expect(root != null);
+    try std.testing.expectEqualStrings("svg", root.?.tag_name);
+}
+
+test "DOMImplementation.createDocument with doctype" {
+    const allocator = std.testing.allocator;
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const impl = doc.getImplementation();
+    const doctype = try impl.createDocumentType("html", "", "");
+    defer doctype.prototype.release(); // Release our reference
+
+    const newDoc = try impl.createDocument(null, "html", doctype);
+    defer newDoc.release();
+    // createDocument's appendChild acquired the doctype, so newDoc now owns it
+
+    // Document should have both doctype and root element
+    const dt = newDoc.doctype();
+    try std.testing.expect(dt != null);
+    try std.testing.expectEqualStrings("html", dt.?.name);
+
+    const root = newDoc.documentElement();
+    try std.testing.expect(root != null);
+    try std.testing.expectEqualStrings("html", root.?.tag_name);
+}

@@ -204,6 +204,7 @@ pub const SelectorCache = @import("document.zig").SelectorCache;
 pub const Document = @import("document.zig").Document;
 pub const StringPool = @import("document.zig").StringPool;
 pub const DocumentFragment = @import("document_fragment.zig").DocumentFragment;
+pub const DOMImplementation = @import("dom_implementation.zig").DOMImplementation;
 
 // Export rare data modules
 pub const NodeRareData = @import("rare_data.zig").NodeRareData;
