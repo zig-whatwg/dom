@@ -1749,9 +1749,33 @@ pub const Document = struct {
         // Step 3: If node is a DocumentFragment with non-null host, return
         // (Shadow DOM host not yet implemented, so this is a no-op for now)
 
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 4)
+        const stack = self.getCEReactionsStack();
+        try stack.enter();
+        defer stack.leave();
+
+        // Capture old document before adoption (for adoptedCallback)
+        const old_doc_node = node.owner_document;
+        const old_doc: ?*Document = if (old_doc_node) |doc_node|
+            if (doc_node.node_type == .document)
+                @fieldParentPtr("prototype", doc_node)
+            else
+                null
+        else
+            null;
+
         // Step 4: Adopt node into this document
         const adopt_fn = @import("node.zig").adopt;
         try adopt_fn(node, &self.prototype);
+
+        // Enqueue adopted reactions for custom elements (Phase 4)
+        // Only enqueue if old document was different from new document
+        if (old_doc) |old| {
+            if (old != self) {
+                const custom_elements = @import("custom_element_registry.zig");
+                try custom_elements.enqueueAdoptedReactionsForTree(node, old, self, stack);
+            }
+        }
 
         // Step 5: Return node
         return node;

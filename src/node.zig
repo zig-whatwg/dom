@@ -352,6 +352,7 @@ const Event = @import("event.zig").Event;
 const EventTarget = @import("event_target.zig").EventTarget;
 const EventTargetVTable = @import("event_target.zig").EventTargetVTable;
 const EventTargetMixin = @import("event_target.zig").EventTargetMixin;
+const custom_elements = @import("custom_element_registry.zig");
 
 /// Node types per WHATWG DOM specification.
 pub const NodeType = enum(u8) {
@@ -1801,6 +1802,10 @@ pub const Node = struct {
         self: *Node,
         node: *Node,
     ) !*Node {
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 4)
+        const doc_node = self.owner_document orelse self;
+        const is_document = doc_node.node_type == .document;
+
         // Fast path: new element being appended to element
         // This avoids validation overhead for the common DOM construction case
         // Note: Explicitly excludes text/comment under document (spec violation)
@@ -1808,10 +1813,28 @@ pub const Node = struct {
             self.node_type == .element and
             node.node_type == .element)
         {
-            return try self.appendChildFast(node);
+            if (is_document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", doc_node);
+                const stack = doc.getCEReactionsStack();
+                try stack.enter();
+                defer stack.leave();
+
+                const result = try self.appendChildFast(node);
+
+                // Enqueue connected reactions if node is now connected
+                if (node.isConnected()) {
+                    try custom_elements.enqueueConnectedReactionsForTree(node, stack);
+                }
+
+                return result;
+            } else {
+                return try self.appendChildFast(node);
+            }
         }
 
         // Slow path: full validation for all other cases
+        // insertBefore will handle [CEReactions] via preInsert
         return try self.insertBefore(node, null);
     }
 
@@ -2722,22 +2745,57 @@ fn preInsert(
     parent: *Node,
     child: ?*Node,
 ) !*Node {
-    // Step 1: Ensure validity
-    try validation.ensurePreInsertValidity(node, parent, child);
+    // [CEReactions] scope for custom element lifecycle callbacks (Phase 4)
+    const doc_node = parent.owner_document orelse parent;
+    const is_document = doc_node.node_type == .document;
+    if (is_document) {
+        const Document = @import("document.zig").Document;
+        const doc: *Document = @fieldParentPtr("prototype", doc_node);
+        const stack = doc.getCEReactionsStack();
+        try stack.enter();
+        defer stack.leave();
 
-    // Step 2: Set referenceChild
-    var reference_child = child;
+        // Step 1: Ensure validity
+        try validation.ensurePreInsertValidity(node, parent, child);
 
-    // Step 3: Adjust if inserting before self
-    if (reference_child == node) {
-        reference_child = node.next_sibling;
+        // Step 2: Set referenceChild
+        var reference_child = child;
+
+        // Step 3: Adjust if inserting before self
+        if (reference_child == node) {
+            reference_child = node.next_sibling;
+        }
+
+        // Step 4: Insert
+        try insert(node, parent, reference_child);
+
+        // Step 5: Enqueue connected reactions for custom elements (Phase 4)
+        // Only if insertion succeeded and node is now connected
+        if (node.isConnected()) {
+            try custom_elements.enqueueConnectedReactionsForTree(node, stack);
+        }
+
+        // Step 6: Return node
+        return node;
+    } else {
+        // No owner document - just do the insertion without [CEReactions]
+        // Step 1: Ensure validity
+        try validation.ensurePreInsertValidity(node, parent, child);
+
+        // Step 2: Set referenceChild
+        var reference_child = child;
+
+        // Step 3: Adjust if inserting before self
+        if (reference_child == node) {
+            reference_child = node.next_sibling;
+        }
+
+        // Step 4: Insert
+        try insert(node, parent, reference_child);
+
+        // Step 5: Return node
+        return node;
     }
-
-    // Step 4: Insert
-    try insert(node, parent, reference_child);
-
-    // Step 5: Return node
-    return node;
 }
 
 /// Insert algorithm per WHATWG DOM §4.2.4.
@@ -2898,14 +2956,40 @@ fn preRemove(
     child: *Node,
     parent: *Node,
 ) !*Node {
-    // Step 1: Validate
-    try validation.ensurePreRemoveValidity(child, parent);
+    // [CEReactions] scope for custom element lifecycle callbacks (Phase 4)
+    const doc_node = parent.owner_document orelse parent;
+    const is_document = doc_node.node_type == .document;
+    if (is_document) {
+        const Document = @import("document.zig").Document;
+        const doc: *Document = @fieldParentPtr("prototype", doc_node);
+        const stack = doc.getCEReactionsStack();
+        try stack.enter();
+        defer stack.leave();
 
-    // Step 2: Remove
-    remove(child);
+        // Step 1: Validate
+        try validation.ensurePreRemoveValidity(child, parent);
 
-    // Step 3: Return child
-    return child;
+        // Step 2: Enqueue disconnected reactions BEFORE removal (while still connected)
+        if (child.isConnected()) {
+            try custom_elements.enqueueDisconnectedReactionsForTree(child, stack);
+        }
+
+        // Step 3: Remove
+        remove(child);
+
+        // Step 4: Return child
+        return child;
+    } else {
+        // No owner document - just do the removal without [CEReactions]
+        // Step 1: Validate
+        try validation.ensurePreRemoveValidity(child, parent);
+
+        // Step 2: Remove
+        remove(child);
+
+        // Step 3: Return child
+        return child;
+    }
 }
 
 /// Remove algorithm per WHATWG DOM §4.2.4.
@@ -2973,27 +3057,71 @@ fn replace(
     node: *Node,
     parent: *Node,
 ) !*Node {
-    // Step 1-6: Validation (different from pre-insert!)
-    try validation.ensureReplaceValidity(node, child, parent);
+    // [CEReactions] scope for custom element lifecycle callbacks (Phase 4)
+    const doc_node = parent.owner_document orelse parent;
+    const is_document = doc_node.node_type == .document;
+    if (is_document) {
+        const Document = @import("document.zig").Document;
+        const doc: *Document = @fieldParentPtr("prototype", doc_node);
+        const stack = doc.getCEReactionsStack();
+        try stack.enter();
+        defer stack.leave();
 
-    // Step 7: Get reference child
-    var reference_child = child.next_sibling;
+        // Step 1-6: Validation (different from pre-insert!)
+        try validation.ensureReplaceValidity(node, child, parent);
 
-    // Step 8: Adjust if replacing with self
-    if (reference_child == node) {
-        reference_child = node.next_sibling;
+        // Step 7: Get reference child
+        var reference_child = child.next_sibling;
+
+        // Step 8: Adjust if replacing with self
+        if (reference_child == node) {
+            reference_child = node.next_sibling;
+        }
+
+        // Enqueue disconnected reactions for child BEFORE removal (Phase 4)
+        if (child.isConnected()) {
+            try custom_elements.enqueueDisconnectedReactionsForTree(child, stack);
+        }
+
+        // Step 11: Remove child
+        if (child.parent_node != null) {
+            remove(child);
+        }
+
+        // Step 13: Insert node (this will enqueue connected reactions via insert())
+        try insert(node, parent, reference_child);
+
+        // Enqueue connected reactions for node if now connected (Phase 4)
+        if (node.isConnected()) {
+            try custom_elements.enqueueConnectedReactionsForTree(node, stack);
+        }
+
+        // Step 15: Return child
+        return child;
+    } else {
+        // No owner document - just do the replacement without [CEReactions]
+        // Step 1-6: Validation
+        try validation.ensureReplaceValidity(node, child, parent);
+
+        // Step 7: Get reference child
+        var reference_child = child.next_sibling;
+
+        // Step 8: Adjust if replacing with self
+        if (reference_child == node) {
+            reference_child = node.next_sibling;
+        }
+
+        // Step 11: Remove child
+        if (child.parent_node != null) {
+            remove(child);
+        }
+
+        // Step 13: Insert node
+        try insert(node, parent, reference_child);
+
+        // Step 15: Return child
+        return child;
     }
-
-    // Step 11: Remove child
-    if (child.parent_node != null) {
-        remove(child);
-    }
-
-    // Step 13: Insert node
-    try insert(node, parent, reference_child);
-
-    // Step 15: Return child
-    return child;
 }
 
 // ============================================================================

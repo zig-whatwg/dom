@@ -764,8 +764,35 @@ pub const Element = struct {
     /// See: https://dom.spec.whatwg.org/#dom-element-setattribute
     /// See: https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttribute
     pub fn setAttribute(self: *Element, name: []const u8, value: []const u8) !void {
-        // Capture old value for mutation observers (before modification)
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 4)
+        if (self.prototype.owner_document) |doc_node| {
+            if (doc_node.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", doc_node);
+                const stack = doc.getCEReactionsStack();
+                try stack.enter();
+                defer stack.leave();
+
+                // Capture old value for mutation observers AND custom element reactions
+                const old_value = self.getAttribute(name);
+
+                try setAttributeImpl(self, name, value, old_value, null);
+
+                // Enqueue attribute_changed reaction for custom elements (Phase 4)
+                const custom_elements = @import("custom_element_registry.zig");
+                try custom_elements.enqueueAttributeChangedReaction(self, name, old_value, value, null, stack);
+                return;
+            }
+        }
+
+        // No owner document or owner document not a document - just set the attribute
         const old_value = self.getAttribute(name);
+        try setAttributeImpl(self, name, value, old_value, null);
+    }
+
+    /// Internal implementation of setAttribute (extracted to avoid duplication).
+    fn setAttributeImpl(self: *Element, name: []const u8, value: []const u8, old_value: ?[]const u8, namespace: ?[]const u8) !void {
+        _ = namespace; // Currently unused, for future setAttributeNS support
 
         // Handle ID attribute changes (maintain document ID map)
         // Only update id_map if element is connected to the document tree
@@ -909,8 +936,35 @@ pub const Element = struct {
     /// ## Parameters
     /// - `name`: Attribute name to remove
     pub fn removeAttribute(self: *Element, name: []const u8) void {
-        // Capture old value for mutation observers (before removal)
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 4)
+        if (self.prototype.owner_document) |doc_node| {
+            if (doc_node.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", doc_node);
+                const stack = doc.getCEReactionsStack();
+                stack.enter() catch return; // Best effort
+                defer stack.leave();
+
+                // Capture old value for mutation observers AND custom element reactions
+                const old_value = self.getAttribute(name);
+
+                removeAttributeImpl(self, name, old_value);
+
+                // Enqueue attribute_changed reaction for custom elements (Phase 4)
+                // new_value is null since attribute is being removed
+                const custom_elements = @import("custom_element_registry.zig");
+                custom_elements.enqueueAttributeChangedReaction(self, name, old_value, null, null, stack) catch {}; // Best effort
+                return;
+            }
+        }
+
+        // No owner document - just remove the attribute
         const old_value = self.getAttribute(name);
+        removeAttributeImpl(self, name, old_value);
+    }
+
+    /// Internal implementation of removeAttribute (extracted to avoid duplication).
+    fn removeAttributeImpl(self: *Element, name: []const u8, old_value: ?[]const u8) void {
 
         // Remove ID from document map before removing attribute (only if connected and this element is mapped)
         if (std.mem.eql(u8, name, "id")) {

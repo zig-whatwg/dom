@@ -1308,6 +1308,184 @@ pub const CEReactionsStack = struct {
 };
 
 // ============================================================================
+// Phase 4: Lifecycle Callback Helpers
+// ============================================================================
+
+/// Enqueues connected reactions for all custom elements in a tree.
+///
+/// Called after tree is inserted into document (becomes connected).
+/// Walks tree depth-first, enqueuing connected reaction for each custom element.
+///
+/// **Spec**: https://dom.spec.whatwg.org/#concept-enqueue-a-custom-element-callback-reaction
+///
+/// ## Parameters
+///
+/// - `root`: Root node of tree (just inserted)
+/// - `stack`: Document's CE reactions stack
+///
+/// ## Errors
+///
+/// - `error.OutOfMemory`: Failed to allocate queue or grow it
+///
+/// ## Notes
+///
+/// - Only enqueues if element is custom AND connected
+/// - Uses depth-first traversal (same as browsers)
+pub fn enqueueConnectedReactionsForTree(root: *Node, stack: *CEReactionsStack) !void {
+    var node: ?*Node = root;
+    while (node) |current| {
+        if (current.node_type == .element) {
+            const elem: *Element = @fieldParentPtr("prototype", current);
+            if (elem.isCustomElement() and current.isConnected()) {
+                const queue = try elem.getOrCreateReactionQueue();
+                try queue.enqueue(.{ .connected = {} });
+                try stack.enqueueElement(elem);
+            }
+        }
+
+        // Depth-first traversal
+        node = treeTraversalNext(current, root);
+    }
+}
+
+/// Enqueues disconnected reactions for all custom elements in a tree.
+///
+/// Called before tree is removed from document (becomes disconnected).
+/// Walks tree depth-first, enqueuing disconnected reaction for each custom element.
+///
+/// **Spec**: https://dom.spec.whatwg.org/#concept-enqueue-a-custom-element-callback-reaction
+///
+/// ## Parameters
+///
+/// - `root`: Root node of tree (about to be removed)
+/// - `stack`: Document's CE reactions stack
+///
+/// ## Errors
+///
+/// - `error.OutOfMemory`: Failed to allocate queue or grow it
+///
+/// ## Notes
+///
+/// - Only enqueues if element is custom AND currently connected
+/// - Called BEFORE removal (so isConnected() is still true)
+pub fn enqueueDisconnectedReactionsForTree(root: *Node, stack: *CEReactionsStack) !void {
+    var node: ?*Node = root;
+    while (node) |current| {
+        if (current.node_type == .element) {
+            const elem: *Element = @fieldParentPtr("prototype", current);
+            if (elem.isCustomElement() and current.isConnected()) {
+                const queue = try elem.getOrCreateReactionQueue();
+                try queue.enqueue(.{ .disconnected = {} });
+                try stack.enqueueElement(elem);
+            }
+        }
+
+        // Depth-first traversal
+        node = treeTraversalNext(current, root);
+    }
+}
+
+/// Enqueues attribute_changed reaction if attribute is observed.
+///
+/// Called when attribute is set, removed, or changed.
+/// Only enqueues if element is custom AND attribute is in observed_attributes.
+///
+/// **Spec**: https://dom.spec.whatwg.org/#concept-enqueue-a-custom-element-callback-reaction
+///
+/// ## Parameters
+///
+/// - `elem`: Element whose attribute changed
+/// - `name`: Attribute name (interned)
+/// - `old_value`: Previous value (null if attribute was not set)
+/// - `new_value`: New value (null if attribute removed)
+/// - `namespace`: Attribute namespace (null for non-namespaced)
+/// - `stack`: Document's CE reactions stack
+///
+/// ## Errors
+///
+/// - `error.OutOfMemory`: Failed to allocate queue or grow it
+///
+/// ## Notes
+///
+/// - Checks observed_attributes before enqueueing
+/// - Returns early if not custom element or not observed
+pub fn enqueueAttributeChangedReaction(
+    elem: *Element,
+    name: []const u8,
+    old_value: ?[]const u8,
+    new_value: ?[]const u8,
+    namespace: ?[]const u8,
+    stack: *CEReactionsStack,
+) !void {
+    if (!elem.isCustomElement()) return;
+
+    const definition = elem.getCustomElementDefinition() orelse return;
+
+    // Check if attribute is observed
+    if (!definition.observed_attributes.contains(name)) return;
+
+    const queue = try elem.getOrCreateReactionQueue();
+    try queue.enqueue(.{
+        .attribute_changed = .{
+            .name = name,
+            .old_value = old_value,
+            .new_value = new_value,
+            .namespace_uri = namespace,
+        },
+    });
+    try stack.enqueueElement(elem);
+}
+
+/// Enqueues adopted reactions for all custom elements in a tree.
+///
+/// Called when tree is adopted into new document.
+/// Walks tree depth-first, enqueuing adopted reaction for each custom element.
+///
+/// **Spec**: https://dom.spec.whatwg.org/#concept-enqueue-a-custom-element-callback-reaction
+///
+/// ## Parameters
+///
+/// - `root`: Root node of tree (being adopted)
+/// - `old_document`: Document element is leaving
+/// - `new_document`: Document element is entering
+/// - `stack`: New document's CE reactions stack
+///
+/// ## Errors
+///
+/// - `error.OutOfMemory`: Failed to allocate queue or grow it
+///
+/// ## Notes
+///
+/// - Only enqueues if element is custom
+/// - Walks entire subtree
+pub fn enqueueAdoptedReactionsForTree(
+    root: *Node,
+    old_document: *Document,
+    new_document: *Document,
+    stack: *CEReactionsStack,
+) !void {
+    var node: ?*Node = root;
+    while (node) |current| {
+        if (current.node_type == .element) {
+            const elem: *Element = @fieldParentPtr("prototype", current);
+            if (elem.isCustomElement()) {
+                const queue = try elem.getOrCreateReactionQueue();
+                try queue.enqueue(.{
+                    .adopted = .{
+                        .old_document = old_document,
+                        .new_document = new_document,
+                    },
+                });
+                try stack.enqueueElement(elem);
+            }
+        }
+
+        // Depth-first traversal
+        node = treeTraversalNext(current, root);
+    }
+}
+
+// ============================================================================
 // Errors
 // ============================================================================
 
@@ -2392,4 +2570,655 @@ test "CEReactionsStack: isEmpty returns correct state" {
     // Empty after leave
     stack.leave();
     try std.testing.expect(stack.isEmpty());
+}
+
+// ============================================================================
+// Phase 4: Lifecycle Callback Integration Tests
+// ============================================================================
+
+test "appendChild enqueues connected reaction" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var connected_called: bool = false;
+
+        fn connectedCallback(element: *Element) !void {
+            _ = element;
+            connected_called = true;
+        }
+
+        fn reset() void {
+            connected_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .connected_callback = State.connectedCallback,
+    }, .{});
+
+    const parent = try doc.createElement("container");
+    _ = try doc.prototype.appendChild(&parent.prototype);
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Callback should NOT be called yet (element not connected)
+    try std.testing.expect(!State.connected_called);
+
+    // Append element - should enqueue and invoke connected callback
+    _ = try parent.prototype.appendChild(&elem.prototype);
+
+    // Callback should have been called
+    try std.testing.expect(State.connected_called);
+}
+
+test "removeChild enqueues disconnected reaction" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var disconnected_called: bool = false;
+
+        fn disconnectedCallback(element: *Element) !void {
+            _ = element;
+            disconnected_called = true;
+        }
+
+        fn reset() void {
+            disconnected_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .disconnected_callback = State.disconnectedCallback,
+    }, .{});
+
+    const parent = try doc.createElement("container");
+    _ = try doc.prototype.appendChild(&parent.prototype);
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Append element first
+    _ = try parent.prototype.appendChild(&elem.prototype);
+
+    // Callback should NOT be called yet
+    try std.testing.expect(!State.disconnected_called);
+
+    // Remove element - should enqueue and invoke disconnected callback
+    _ = try parent.prototype.removeChild(&elem.prototype);
+
+    // Callback should have been called
+    try std.testing.expect(State.disconnected_called);
+
+    // Clean up removed element
+    elem.prototype.release();
+}
+
+test "setAttribute enqueues attribute_changed reaction for observed attributes" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var attr_changed_called: bool = false;
+        var attr_name: ?[]const u8 = null;
+        var attr_old_value: ?[]const u8 = null;
+        var attr_new_value: ?[]const u8 = null;
+
+        fn attributeChangedCallback(
+            element: *Element,
+            name: []const u8,
+            old_value: ?[]const u8,
+            new_value: ?[]const u8,
+            namespace: ?[]const u8,
+        ) !void {
+            _ = element;
+            _ = namespace;
+            attr_changed_called = true;
+            attr_name = name;
+            attr_old_value = old_value;
+            attr_new_value = new_value;
+        }
+
+        fn reset() void {
+            attr_changed_called = false;
+            attr_name = null;
+            attr_old_value = null;
+            attr_new_value = null;
+        }
+    };
+
+    State.reset();
+
+    // Create observed attributes list
+    const observed_attrs = &[_][]const u8{"data-value"};
+
+    try registry.define("x-widget", .{
+        .attribute_changed_callback = State.attributeChangedCallback,
+    }, .{
+        .observed_attributes = observed_attrs,
+    });
+
+    const elem = try doc.createElement("x-widget");
+    defer elem.prototype.release();
+
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Callback should NOT be called yet
+    try std.testing.expect(!State.attr_changed_called);
+
+    // Set observed attribute - should enqueue and invoke callback
+    try elem.setAttribute("data-value", "hello");
+
+    // Callback should have been called
+    try std.testing.expect(State.attr_changed_called);
+    try std.testing.expectEqualStrings("data-value", State.attr_name.?);
+    try std.testing.expect(State.attr_old_value == null); // Was not set before
+    try std.testing.expectEqualStrings("hello", State.attr_new_value.?);
+}
+
+test "setAttribute does NOT enqueue for non-observed attributes" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var attr_changed_called: bool = false;
+
+        fn attributeChangedCallback(
+            element: *Element,
+            name: []const u8,
+            old_value: ?[]const u8,
+            new_value: ?[]const u8,
+            namespace: ?[]const u8,
+        ) !void {
+            _ = element;
+            _ = name;
+            _ = old_value;
+            _ = new_value;
+            _ = namespace;
+            attr_changed_called = true;
+        }
+
+        fn reset() void {
+            attr_changed_called = false;
+        }
+    };
+
+    State.reset();
+
+    // Create observed attributes list (only "data-value" observed)
+    const observed_attrs = &[_][]const u8{"data-value"};
+
+    try registry.define("x-widget", .{
+        .attribute_changed_callback = State.attributeChangedCallback,
+    }, .{
+        .observed_attributes = observed_attrs,
+    });
+
+    const elem = try doc.createElement("x-widget");
+    defer elem.prototype.release();
+
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Set NON-observed attribute - should NOT enqueue callback
+    try elem.setAttribute("data-other", "world");
+
+    // Callback should NOT have been called
+    try std.testing.expect(!State.attr_changed_called);
+}
+
+test "removeAttribute enqueues attribute_changed reaction" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var attr_changed_called: bool = false;
+        var attr_old_value: ?[]const u8 = null;
+        var attr_new_value: ?[]const u8 = null;
+
+        fn attributeChangedCallback(
+            element: *Element,
+            name: []const u8,
+            old_value: ?[]const u8,
+            new_value: ?[]const u8,
+            namespace: ?[]const u8,
+        ) !void {
+            _ = element;
+            _ = name;
+            _ = namespace;
+            attr_changed_called = true;
+            attr_old_value = old_value;
+            attr_new_value = new_value;
+        }
+
+        fn reset() void {
+            attr_changed_called = false;
+            attr_old_value = null;
+            attr_new_value = null;
+        }
+    };
+
+    State.reset();
+
+    const observed_attrs = &[_][]const u8{"data-value"};
+
+    try registry.define("x-widget", .{
+        .attribute_changed_callback = State.attributeChangedCallback,
+    }, .{
+        .observed_attributes = observed_attrs,
+    });
+
+    const elem = try doc.createElement("x-widget");
+    defer elem.prototype.release();
+
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Set attribute first
+    try elem.setAttribute("data-value", "hello");
+    State.reset(); // Reset after setAttribute
+
+    // Remove observed attribute - should enqueue and invoke callback
+    elem.removeAttribute("data-value");
+
+    // Callback should have been called
+    try std.testing.expect(State.attr_changed_called);
+    try std.testing.expectEqualStrings("hello", State.attr_old_value.?); // Old value was "hello"
+    try std.testing.expect(State.attr_new_value == null); // New value is null (removed)
+}
+
+test "replaceChild enqueues both disconnected and connected reactions" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callbacks
+    const State = struct {
+        var connected_called: bool = false;
+        var disconnected_called: bool = false;
+
+        fn connectedCallback(element: *Element) !void {
+            _ = element;
+            connected_called = true;
+        }
+
+        fn disconnectedCallback(element: *Element) !void {
+            _ = element;
+            disconnected_called = true;
+        }
+
+        fn reset() void {
+            connected_called = false;
+            disconnected_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .connected_callback = State.connectedCallback,
+        .disconnected_callback = State.disconnectedCallback,
+    }, .{});
+
+    const parent = try doc.createElement("container");
+    _ = try doc.prototype.appendChild(&parent.prototype);
+
+    const old_child = try doc.createElement("x-widget");
+    old_child.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(old_child);
+    _ = try parent.prototype.appendChild(&old_child.prototype);
+
+    State.reset(); // Reset after appendChild
+
+    const new_child = try doc.createElement("x-widget");
+    new_child.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(new_child);
+
+    // Replace old_child with new_child - should enqueue both callbacks
+    const removed = try parent.prototype.replaceChild(&new_child.prototype, &old_child.prototype);
+
+    // Both callbacks should have been called
+    try std.testing.expect(State.disconnected_called); // Old child disconnected
+    try std.testing.expect(State.connected_called); // New child connected
+    try std.testing.expectEqual(&old_child.prototype, removed);
+
+    // Clean up removed element
+    old_child.prototype.release();
+}
+
+test "insertBefore enqueues connected reaction" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var connected_called: bool = false;
+
+        fn connectedCallback(element: *Element) !void {
+            _ = element;
+            connected_called = true;
+        }
+
+        fn reset() void {
+            connected_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .connected_callback = State.connectedCallback,
+    }, .{});
+
+    const parent = try doc.createElement("container");
+    _ = try doc.prototype.appendChild(&parent.prototype);
+
+    const ref_child = try doc.createElement("ref");
+    _ = try parent.prototype.appendChild(&ref_child.prototype);
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // insertBefore - should enqueue and invoke connected callback
+    _ = try parent.prototype.insertBefore(&elem.prototype, &ref_child.prototype);
+
+    // Callback should have been called
+    try std.testing.expect(State.connected_called);
+}
+
+test "Connected callback for subtree" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callbacks
+    const State = struct {
+        var call_count: usize = 0;
+
+        fn connectedCallback(element: *Element) !void {
+            _ = element;
+            call_count += 1;
+        }
+
+        fn reset() void {
+            call_count = 0;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .connected_callback = State.connectedCallback,
+    }, .{});
+
+    const root = try doc.createElement("container");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Create a subtree with multiple custom elements
+    const parent = try doc.createElement("x-widget");
+    parent.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(parent);
+
+    const child1 = try doc.createElement("x-widget");
+    child1.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(child1);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+
+    const child2 = try doc.createElement("x-widget");
+    child2.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(child2);
+    _ = try parent.prototype.appendChild(&child2.prototype);
+
+    // Append parent with children - all should get connected callbacks
+    _ = try root.prototype.appendChild(&parent.prototype);
+
+    // All 3 custom elements should have been called
+    try std.testing.expectEqual(@as(usize, 3), State.call_count);
+}
+
+test "adoptNode enqueues adopted reaction" {
+    const allocator = std.testing.allocator;
+
+    const doc1 = try Document.init(allocator);
+    defer doc1.release();
+
+    const doc2 = try Document.init(allocator);
+    defer doc2.release();
+
+    const registry1 = try CustomElementRegistry.init(allocator, doc1);
+    defer registry1.deinit();
+
+    // Track callback
+    const State = struct {
+        var adopted_called: bool = false;
+        var old_doc: ?*Document = null;
+        var new_doc: ?*Document = null;
+
+        fn adoptedCallback(element: *Element, old_document: *Document, new_document: *Document) !void {
+            _ = element;
+            adopted_called = true;
+            old_doc = old_document;
+            new_doc = new_document;
+        }
+
+        fn reset() void {
+            adopted_called = false;
+            old_doc = null;
+            new_doc = null;
+        }
+    };
+
+    State.reset();
+
+    try registry1.define("x-widget", .{
+        .adopted_callback = State.adoptedCallback,
+    }, .{});
+
+    const elem = try doc1.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry1.tryToUpgradeElement(elem);
+
+    // Callback should NOT be called yet
+    try std.testing.expect(!State.adopted_called);
+
+    // Adopt element into doc2 - should enqueue and invoke adopted callback
+    _ = try doc2.adoptNode(&elem.prototype);
+
+    // Callback should have been called
+    try std.testing.expect(State.adopted_called);
+    try std.testing.expect(State.old_doc == doc1);
+    try std.testing.expect(State.new_doc == doc2);
+}
+
+test "adoptNode enqueues adopted for entire subtree" {
+    const allocator = std.testing.allocator;
+
+    const doc1 = try Document.init(allocator);
+    defer doc1.release();
+
+    const doc2 = try Document.init(allocator);
+    defer doc2.release();
+
+    const registry1 = try CustomElementRegistry.init(allocator, doc1);
+    defer registry1.deinit();
+
+    // Track callbacks
+    const State = struct {
+        var call_count: usize = 0;
+
+        fn adoptedCallback(element: *Element, old_document: *Document, new_document: *Document) !void {
+            _ = element;
+            _ = old_document;
+            _ = new_document;
+            call_count += 1;
+        }
+
+        fn reset() void {
+            call_count = 0;
+        }
+    };
+
+    State.reset();
+
+    try registry1.define("x-widget", .{
+        .adopted_callback = State.adoptedCallback,
+    }, .{});
+
+    // Create a subtree with multiple custom elements
+    const parent = try doc1.createElement("x-widget");
+    parent.setIsUndefined();
+    _ = try registry1.tryToUpgradeElement(parent);
+
+    const child1 = try doc1.createElement("x-widget");
+    child1.setIsUndefined();
+    _ = try registry1.tryToUpgradeElement(child1);
+    _ = try parent.prototype.appendChild(&child1.prototype);
+
+    const child2 = try doc1.createElement("x-widget");
+    child2.setIsUndefined();
+    _ = try registry1.tryToUpgradeElement(child2);
+    _ = try parent.prototype.appendChild(&child2.prototype);
+
+    // Adopt parent with children - all should get adopted callbacks
+    _ = try doc2.adoptNode(&parent.prototype);
+
+    // All 3 custom elements should have been called
+    try std.testing.expectEqual(@as(usize, 3), State.call_count);
+}
+
+test "adoptNode does NOT enqueue if same document" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var adopted_called: bool = false;
+
+        fn adoptedCallback(element: *Element, old_document: *Document, new_document: *Document) !void {
+            _ = element;
+            _ = old_document;
+            _ = new_document;
+            adopted_called = true;
+        }
+
+        fn reset() void {
+            adopted_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .adopted_callback = State.adoptedCallback,
+    }, .{});
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Adopt element into same document - callback should NOT be called
+    _ = try doc.adoptNode(&elem.prototype);
+
+    // Callback should NOT have been called
+    try std.testing.expect(!State.adopted_called);
+}
+
+test "adoptNode with element that has no owner document" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var adopted_called: bool = false;
+
+        fn adoptedCallback(element: *Element, old_document: *Document, new_document: *Document) !void {
+            _ = element;
+            _ = old_document;
+            _ = new_document;
+            adopted_called = true;
+        }
+
+        fn reset() void {
+            adopted_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .adopted_callback = State.adoptedCallback,
+    }, .{});
+
+    // Create element without owner document (direct creation)
+    const elem = try Element.create(allocator, "x-widget");
+    defer elem.prototype.release();
+
+    // Adopt element - callback should NOT be called (no old document)
+    _ = try doc.adoptNode(&elem.prototype);
+
+    // Callback should NOT have been called (no old document)
+    try std.testing.expect(!State.adopted_called);
 }

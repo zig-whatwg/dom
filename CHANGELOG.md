@@ -174,7 +174,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Phase 1: Registry Foundation ✅ (Week 2)
     - Phase 2: Element State Machine ✅ (Week 3)
     - Phase 3: Reaction Queue System ✅ (Week 3)
-    - Phase 4-7: Lifecycle Integration, Advanced Features (Weeks 4-6)
+    - Phase 4: Lifecycle Integration ✅ (Week 3) - Core operations complete
+    - Phase 5-7: Advanced Features, Performance, Polish (Weeks 4-6)
+
+- **Custom Elements - Phase 4: Lifecycle Callbacks Integration** 🎉 NEW
+  - **Helper Functions** - Tree walking and reaction enqueueing
+    - `enqueueConnectedReactionsForTree(root, stack)` - Enqueue connected for all custom elements in tree
+    - `enqueueDisconnectedReactionsForTree(root, stack)` - Enqueue disconnected for all custom elements in tree
+    - `enqueueAttributeChangedReaction(elem, name, old, new, ns, stack)` - Enqueue attribute_changed if observed
+    - `enqueueAdoptedReactionsForTree(root, old_doc, new_doc, stack)` - Enqueue adopted for all custom elements in tree
+    - Depth-first tree traversal (matches all browsers)
+    - Early exit if element not custom or not connected
+  - **Node Operations Updated** (with `[CEReactions]` scope)
+    - `appendChild(node)` - Enqueues connected reactions after insertion
+    - `insertBefore(node, child)` - Enqueues connected reactions after insertion (via preInsert)
+    - `removeChild(child)` - Enqueues disconnected reactions before removal (via preRemove)
+    - `replaceChild(node, child)` - Enqueues disconnected for old child, connected for new node
+    - All operations wrapped with `stack.enter()` + `defer stack.leave()` (RAII pattern)
+  - **Element Operations Updated** (with `[CEReactions]` scope)
+    - `setAttribute(name, value)` - Enqueues attribute_changed if attribute is observed
+    - `removeAttribute(name)` - Enqueues attribute_changed if attribute is observed (new_value = null)
+    - Both operations check observed_attributes before enqueueing
+    - Graceful handling when no owner document (operations still succeed)
+  - **Document Operations Updated** (with `[CEReactions]` scope)
+    - `adoptNode(node)` - Enqueues adopted reactions for all custom elements in tree
+    - Only enqueues if old document differs from new document
+    - Captures old document before adoption for callback parameters
+    - Entire subtree gets callbacks (depth-first order)
+  - **Connected Callback** (fires when element inserted)
+    - Triggered by: appendChild, insertBefore, replaceChild (new node)
+    - Only fires if element becomes connected (isConnected() == true)
+    - Entire subtree gets callbacks (depth-first order)
+    - FIFO processing order guaranteed
+  - **Disconnected Callback** (fires when element removed)
+    - Triggered by: removeChild, replaceChild (old node)
+    - Only fires if element was connected before removal
+    - Enqueued BEFORE removal (while still connected)
+    - Entire subtree gets callbacks (depth-first order)
+  - **Attribute Changed Callback** (fires when observed attribute changes)
+    - Triggered by: setAttribute, removeAttribute
+    - Only fires if attribute in observed_attributes list
+    - Captures old value, new value, and namespace
+    - old_value = null if attribute wasn't set
+    - new_value = null if attribute removed
+  - **Adopted Callback** (fires when element adopted into new document)
+    - Triggered by: adoptNode
+    - Only fires if old document differs from new document
+    - Captures old document and new document references
+    - Entire subtree gets callbacks (depth-first order)
+    - Elements created without owner document don't trigger callback
+  - **Test Coverage**: 12 new comprehensive unit tests (58 total) ✅
+    - appendChild enqueues connected
+    - removeChild enqueues disconnected
+    - setAttribute enqueues attribute_changed (observed only)
+    - setAttribute does NOT enqueue (non-observed)
+    - removeAttribute enqueues attribute_changed
+    - replaceChild enqueues both disconnected and connected
+    - insertBefore enqueues connected
+    - Connected callback for subtree (depth-first)
+    - adoptNode enqueues adopted
+    - adoptNode for entire subtree
+    - adoptNode does NOT enqueue if same document
+    - adoptNode with element that has no owner document
+    - All tests pass with zero memory leaks
+  - **Spec Compliance**
+    - [CEReactions] attribute implemented per WebIDL
+    - Callbacks fire at spec-compliant times
+    - Tree walking matches browser behavior
+    - Error handling (operations succeed even if enqueue fails)
+  - **Spec References**:
+    - WHATWG DOM: https://dom.spec.whatwg.org/#concept-enqueue-a-custom-element-callback-reaction
+    - WebIDL: dom.idl:260-263, 378-381 (Node and Element operations with [CEReactions])
+    - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements#custom_element_lifecycle_callbacks
+  - **Implementation Status**: Phase 4 complete ✅
+    - Node operations: appendChild, insertBefore, removeChild, replaceChild ✅
+    - Element operations: setAttribute, removeAttribute ✅
+    - Document operations: adoptNode ✅
+    - Additional operations: textContent setter, normalize, etc. (optional, deferred to Phase 5+)
 
 - **AbortSignal.any() - Composite Signal Support** 🎉 ✅ COMPLETE
   - **AbortSignal.any(signals)** - Creates dependent signal that aborts when ANY source signal aborts
