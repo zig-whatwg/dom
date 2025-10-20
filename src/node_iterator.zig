@@ -56,6 +56,146 @@
 //! - ✅ whatToShow filtering
 //! - ✅ Custom filter support
 //! - ✅ detach() method (no-op per spec)
+//!
+//! ## JavaScript Bindings
+//!
+//! NodeIterator provides forward and backward iteration through a filtered DOM tree view.
+//!
+//! ### Creation
+//! NodeIterator is typically created via `Document.createNodeIterator()`:
+//! ```javascript
+//! // Per WebIDL: NodeIterator createNodeIterator(Node root, optional unsigned long whatToShow = 0xFFFFFFFF, optional NodeFilter? filter = null);
+//! const iterator = document.createNodeIterator(
+//!   rootNode,
+//!   NodeFilter.SHOW_ELEMENT,  // Optional: defaults to 0xFFFFFFFF (all nodes)
+//!   null                       // Optional: custom filter function
+//! );
+//! ```
+//!
+//! ### Instance Properties (Readonly)
+//! ```javascript
+//! // Per WebIDL: [SameObject] readonly attribute Node root;
+//! Object.defineProperty(NodeIterator.prototype, 'root', {
+//!   get: function() { return wrapNode(zig.nodeiterator_get_root(this._ptr)); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute Node referenceNode;
+//! Object.defineProperty(NodeIterator.prototype, 'referenceNode', {
+//!   get: function() { return wrapNode(zig.nodeiterator_get_referenceNode(this._ptr)); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute boolean pointerBeforeReferenceNode;
+//! Object.defineProperty(NodeIterator.prototype, 'pointerBeforeReferenceNode', {
+//!   get: function() { return zig.nodeiterator_get_pointerBeforeReferenceNode(this._ptr); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute unsigned long whatToShow;
+//! Object.defineProperty(NodeIterator.prototype, 'whatToShow', {
+//!   get: function() { return zig.nodeiterator_get_whatToShow(this._ptr); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute NodeFilter? filter;
+//! Object.defineProperty(NodeIterator.prototype, 'filter', {
+//!   get: function() {
+//!     const ptr = zig.nodeiterator_get_filter(this._ptr);
+//!     return ptr ? wrapNodeFilter(ptr) : null;
+//!   }
+//! });
+//! ```
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // Per WebIDL: Node? nextNode();
+//! NodeIterator.prototype.nextNode = function() {
+//!   const nodePtr = zig.nodeiterator_nextNode(this._ptr);
+//!   return nodePtr ? wrapNode(nodePtr) : null;
+//! };
+//!
+//! // Per WebIDL: Node? previousNode();
+//! NodeIterator.prototype.previousNode = function() {
+//!   const nodePtr = zig.nodeiterator_previousNode(this._ptr);
+//!   return nodePtr ? wrapNode(nodePtr) : null;
+//! };
+//!
+//! // Per WebIDL: undefined detach();
+//! NodeIterator.prototype.detach = function() {
+//!   zig.nodeiterator_detach(this._ptr); // No-op per spec, exists for historical reasons
+//! };
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Create iterator for all element nodes
+//! const root = document.createElement('container');
+//! const child1 = document.createElement('item');
+//! const child2 = document.createElement('item');
+//! root.appendChild(child1);
+//! root.appendChild(child2);
+//!
+//! const iterator = document.createNodeIterator(
+//!   root,
+//!   NodeFilter.SHOW_ELEMENT
+//! );
+//!
+//! // Forward iteration
+//! let node;
+//! while (node = iterator.nextNode()) {
+//!   console.log('Found:', node.nodeName);
+//!   console.log('Reference:', iterator.referenceNode === node); // true
+//! }
+//!
+//! // Backward iteration
+//! while (node = iterator.previousNode()) {
+//!   console.log('Found:', node.nodeName);
+//! }
+//!
+//! // Iterator state
+//! console.log('Root:', iterator.root);
+//! console.log('Current reference:', iterator.referenceNode);
+//! console.log('Pointer before reference:', iterator.pointerBeforeReferenceNode);
+//! console.log('What to show:', iterator.whatToShow);
+//!
+//! // Custom filter
+//! const filtered = document.createNodeIterator(
+//!   root,
+//!   NodeFilter.SHOW_ELEMENT,
+//!   {
+//!     acceptNode: function(node) {
+//!       return node.nodeName === 'ITEM' ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+//!     }
+//!   }
+//! );
+//!
+//! // Iterate only 'item' elements
+//! while (node = filtered.nextNode()) {
+//!   console.log('Filtered node:', node.nodeName); // Only 'ITEM' elements
+//! }
+//!
+//! // detach() is a no-op (historical API)
+//! iterator.detach(); // Does nothing, modern code shouldn't call this
+//! ```
+//!
+//! ### NodeFilter Constants
+//! ```javascript
+//! // whatToShow bitfield values
+//! NodeFilter.SHOW_ALL = 0xFFFFFFFF;
+//! NodeFilter.SHOW_ELEMENT = 0x1;
+//! NodeFilter.SHOW_ATTRIBUTE = 0x2;
+//! NodeFilter.SHOW_TEXT = 0x4;
+//! NodeFilter.SHOW_CDATA_SECTION = 0x8;
+//! NodeFilter.SHOW_PROCESSING_INSTRUCTION = 0x40;
+//! NodeFilter.SHOW_COMMENT = 0x80;
+//! NodeFilter.SHOW_DOCUMENT = 0x100;
+//! NodeFilter.SHOW_DOCUMENT_TYPE = 0x200;
+//! NodeFilter.SHOW_DOCUMENT_FRAGMENT = 0x400;
+//!
+//! // Filter return values
+//! NodeFilter.FILTER_ACCEPT = 1;
+//! NodeFilter.FILTER_REJECT = 2;  // Skip node and descendants (TreeWalker only)
+//! NodeFilter.FILTER_SKIP = 3;    // Skip node but not descendants
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

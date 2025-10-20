@@ -206,6 +206,230 @@
 //! 4. **Compute on demand** (commonAncestorContainer not cached)
 //!
 //! See `summaries/plans/range_api_browser_research.md` for details.
+//!
+//! ## JavaScript Bindings
+//!
+//! Range is used for text selection and DOM manipulation.
+//!
+//! ### Constructor
+//! ```javascript
+//! // Per WebIDL: constructor();
+//! function Range() {
+//!   this._ptr = zig.range_init();
+//! }
+//! ```
+//!
+//! ### Instance Properties (from AbstractRange)
+//! ```javascript
+//! // startContainer (readonly) - Per WebIDL: readonly attribute Node startContainer;
+//! Object.defineProperty(Range.prototype, 'startContainer', {
+//!   get: function() {
+//!     const ptr = zig.range_get_startContainer(this._ptr);
+//!     return wrapNode(ptr);
+//!   }
+//! });
+//!
+//! // startOffset (readonly) - Per WebIDL: readonly attribute unsigned long startOffset;
+//! Object.defineProperty(Range.prototype, 'startOffset', {
+//!   get: function() { return zig.range_get_startOffset(this._ptr); }
+//! });
+//!
+//! // endContainer (readonly) - Per WebIDL: readonly attribute Node endContainer;
+//! Object.defineProperty(Range.prototype, 'endContainer', {
+//!   get: function() {
+//!     const ptr = zig.range_get_endContainer(this._ptr);
+//!     return wrapNode(ptr);
+//!   }
+//! });
+//!
+//! // endOffset (readonly) - Per WebIDL: readonly attribute unsigned long endOffset;
+//! Object.defineProperty(Range.prototype, 'endOffset', {
+//!   get: function() { return zig.range_get_endOffset(this._ptr); }
+//! });
+//!
+//! // collapsed (readonly) - Per WebIDL: readonly attribute boolean collapsed;
+//! Object.defineProperty(Range.prototype, 'collapsed', {
+//!   get: function() { return zig.range_get_collapsed(this._ptr); }
+//! });
+//!
+//! // commonAncestorContainer (readonly) - Per WebIDL: readonly attribute Node commonAncestorContainer;
+//! Object.defineProperty(Range.prototype, 'commonAncestorContainer', {
+//!   get: function() {
+//!     const ptr = zig.range_get_commonAncestorContainer(this._ptr);
+//!     return wrapNode(ptr);
+//!   }
+//! });
+//! ```
+//!
+//! ### Instance Methods - Boundary Setting
+//! ```javascript
+//! // Per WebIDL: undefined setStart(Node node, unsigned long offset);
+//! Range.prototype.setStart = function(node, offset) {
+//!   zig.range_setStart(this._ptr, node._ptr, offset);
+//! };
+//!
+//! // Per WebIDL: undefined setEnd(Node node, unsigned long offset);
+//! Range.prototype.setEnd = function(node, offset) {
+//!   zig.range_setEnd(this._ptr, node._ptr, offset);
+//! };
+//!
+//! // Per WebIDL: undefined setStartBefore(Node node);
+//! Range.prototype.setStartBefore = function(node) {
+//!   zig.range_setStartBefore(this._ptr, node._ptr);
+//! };
+//!
+//! // Per WebIDL: undefined setStartAfter(Node node);
+//! Range.prototype.setStartAfter = function(node) {
+//!   zig.range_setStartAfter(this._ptr, node._ptr);
+//! };
+//!
+//! // Per WebIDL: undefined setEndBefore(Node node);
+//! Range.prototype.setEndBefore = function(node) {
+//!   zig.range_setEndBefore(this._ptr, node._ptr);
+//! };
+//!
+//! // Per WebIDL: undefined setEndAfter(Node node);
+//! Range.prototype.setEndAfter = function(node) {
+//!   zig.range_setEndAfter(this._ptr, node._ptr);
+//! };
+//!
+//! // Per WebIDL: undefined collapse(optional boolean toStart = false);
+//! Range.prototype.collapse = function(toStart) {
+//!   zig.range_collapse(this._ptr, toStart !== undefined ? toStart : false);
+//! };
+//!
+//! // Per WebIDL: undefined selectNode(Node node);
+//! Range.prototype.selectNode = function(node) {
+//!   zig.range_selectNode(this._ptr, node._ptr);
+//! };
+//!
+//! // Per WebIDL: undefined selectNodeContents(Node node);
+//! Range.prototype.selectNodeContents = function(node) {
+//!   zig.range_selectNodeContents(this._ptr, node._ptr);
+//! };
+//! ```
+//!
+//! ### Instance Methods - Comparison
+//! ```javascript
+//! // Per WebIDL: short compareBoundaryPoints(unsigned short how, Range sourceRange);
+//! Range.prototype.compareBoundaryPoints = function(how, sourceRange) {
+//!   return zig.range_compareBoundaryPoints(this._ptr, how, sourceRange._ptr);
+//! };
+//!
+//! // Per WebIDL: boolean isPointInRange(Node node, unsigned long offset);
+//! Range.prototype.isPointInRange = function(node, offset) {
+//!   return zig.range_isPointInRange(this._ptr, node._ptr, offset);
+//! };
+//!
+//! // Per WebIDL: short comparePoint(Node node, unsigned long offset);
+//! Range.prototype.comparePoint = function(node, offset) {
+//!   return zig.range_comparePoint(this._ptr, node._ptr, offset);
+//! };
+//!
+//! // Per WebIDL: boolean intersectsNode(Node node);
+//! Range.prototype.intersectsNode = function(node) {
+//!   return zig.range_intersectsNode(this._ptr, node._ptr);
+//! };
+//! ```
+//!
+//! ### Instance Methods - Mutation ([CEReactions])
+//! ```javascript
+//! // Per WebIDL: [CEReactions] undefined deleteContents();
+//! Range.prototype.deleteContents = function() {
+//!   zig.range_deleteContents(this._ptr); // Triggers CEReactions
+//! };
+//!
+//! // Per WebIDL: [CEReactions, NewObject] DocumentFragment extractContents();
+//! Range.prototype.extractContents = function() {
+//!   const ptr = zig.range_extractContents(this._ptr); // Returns new DocumentFragment
+//!   return wrapDocumentFragment(ptr);
+//! };
+//!
+//! // Per WebIDL: [CEReactions, NewObject] DocumentFragment cloneContents();
+//! Range.prototype.cloneContents = function() {
+//!   const ptr = zig.range_cloneContents(this._ptr); // Returns new DocumentFragment
+//!   return wrapDocumentFragment(ptr);
+//! };
+//!
+//! // Per WebIDL: [CEReactions] undefined insertNode(Node node);
+//! Range.prototype.insertNode = function(node) {
+//!   zig.range_insertNode(this._ptr, node._ptr); // Triggers CEReactions
+//! };
+//!
+//! // Per WebIDL: [CEReactions] undefined surroundContents(Node newParent);
+//! Range.prototype.surroundContents = function(newParent) {
+//!   zig.range_surroundContents(this._ptr, newParent._ptr); // Triggers CEReactions
+//! };
+//! ```
+//!
+//! ### Instance Methods - Cloning and Legacy
+//! ```javascript
+//! // Per WebIDL: [NewObject] Range cloneRange();
+//! Range.prototype.cloneRange = function() {
+//!   const ptr = zig.range_cloneRange(this._ptr); // Returns new Range
+//!   return wrapRange(ptr);
+//! };
+//!
+//! // Per WebIDL: undefined detach();
+//! Range.prototype.detach = function() {
+//!   // No-op (legacy method, does nothing per spec)
+//! };
+//!
+//! // Per WebIDL: stringifier;
+//! Range.prototype.toString = function() {
+//!   return zig.range_toString(this._ptr);
+//! };
+//! ```
+//!
+//! ### Constants
+//! ```javascript
+//! Range.START_TO_START = 0;
+//! Range.START_TO_END = 1;
+//! Range.END_TO_END = 2;
+//! Range.END_TO_START = 3;
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Create range
+//! const range = new Range();
+//!
+//! // Select text content
+//! const textNode = document.createTextNode('Hello World');
+//! document.body.appendChild(textNode);
+//! range.setStart(textNode, 0);
+//! range.setEnd(textNode, 5); // Selects 'Hello'
+//!
+//! // Get selected text
+//! const text = range.toString(); // 'Hello'
+//!
+//! // Check properties
+//! console.log(range.startContainer); // Text node
+//! console.log(range.startOffset);    // 0
+//! console.log(range.collapsed);      // false
+//!
+//! // Extract content (removes from DOM)
+//! const fragment = range.extractContents();
+//! document.body.appendChild(fragment); // Re-insert elsewhere
+//!
+//! // Clone content (keeps original)
+//! const clone = range.cloneContents();
+//!
+//! // Select entire node
+//! const element = document.createElement('div');
+//! range.selectNode(element);
+//!
+//! // Collapse to start
+//! range.collapse(true); // Collapsed at start
+//! console.log(range.collapsed); // true
+//!
+//! // Compare boundary points
+//! const range2 = new Range();
+//! range2.selectNodeContents(document.body);
+//! const comparison = range.compareBoundaryPoints(Range.START_TO_START, range2);
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

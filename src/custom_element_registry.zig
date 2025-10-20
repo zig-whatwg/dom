@@ -83,6 +83,168 @@
 //! - [ ] define() method
 //! - [ ] get() / isDefined() methods
 //! - [ ] Upgrade candidate tracking (stub)
+//!
+//! ## JavaScript Bindings
+//!
+//! CustomElementRegistry is accessed via `window.customElements` or `document.customElements`.
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // Per HTML spec: undefined define(DOMString name, CustomElementConstructor constructor, optional ElementDefinitionOptions options);
+//! CustomElementRegistry.prototype.define = function(name, constructor, options) {
+//!   const opts = options || {};
+//!   zig.customelementregistry_define(
+//!     this._ptr,
+//!     name,
+//!     constructor,
+//!     opts.extends // For customized built-in elements
+//!   );
+//!   // No return - 'undefined' in WebIDL
+//! };
+//!
+//! // Per HTML spec: (CustomElementConstructor or undefined) get(DOMString name);
+//! CustomElementRegistry.prototype.get = function(name) {
+//!   const constructor = zig.customelementregistry_get(this._ptr, name);
+//!   return constructor; // Returns constructor function or undefined
+//! };
+//!
+//! // Per HTML spec: boolean isDefined(DOMString name);
+//! CustomElementRegistry.prototype.isDefined = function(name) {
+//!   return zig.customelementregistry_isDefined(this._ptr, name);
+//! };
+//!
+//! // Per HTML spec: Promise<CustomElementConstructor> whenDefined(DOMString name);
+//! CustomElementRegistry.prototype.whenDefined = function(name) {
+//!   return new Promise((resolve, reject) => {
+//!     zig.customelementregistry_whenDefined(
+//!       this._ptr,
+//!       name,
+//!       (constructor) => resolve(constructor),
+//!       (error) => reject(error)
+//!     );
+//!   });
+//! };
+//!
+//! // Per HTML spec: undefined upgrade(Node root);
+//! CustomElementRegistry.prototype.upgrade = function(root) {
+//!   zig.customelementregistry_upgrade(this._ptr, root._ptr);
+//! };
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Access registry
+//! const registry = window.customElements;
+//!
+//! // Define autonomous custom element
+//! class XButton extends HTMLElement {
+//!   constructor() {
+//!     super();
+//!     this.attachShadow({ mode: 'open' });
+//!   }
+//!
+//!   connectedCallback() {
+//!     this.shadowRoot.innerHTML = '<button><slot></slot></button>';
+//!   }
+//!
+//!   disconnectedCallback() {
+//!     console.log('Button removed from DOM');
+//!   }
+//!
+//!   attributeChangedCallback(name, oldValue, newValue) {
+//!     console.log(`Attribute ${name} changed: ${oldValue} -> ${newValue}`);
+//!   }
+//!
+//!   static get observedAttributes() {
+//!     return ['disabled', 'variant'];
+//!   }
+//! }
+//!
+//! // Register custom element
+//! customElements.define('x-button', XButton);
+//!
+//! // Check if defined
+//! if (customElements.isDefined('x-button')) {
+//!   console.log('x-button is defined');
+//! }
+//!
+//! // Get constructor
+//! const ButtonConstructor = customElements.get('x-button');
+//! const button = new ButtonConstructor(); // Create instance
+//!
+//! // Wait for definition
+//! customElements.whenDefined('x-panel').then((PanelConstructor) => {
+//!   console.log('x-panel is now defined');
+//!   const panel = new PanelConstructor();
+//! });
+//!
+//! // Upgrade existing elements
+//! const container = document.createElement('div');
+//! container.innerHTML = '<x-button>Click me</x-button>';
+//! customElements.upgrade(container); // Upgrades x-button element
+//!
+//! // Define customized built-in element
+//! class FancyButton extends HTMLButtonElement {
+//!   connectedCallback() {
+//!     this.style.background = 'blue';
+//!   }
+//! }
+//! customElements.define('fancy-button', FancyButton, { extends: 'button' });
+//!
+//! // Use customized built-in
+//! const fancyBtn = document.createElement('button', { is: 'fancy-button' });
+//! // Or in HTML: <button is="fancy-button">Click</button>
+//! ```
+//!
+//! ### Custom Element Lifecycle
+//! ```javascript
+//! // Constructor - called when element is created/upgraded
+//! constructor() {
+//!   super(); // MUST call super() first
+//!   // Initialize state
+//! }
+//!
+//! // connectedCallback - element inserted into document
+//! connectedCallback() {
+//!   // Setup, event listeners, render
+//! }
+//!
+//! // disconnectedCallback - element removed from document
+//! disconnectedCallback() {
+//!   // Cleanup, remove listeners
+//! }
+//!
+//! // adoptedCallback - element moved to new document
+//! adoptedCallback() {
+//!   // Re-initialize for new document
+//! }
+//!
+//! // attributeChangedCallback - observed attribute changed
+//! attributeChangedCallback(name, oldValue, newValue) {
+//!   // React to attribute changes
+//! }
+//!
+//! // Declare which attributes to observe
+//! static get observedAttributes() {
+//!   return ['attr1', 'attr2'];
+//! }
+//! ```
+//!
+//! ### Name Validation
+//! ```javascript
+//! // Valid names:
+//! customElements.define('my-element', MyElement);     // ✅ Contains hyphen
+//! customElements.define('x-button', XButton);         // ✅ Simple name
+//! customElements.define('my-super-element', MySE);    // ✅ Multiple hyphens
+//!
+//! // Invalid names:
+//! customElements.define('myelement', MyElement);      // ❌ No hyphen
+//! customElements.define('My-Element', MyElement);     // ❌ Uppercase
+//! customElements.define('font-face', MyElement);      // ❌ Reserved name
+//! customElements.define('annotation-xml', MyElement); // ❌ Reserved name
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

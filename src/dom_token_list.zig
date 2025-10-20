@@ -80,6 +80,137 @@
 //! - ✅ Order is preserved (insertion order)
 //! - ✅ Case-sensitive token matching
 //! - ✅ Live collection (no caching)
+//!
+//! ## JavaScript Bindings
+//!
+//! DOMTokenList is most commonly accessed via Element.classList property.
+//!
+//! ### Instance Properties
+//! ```javascript
+//! // length (readonly) - Per WebIDL: readonly attribute unsigned long length;
+//! Object.defineProperty(DOMTokenList.prototype, 'length', {
+//!   get: function() { return zig.domtokenlist_get_length(this._ptr); }
+//! });
+//!
+//! // value (read-write, stringifier) - Per WebIDL: [CEReactions] stringifier attribute DOMString value;
+//! Object.defineProperty(DOMTokenList.prototype, 'value', {
+//!   get: function() { return zig.domtokenlist_get_value(this._ptr); },
+//!   set: function(newValue) {
+//!     zig.domtokenlist_set_value(this._ptr, newValue); // Triggers CEReactions
+//!   }
+//! });
+//! ```
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // Per WebIDL: getter DOMString? item(unsigned long index);
+//! DOMTokenList.prototype.item = function(index) {
+//!   const result = zig.domtokenlist_item(this._ptr, index);
+//!   return result; // Returns string or null
+//! };
+//!
+//! // Per WebIDL: boolean contains(DOMString token);
+//! DOMTokenList.prototype.contains = function(token) {
+//!   return zig.domtokenlist_contains(this._ptr, token);
+//! };
+//!
+//! // Per WebIDL: [CEReactions] undefined add(DOMString... tokens);
+//! DOMTokenList.prototype.add = function(...tokens) {
+//!   zig.domtokenlist_add(this._ptr, tokens); // Triggers CEReactions
+//!   // No return - 'undefined' in WebIDL
+//! };
+//!
+//! // Per WebIDL: [CEReactions] undefined remove(DOMString... tokens);
+//! DOMTokenList.prototype.remove = function(...tokens) {
+//!   zig.domtokenlist_remove(this._ptr, tokens); // Triggers CEReactions
+//! };
+//!
+//! // Per WebIDL: [CEReactions] boolean toggle(DOMString token, optional boolean force);
+//! DOMTokenList.prototype.toggle = function(token, force) {
+//!   return zig.domtokenlist_toggle(this._ptr, token, force); // Returns true if added, false if removed
+//! };
+//!
+//! // Per WebIDL: [CEReactions] boolean replace(DOMString token, DOMString newToken);
+//! DOMTokenList.prototype.replace = function(token, newToken) {
+//!   return zig.domtokenlist_replace(this._ptr, token, newToken); // Returns true if replaced
+//! };
+//!
+//! // Per WebIDL: boolean supports(DOMString token);
+//! DOMTokenList.prototype.supports = function(token) {
+//!   return zig.domtokenlist_supports(this._ptr, token);
+//! };
+//! ```
+//!
+//! ### Iterable Support
+//! ```javascript
+//! // Per WebIDL: iterable<DOMString>;
+//! // DOMTokenList supports iteration
+//! DOMTokenList.prototype[Symbol.iterator] = function() {
+//!   let index = 0;
+//!   const list = this;
+//!   return {
+//!     next() {
+//!       if (index < list.length) {
+//!         return { value: list.item(index++), done: false };
+//!       }
+//!       return { done: true };
+//!     }
+//!   };
+//! };
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Access via Element.classList
+//! const element = document.createElement('div');
+//! const classList = element.classList; // Returns DOMTokenList
+//!
+//! // Add tokens
+//! classList.add('btn', 'btn-primary', 'active');
+//! console.log(element.className); // 'btn btn-primary active'
+//!
+//! // Check for token
+//! if (classList.contains('btn')) {
+//!   console.log('Element has btn class');
+//! }
+//!
+//! // Remove tokens
+//! classList.remove('btn-primary');
+//! console.log(element.className); // 'btn active'
+//!
+//! // Toggle token
+//! const added = classList.toggle('disabled'); // Returns true if added
+//! console.log(added); // true
+//! classList.toggle('disabled'); // Returns false (removed)
+//!
+//! // Replace token
+//! const replaced = classList.replace('btn', 'button');
+//! console.log(replaced); // true
+//!
+//! // Iterate tokens
+//! for (const token of classList) {
+//!   console.log(token);
+//! }
+//!
+//! // Array-like access
+//! console.log(classList[0]);      // 'button'
+//! console.log(classList.length);  // 2
+//! console.log(classList.item(1)); // 'active'
+//!
+//! // Set entire value
+//! classList.value = 'new-class another-class';
+//! console.log(element.className); // 'new-class another-class'
+//! ```
+//!
+//! ### [CEReactions] Methods
+//! The following methods trigger custom element reactions:
+//! - `add()` - Modifies class attribute
+//! - `remove()` - Modifies class attribute
+//! - `toggle()` - Modifies class attribute
+//! - `replace()` - Modifies class attribute
+//! - `value` setter - Replaces entire class attribute
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -128,23 +259,44 @@ pub const DOMTokenList = struct {
     ///
     /// ## Algorithm (from spec)
     /// Return the number of tokens in the associated attribute's value.
+    /// Per WHATWG spec, DOMTokenList is an ordered set (duplicates are not counted).
     ///
     /// ## Returns
-    /// Number of tokens (0 if attribute not set or empty)
+    /// Number of unique tokens (0 if attribute not set or empty)
     ///
     /// ## Spec References
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-domtokenlist-length
     /// - WebIDL: dom.idl:122
+    /// - Ordered set: https://infra.spec.whatwg.org/#ordered-set
     pub fn length(self: DOMTokenList) usize {
         const attr_value = self.element.getAttribute(self.attribute_name) orelse return 0;
         if (attr_value.len == 0) return 0;
 
-        var count: usize = 0;
+        // Use a simple linear scan to deduplicate tokens
+        // For small token lists (typical case: 1-10 classes), this is faster than HashMap
+        var seen_tokens: [32][]const u8 = undefined; // Stack-allocated for common case
+        var seen_count: usize = 0;
+
         var iter = std.mem.tokenizeAny(u8, attr_value, " \t\r\n\x0C");
-        while (iter.next()) |_| {
-            count += 1;
+        while (iter.next()) |token| {
+            // Check if we've seen this token before
+            var is_duplicate = false;
+            for (seen_tokens[0..seen_count]) |seen| {
+                if (std.mem.eql(u8, seen, token)) {
+                    is_duplicate = true;
+                    break;
+                }
+            }
+
+            if (!is_duplicate) {
+                if (seen_count < seen_tokens.len) {
+                    seen_tokens[seen_count] = token;
+                }
+                seen_count += 1;
+            }
         }
-        return count;
+
+        return seen_count;
     }
 
     /// Returns the token at the given index.
@@ -156,9 +308,10 @@ pub const DOMTokenList = struct {
     ///
     /// ## Algorithm (from spec)
     /// Return the index-th token in the associated attribute's value, or null if index ≥ length.
+    /// Per WHATWG spec, DOMTokenList is an ordered set (duplicates are skipped).
     ///
     /// ## Parameters
-    /// - `index`: Zero-based index
+    /// - `index`: Zero-based index into the ordered set of unique tokens
     ///
     /// ## Returns
     /// Borrowed string (slice into attribute value), or null if index out of bounds
@@ -169,16 +322,37 @@ pub const DOMTokenList = struct {
     /// ## Spec References
     /// - Algorithm: https://dom.spec.whatwg.org/#dom-domtokenlist-item
     /// - WebIDL: dom.idl:123
+    /// - Ordered set: https://infra.spec.whatwg.org/#ordered-set
     pub fn item(self: DOMTokenList, index: usize) ?[]const u8 {
         const attr_value = self.element.getAttribute(self.attribute_name) orelse return null;
 
+        // Deduplicate while iterating (ordered set behavior)
+        var seen_tokens: [32][]const u8 = undefined;
+        var seen_count: usize = 0;
+        var unique_index: usize = 0;
+
         var iter = std.mem.tokenizeAny(u8, attr_value, " \t\r\n\x0C");
-        var i: usize = 0;
         while (iter.next()) |token| {
-            if (i == index) {
-                return token;
+            // Check if we've seen this token before
+            var is_duplicate = false;
+            for (seen_tokens[0..seen_count]) |seen| {
+                if (std.mem.eql(u8, seen, token)) {
+                    is_duplicate = true;
+                    break;
+                }
             }
-            i += 1;
+
+            if (!is_duplicate) {
+                if (unique_index == index) {
+                    return token;
+                }
+
+                if (seen_count < seen_tokens.len) {
+                    seen_tokens[seen_count] = token;
+                }
+                seen_count += 1;
+                unique_index += 1;
+            }
         }
         return null;
     }
@@ -671,18 +845,36 @@ pub const DOMTokenList = struct {
         const attr_value = self.element.getAttribute(self.attribute_name) orelse return null;
         if (attr_value.len == 0) return null;
 
+        // Deduplicate while iterating (ordered set behavior)
+        var seen_tokens: [32][]const u8 = undefined;
+        var seen_count: usize = 0;
+        var unique_index: usize = 0;
+
         var iter = std.mem.tokenizeAny(u8, attr_value, " \t\r\n\x0C");
-        var current_index: usize = 0;
+        while (iter.next()) |token| {
+            // Check if we've seen this token before
+            var is_duplicate = false;
+            for (seen_tokens[0..seen_count]) |seen| {
+                if (std.mem.eql(u8, seen, token)) {
+                    is_duplicate = true;
+                    break;
+                }
+            }
 
-        // Skip to the current iterator position
-        while (current_index < self.iterator_index) : (current_index += 1) {
-            _ = iter.next() orelse return null;
-        }
+            if (!is_duplicate) {
+                // This is a unique token
+                if (unique_index == self.iterator_index) {
+                    // This is the token at the current iterator position
+                    self.iterator_index += 1;
+                    return token;
+                }
 
-        // Get the next token
-        if (iter.next()) |token| {
-            self.iterator_index += 1;
-            return token;
+                if (seen_count < seen_tokens.len) {
+                    seen_tokens[seen_count] = token;
+                }
+                seen_count += 1;
+                unique_index += 1;
+            }
         }
 
         return null;

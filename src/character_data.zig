@@ -71,6 +71,85 @@
 //! defer allocator.free(sub);
 //! // sub = "Hello"
 //! ```
+//!
+//! ## JavaScript Bindings
+//!
+//! CharacterData is an abstract interface in the DOM - it's never instantiated directly.
+//! Instead, Text and Comment nodes inherit these properties and methods.
+//!
+//! ### Instance Properties
+//! ```javascript
+//! // data (read-write) - Per WebIDL: attribute [LegacyNullToEmptyString] DOMString data;
+//! Object.defineProperty(CharacterData.prototype, 'data', {
+//!   get: function() { return zig.characterdata_get_data(this._ptr); },
+//!   set: function(value) {
+//!     // LegacyNullToEmptyString: Convert null to empty string
+//!     zig.characterdata_set_data(this._ptr, value === null ? '' : value);
+//!   }
+//! });
+//!
+//! // length (readonly) - Per WebIDL: readonly attribute unsigned long length;
+//! Object.defineProperty(CharacterData.prototype, 'length', {
+//!   get: function() { return zig.characterdata_get_length(this._ptr); }
+//! });
+//! ```
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // Per WebIDL: DOMString substringData(unsigned long offset, unsigned long count);
+//! CharacterData.prototype.substringData = function(offset, count) {
+//!   return zig.characterdata_substringData(this._ptr, offset, count);
+//! };
+//!
+//! // Per WebIDL: undefined appendData(DOMString data);
+//! CharacterData.prototype.appendData = function(data) {
+//!   zig.characterdata_appendData(this._ptr, data);
+//!   // No return - 'undefined' in WebIDL
+//! };
+//!
+//! // Per WebIDL: undefined insertData(unsigned long offset, DOMString data);
+//! CharacterData.prototype.insertData = function(offset, data) {
+//!   zig.characterdata_insertData(this._ptr, offset, data);
+//! };
+//!
+//! // Per WebIDL: undefined deleteData(unsigned long offset, unsigned long count);
+//! CharacterData.prototype.deleteData = function(offset, count) {
+//!   zig.characterdata_deleteData(this._ptr, offset, count);
+//! };
+//!
+//! // Per WebIDL: undefined replaceData(unsigned long offset, unsigned long count, DOMString data);
+//! CharacterData.prototype.replaceData = function(offset, count, data) {
+//!   zig.characterdata_replaceData(this._ptr, offset, count, data);
+//! };
+//! ```
+//!
+//! ### Inheritance
+//! ```javascript
+//! // Text and Comment inherit all CharacterData properties and methods
+//! // Text inherits: data, length, substringData, appendData, insertData, deleteData, replaceData
+//! // Comment inherits: data, length, substringData, appendData, insertData, deleteData, replaceData
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Create text node (Text inherits from CharacterData)
+//! const text = document.createTextNode('Hello');
+//!
+//! // Use CharacterData properties
+//! console.log(text.data);    // 'Hello'
+//! console.log(text.length);  // 5
+//!
+//! // Use CharacterData methods
+//! text.appendData(' World');        // text.data = 'Hello World'
+//! text.insertData(5, ' Beautiful'); // text.data = 'Hello Beautiful World'
+//! text.deleteData(5, 10);           // text.data = 'Hello World'
+//! text.replaceData(6, 5, 'Zig');    // text.data = 'Hello Zig'
+//!
+//! // Extract substring
+//! const sub = text.substringData(0, 5); // 'Hello'
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -314,4 +393,3 @@ pub fn replaceData(
     allocator.free(data_ptr.*);
     data_ptr.* = new_data;
 }
-

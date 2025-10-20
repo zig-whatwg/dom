@@ -75,3 +75,51 @@ test {
 test {
     _ = @import("nodes/DOMTokenList-classList.zig");
 }
+
+// TreeWalker tests
+test {
+    _ = @import("traversal/TreeWalker-basic.zig");
+    _ = @import("traversal/TreeWalker-currentNode.zig");
+    _ = @import("traversal/TreeWalker-traversal-reject.zig");
+    _ = @import("traversal/TreeWalker-traversal-skip.zig");
+    _ = @import("traversal/TreeWalker-acceptNode-filter.zig");
+}
+
+// NodeIterator tests
+test {
+    _ = @import("traversal/NodeIterator.zig");
+    _ = @import("traversal/NodeIterator-removal.zig");
+    _ = @import("traversal/NodeFilter-constants.zig");
+}
+
+// Range tests
+test {
+    _ = @import("ranges/Range-constructor.zig");
+    _ = @import("ranges/Range-compareBoundaryPoints.zig");
+    _ = @import("ranges/Range-deleteContents.zig");
+    _ = @import("ranges/Range-extractContents.zig");
+    _ = @import("ranges/Range-insertNode.zig");
+}
+
+// DOMTokenList WPT tests
+test {
+    _ = @import("lists/DOMTokenList-Iterable.zig");
+    _ = @import("lists/DOMTokenList-iteration.zig");
+    _ = @import("lists/DOMTokenList-stringifier.zig");
+    _ = @import("lists/DOMTokenList-value.zig");
+}
+
+// HTMLCollection WPT tests
+test {
+    _ = @import("collections/HTMLCollection-iterator.zig");
+    _ = @import("collections/HTMLCollection-supported-property-indices.zig");
+    _ = @import("collections/HTMLCollection-supported-property-names.zig");
+    _ = @import("collections/HTMLCollection-empty-name.zig");
+}
+
+// AbortSignal WPT tests
+test {
+    _ = @import("abort/AbortSignal.zig");
+    _ = @import("abort/event.zig");
+    _ = @import("abort/AbortSignal-any.zig");
+}

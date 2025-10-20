@@ -207,6 +207,134 @@
 //! - Only one shadow root per element (attachShadow() throws if already exists)
 //! - ShadowRoot freed when host element is freed
 //! - Closed mode hides shadow root from JavaScript, but still accessible internally
+//!
+//! ## JavaScript Bindings
+//!
+//! ShadowRoot is created via Element.attachShadow() and extends DocumentFragment.
+//!
+//! ### Instance Properties
+//! ```javascript
+//! // mode (readonly) - Per WebIDL: readonly attribute ShadowRootMode mode;
+//! Object.defineProperty(ShadowRoot.prototype, 'mode', {
+//!   get: function() { return zig.shadowroot_get_mode(this._ptr); } // Returns 'open' or 'closed'
+//! });
+//!
+//! // delegatesFocus (readonly) - Per WebIDL: readonly attribute boolean delegatesFocus;
+//! Object.defineProperty(ShadowRoot.prototype, 'delegatesFocus', {
+//!   get: function() { return zig.shadowroot_get_delegatesFocus(this._ptr); }
+//! });
+//!
+//! // slotAssignment (readonly) - Per WebIDL: readonly attribute SlotAssignmentMode slotAssignment;
+//! Object.defineProperty(ShadowRoot.prototype, 'slotAssignment', {
+//!   get: function() { return zig.shadowroot_get_slotAssignment(this._ptr); } // Returns 'manual' or 'named'
+//! });
+//!
+//! // clonable (readonly) - Per WebIDL: readonly attribute boolean clonable;
+//! Object.defineProperty(ShadowRoot.prototype, 'clonable', {
+//!   get: function() { return zig.shadowroot_get_clonable(this._ptr); }
+//! });
+//!
+//! // serializable (readonly) - Per WebIDL: readonly attribute boolean serializable;
+//! Object.defineProperty(ShadowRoot.prototype, 'serializable', {
+//!   get: function() { return zig.shadowroot_get_serializable(this._ptr); }
+//! });
+//!
+//! // host (readonly) - Per WebIDL: readonly attribute Element host;
+//! Object.defineProperty(ShadowRoot.prototype, 'host', {
+//!   get: function() {
+//!     const ptr = zig.shadowroot_get_host(this._ptr);
+//!     return wrapElement(ptr);
+//!   }
+//! });
+//!
+//! // onslotchange (read-write) - Per WebIDL: attribute EventHandler onslotchange;
+//! Object.defineProperty(ShadowRoot.prototype, 'onslotchange', {
+//!   get: function() { return zig.shadowroot_get_onslotchange(this._ptr); },
+//!   set: function(handler) { zig.shadowroot_set_onslotchange(this._ptr, handler); }
+//! });
+//! ```
+//!
+//! ### Inheritance from DocumentFragment
+//! ```javascript
+//! // ShadowRoot inherits all DocumentFragment properties and methods:
+//! // - ParentNode mixin: children, firstElementChild, lastElementChild, childElementCount
+//! // - ParentNode methods: querySelector, querySelectorAll, append, prepend, replaceChildren
+//! // - Node properties: childNodes, firstChild, lastChild, parentNode, etc.
+//! // - Node methods: appendChild, insertBefore, removeChild, etc.
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Create shadow root
+//! const host = document.createElement('div');
+//! const shadow = host.attachShadow({
+//!   mode: 'open',
+//!   delegatesFocus: false,
+//!   slotAssignment: 'named'
+//! });
+//!
+//! // Check shadow root properties
+//! console.log(shadow.mode);           // 'open'
+//! console.log(shadow.host);           // <div> element
+//! console.log(shadow.delegatesFocus); // false
+//! console.log(shadow.slotAssignment); // 'named'
+//!
+//! // Add content to shadow root
+//! const style = document.createElement('style');
+//! style.textContent = ':host { display: block; }';
+//! shadow.appendChild(style);
+//!
+//! const slot = document.createElement('slot');
+//! slot.name = 'content';
+//! shadow.appendChild(slot);
+//!
+//! // Query within shadow root
+//! const slots = shadow.querySelectorAll('slot');
+//! console.log(slots.length); // 1
+//!
+//! // Access via host (mode: open only)
+//! console.log(host.shadowRoot === shadow); // true
+//!
+//! // Closed mode (shadowRoot returns null)
+//! const closedHost = document.createElement('div');
+//! const closedShadow = closedHost.attachShadow({ mode: 'closed' });
+//! console.log(closedHost.shadowRoot); // null (hidden from JavaScript)
+//!
+//! // Slotchange event handler
+//! shadow.onslotchange = (e) => {
+//!   console.log('Slot assignments changed', e.target);
+//! };
+//!
+//! // Or use addEventListener (preferred)
+//! shadow.addEventListener('slotchange', (e) => {
+//!   console.log('Slot changed:', e.target.name);
+//! });
+//!
+//! // Declarative shadow DOM (with clonable/serializable)
+//! const template = document.createElement('template');
+//! template.innerHTML = `
+//!   <template shadowrootmode="open" shadowrootclonable>
+//!     <style>:host { color: blue; }</style>
+//!     <slot></slot>
+//!   </template>
+//! `;
+//! ```
+//!
+//! ### Mode Enforcement
+//! ```javascript
+//! // Open mode - shadowRoot accessible
+//! const openHost = document.createElement('div');
+//! const openShadow = openHost.attachShadow({ mode: 'open' });
+//! console.log(openHost.shadowRoot); // Returns ShadowRoot
+//!
+//! // Closed mode - shadowRoot hidden
+//! const closedHost = document.createElement('div');
+//! const closedShadow = closedHost.attachShadow({ mode: 'closed' });
+//! console.log(closedHost.shadowRoot); // null
+//! // But internal implementation still has access
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -323,6 +451,30 @@ pub const ShadowRoot = struct {
     /// - No acquire() called, no release() needed
     host_element: *Element,
 
+    /// Event handler for slotchange events (legacy).
+    ///
+    /// Implements WHATWG DOM ShadowRoot.onslotchange per §4.2.2.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// attribute EventHandler onslotchange;
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - onslotchange: https://developer.mozilla.org/en-US/docs/Web/API/ShadowRoot/onslotchange
+    ///
+    /// ## Notes
+    /// - EventHandler is a callback function (typically from JavaScript bindings)
+    /// - Called when slotchange event fires on this shadow root
+    /// - Modern code should use addEventListener("slotchange") instead
+    /// - This is a legacy convenience property
+    /// - In pure Zig code, use addEventListener for better type safety
+    ///
+    /// ## Spec References
+    /// - WebIDL: dom.idl:371
+    /// - Spec: https://dom.spec.whatwg.org/#dom-shadowroot-onslotchange
+    onslotchange: ?*anyopaque = null,
+
     /// Vtable for ShadowRoot nodes.
     const vtable = NodeVTable{
         .deinit = deinitImpl,
@@ -403,6 +555,7 @@ pub const ShadowRoot = struct {
         shadow.clonable = init.clonable;
         shadow.serializable = init.serializable;
         shadow.host_element = host_elem; // Non-owning pointer
+        shadow.onslotchange = null; // Phase 8 - Legacy event handler
 
         return shadow;
     }

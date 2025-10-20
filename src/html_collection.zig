@@ -188,6 +188,103 @@
 //! - Live collection - automatically reflects DOM mutations
 //! - Non-owning - elements owned by tree structure, not by HTMLCollection
 //! - Generic design - works with any document type, not HTML-specific
+//!
+//! ## JavaScript Bindings
+//!
+//! HTMLCollection is accessed via Element.children, Document.getElementsByTagName, etc.
+//!
+//! ### Instance Properties
+//! ```javascript
+//! // length (readonly) - Per WebIDL: readonly attribute unsigned long length;
+//! Object.defineProperty(HTMLCollection.prototype, 'length', {
+//!   get: function() { return zig.htmlcollection_get_length(this._ptr); }
+//! });
+//! ```
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // Per WebIDL: getter Element? item(unsigned long index);
+//! HTMLCollection.prototype.item = function(index) {
+//!   const ptr = zig.htmlcollection_item(this._ptr, index);
+//!   return ptr ? wrapElement(ptr) : null;
+//! };
+//!
+//! // Per WebIDL: getter Element? namedItem(DOMString name);
+//! HTMLCollection.prototype.namedItem = function(name) {
+//!   const ptr = zig.htmlcollection_namedItem(this._ptr, name);
+//!   return ptr ? wrapElement(ptr) : null;
+//! };
+//! ```
+//!
+//! ### Array-Like Access
+//! ```javascript
+//! // Numeric indices - collection[0], collection[1], etc.
+//! Object.defineProperty(HTMLCollection.prototype, Symbol.iterator, {
+//!   value: function() {
+//!     let index = 0;
+//!     const collection = this;
+//!     return {
+//!       next() {
+//!         if (index < collection.length) {
+//!           return { value: collection.item(index++), done: false };
+//!         }
+//!         return { done: true };
+//!       }
+//!     };
+//!   }
+//! });
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Access element children
+//! const parent = document.createElement('div');
+//! const child1 = document.createElement('span');
+//! const child2 = document.createElement('p');
+//! parent.appendChild(child1);
+//! parent.appendChild(child2);
+//!
+//! const children = parent.children; // Returns HTMLCollection
+//! console.log(children.length); // 2
+//!
+//! // Access by index
+//! console.log(children[0].tagName);     // 'SPAN'
+//! console.log(children.item(1).tagName); // 'P'
+//!
+//! // Live collection - updates automatically
+//! const child3 = document.createElement('a');
+//! parent.appendChild(child3);
+//! console.log(children.length); // 3 (automatically updated!)
+//!
+//! // Named access (if element has id or name)
+//! child1.id = 'first';
+//! console.log(children.namedItem('first')); // Returns child1
+//!
+//! // Iterate collection
+//! for (const element of children) {
+//!   console.log(element.tagName);
+//! }
+//!
+//! // getElementsByTagName returns HTMLCollection
+//! const allDivs = document.getElementsByTagName('div');
+//! console.log(allDivs.length);
+//! console.log(allDivs[0]); // First div element
+//! ```
+//!
+//! ### Live Collection Behavior
+//! ```javascript
+//! const collection = document.getElementsByTagName('div');
+//! const initialLength = collection.length; // e.g., 5
+//!
+//! // Add new div to document
+//! const newDiv = document.createElement('div');
+//! document.body.appendChild(newDiv);
+//!
+//! // Collection automatically includes new element
+//! console.log(collection.length); // 6 (was 5)
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Node = @import("node.zig").Node;
@@ -518,6 +615,12 @@ pub const HTMLCollection = struct {
     /// const elem = collection.namedItem("submit-btn");
     /// ```
     pub fn namedItem(self: *const HTMLCollection, name: []const u8) ?*Element {
+        // Per WHATWG spec: "If name is the empty string, return null"
+        // Spec: https://dom.spec.whatwg.org/#dom-htmlcollection-nameditem-key
+        if (name.len == 0) {
+            return null;
+        }
+
         // Search all elements in collection for matching id or name attribute
         const len = self.length();
         var i: usize = 0;

@@ -69,6 +69,148 @@
 //! - ✅ nodeValue returns null
 //! - ✅ Cannot have children (no appendChild, etc.)
 //! - ✅ Can be adopted into different documents
+//!
+//! ## JavaScript Bindings
+//!
+//! DocumentType represents a document's DTD (Document Type Declaration).
+//!
+//! ### Creation
+//! DocumentType is typically created via `DOMImplementation.createDocumentType()`:
+//! ```javascript
+//! // Per WebIDL: [NewObject] DocumentType createDocumentType(DOMString qualifiedName, DOMString publicId, DOMString systemId);
+//! const doctype = document.implementation.createDocumentType(
+//!   'html',  // name
+//!   '',      // publicId (empty for HTML5)
+//!   ''       // systemId (empty for HTML5)
+//! );
+//!
+//! // Access via document.doctype
+//! const existing = document.doctype;
+//! console.log(existing.name); // 'html'
+//! ```
+//!
+//! ### Instance Properties (Readonly)
+//! ```javascript
+//! // Per WebIDL: readonly attribute DOMString name;
+//! Object.defineProperty(DocumentType.prototype, 'name', {
+//!   get: function() { return zig.documenttype_get_name(this._ptr); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute DOMString publicId;
+//! Object.defineProperty(DocumentType.prototype, 'publicId', {
+//!   get: function() { return zig.documenttype_get_publicId(this._ptr); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute DOMString systemId;
+//! Object.defineProperty(DocumentType.prototype, 'systemId', {
+//!   get: function() { return zig.documenttype_get_systemId(this._ptr); }
+//! });
+//! ```
+//!
+//! ### Inherited from Node
+//! DocumentType inherits all Node properties and methods:
+//! - `nodeName`: Returns the same value as `name`
+//! - `nodeType`: Returns `Node.DOCUMENT_TYPE_NODE` (10)
+//! - `nodeValue`: Always `null`
+//! - `parentNode`, `previousSibling`, `nextSibling`: Navigation properties
+//! - `remove()`, `before()`, `after()`, `replaceWith()`: ChildNode mixin methods
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Example 1: HTML5 doctype (most common)
+//! const htmlDoctype = document.implementation.createDocumentType('html', '', '');
+//! console.log(htmlDoctype.name);     // 'html'
+//! console.log(htmlDoctype.publicId); // ''
+//! console.log(htmlDoctype.systemId); // ''
+//! console.log(htmlDoctype.nodeName); // 'html' (same as name)
+//! console.log(htmlDoctype.nodeType); // 10 (Node.DOCUMENT_TYPE_NODE)
+//!
+//! // Example 2: XML doctype with public and system IDs
+//! const xmlDoctype = document.implementation.createDocumentType(
+//!   'svg',
+//!   '-//W3C//DTD SVG 1.1//EN',
+//!   'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'
+//! );
+//! console.log(xmlDoctype.name);     // 'svg'
+//! console.log(xmlDoctype.publicId); // '-//W3C//DTD SVG 1.1//EN'
+//! console.log(xmlDoctype.systemId); // 'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'
+//!
+//! // Example 3: Access existing doctype
+//! const doctype = document.doctype;
+//! if (doctype) {
+//!   console.log('Document type:', doctype.name);
+//!   if (doctype.publicId) {
+//!     console.log('Public ID:', doctype.publicId);
+//!   }
+//!   if (doctype.systemId) {
+//!     console.log('System ID:', doctype.systemId);
+//!   }
+//! }
+//!
+//! // Example 4: Creating a document with a doctype
+//! const doctype = document.implementation.createDocumentType('html', '', '');
+//! const doc = document.implementation.createDocument(null, 'root', doctype);
+//! console.log(doc.doctype === doctype); // true
+//!
+//! // Example 5: DocumentType cannot have children
+//! const doctype = document.doctype;
+//! try {
+//!   const text = document.createTextNode('text');
+//!   doctype.appendChild(text); // Throws HierarchyRequestError
+//! } catch (e) {
+//!   console.log('Cannot append children to DocumentType');
+//! }
+//!
+//! // Example 6: ChildNode mixin methods
+//! const doctype = document.doctype;
+//! if (doctype) {
+//!   // Remove from document
+//!   doctype.remove();
+//!   console.log(document.doctype); // null
+//!
+//!   // Insert before/after (if doctype has a parent)
+//!   const comment = document.createComment('Before doctype');
+//!   doctype.before(comment);
+//!
+//!   // Replace with another node
+//!   const newDoctype = document.implementation.createDocumentType('xml', '', '');
+//!   doctype.replaceWith(newDoctype);
+//! }
+//! ```
+//!
+//! ### Common DOCTYPE Examples
+//! ```javascript
+//! // HTML5 (modern standard)
+//! // <!DOCTYPE html>
+//! const html5 = document.implementation.createDocumentType('html', '', '');
+//!
+//! // XHTML 1.0 Strict
+//! // <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+//! const xhtmlStrict = document.implementation.createDocumentType(
+//!   'html',
+//!   '-//W3C//DTD XHTML 1.0 Strict//EN',
+//!   'http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd'
+//! );
+//!
+//! // SVG 1.1
+//! // <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+//! const svg = document.implementation.createDocumentType(
+//!   'svg',
+//!   '-//W3C//DTD SVG 1.1//EN',
+//!   'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'
+//! );
+//!
+//! // Custom XML
+//! const xml = document.implementation.createDocumentType('custom', '', '');
+//! ```
+//!
+//! ### Notes
+//! - **No children allowed**: DocumentType nodes cannot have child nodes (throws HierarchyRequestError)
+//! - **Immutable properties**: name, publicId, and systemId are readonly and cannot be changed
+//! - **HTML5 convention**: Modern HTML5 documents use `<!DOCTYPE html>` with empty publicId and systemId
+//! - **Legacy doctypes**: Older HTML/XHTML versions use public and system identifiers for validation
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -507,4 +649,3 @@ pub const DocumentType = struct {
         // When appendChild is called, Document will re-intern if needed
     }
 };
-

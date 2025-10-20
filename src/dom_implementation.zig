@@ -56,6 +56,149 @@
 //! This is a **generic DOM library** for XML and custom document types, NOT an HTML-specific library.
 //! The createHTMLDocument() method is HTML-specific and not applicable here. HTML libraries
 //! extending this DOM library should implement their own HTMLDocument type and factory.
+//!
+//! ## JavaScript Bindings
+//!
+//! DOMImplementation provides factory methods for creating documents and document types.
+//!
+//! ### Access
+//! DOMImplementation is accessed via `document.implementation`:
+//! ```javascript
+//! // Per WebIDL: [SameObject] readonly attribute DOMImplementation implementation;
+//! const impl = document.implementation;
+//! ```
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // Per WebIDL: [NewObject] DocumentType createDocumentType(DOMString name, DOMString publicId, DOMString systemId);
+//! DOMImplementation.prototype.createDocumentType = function(name, publicId, systemId) {
+//!   return wrapDocumentType(zig.domimplementation_createDocumentType(this._ptr, name, publicId, systemId));
+//! };
+//!
+//! // Per WebIDL: [NewObject] XMLDocument createDocument(DOMString? namespace, [LegacyNullToEmptyString] DOMString qualifiedName, optional DocumentType? doctype = null);
+//! DOMImplementation.prototype.createDocument = function(namespace, qualifiedName, doctype) {
+//!   // [LegacyNullToEmptyString]: null becomes ""
+//!   const qName = qualifiedName === null ? '' : qualifiedName;
+//!   const doctypePtr = doctype ? doctype._ptr : null;
+//!   return wrapDocument(zig.domimplementation_createDocument(this._ptr, namespace, qName, doctypePtr));
+//! };
+//!
+//! // Per WebIDL: boolean hasFeature(); // useless; always returns true
+//! DOMImplementation.prototype.hasFeature = function() {
+//!   return true; // Always returns true (deprecated API, exists for historical compatibility)
+//! };
+//!
+//! // NOTE: createHTMLDocument() is NOT IMPLEMENTED in this generic DOM library
+//! // HTML-specific libraries extending this DOM should implement HTMLDocument separately
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Access DOMImplementation
+//! const impl = document.implementation;
+//!
+//! // Example 1: Create HTML5 DOCTYPE
+//! const htmlDoctype = impl.createDocumentType('html', '', '');
+//! console.log(htmlDoctype.name);     // 'html'
+//! console.log(htmlDoctype.publicId); // ''
+//! console.log(htmlDoctype.systemId); // ''
+//!
+//! // Example 2: Create XML document with root element
+//! const xmlDoc = impl.createDocument(null, 'root', null);
+//! console.log(xmlDoc.documentElement.nodeName); // 'ROOT'
+//! console.log(xmlDoc.childNodes.length);        // 1 (root element)
+//!
+//! // Example 3: Create document with namespace
+//! const svgDoc = impl.createDocument(
+//!   'http://www.w3.org/2000/svg',
+//!   'svg',
+//!   null
+//! );
+//! console.log(svgDoc.documentElement.nodeName);      // 'SVG'
+//! console.log(svgDoc.documentElement.namespaceURI);  // 'http://www.w3.org/2000/svg'
+//!
+//! // Example 4: Create document with DOCTYPE
+//! const doctype = impl.createDocumentType(
+//!   'svg',
+//!   '-//W3C//DTD SVG 1.1//EN',
+//!   'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'
+//! );
+//! const svgWithDoctype = impl.createDocument(
+//!   'http://www.w3.org/2000/svg',
+//!   'svg',
+//!   doctype
+//! );
+//! console.log(svgWithDoctype.doctype === doctype); // true
+//! console.log(svgWithDoctype.childNodes.length);   // 2 (doctype + root element)
+//!
+//! // Example 5: Create empty document (no root element)
+//! const emptyDoc = impl.createDocument(null, '', null);
+//! console.log(emptyDoc.documentElement); // null (no root element)
+//! console.log(emptyDoc.childNodes.length); // 0
+//!
+//! // Can add root element later
+//! const root = emptyDoc.createElement('root');
+//! emptyDoc.appendChild(root);
+//! console.log(emptyDoc.documentElement === root); // true
+//!
+//! // Example 6: hasFeature() - deprecated, always returns true
+//! console.log(impl.hasFeature()); // true (always)
+//! console.log(impl.hasFeature('Core', '2.0')); // true (parameters ignored)
+//! // Modern code should NOT use hasFeature() for feature detection
+//!
+//! // Example 7: Create custom XML document
+//! const customDoc = impl.createDocument(null, 'data', null);
+//! const item = customDoc.createElement('item');
+//! item.setAttribute('id', '1');
+//! customDoc.documentElement.appendChild(item);
+//! console.log(customDoc.documentElement.nodeName); // 'DATA'
+//! console.log(customDoc.documentElement.childNodes.length); // 1
+//! ```
+//!
+//! ### Common Use Cases
+//! ```javascript
+//! // Use case 1: Create standalone XML document
+//! function createXMLDoc(rootName) {
+//!   const impl = document.implementation;
+//!   return impl.createDocument(null, rootName, null);
+//! }
+//!
+//! // Use case 2: Create document with specific DOCTYPE
+//! function createSVGDocument() {
+//!   const impl = document.implementation;
+//!   const doctype = impl.createDocumentType(
+//!     'svg',
+//!     '-//W3C//DTD SVG 1.1//EN',
+//!     'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'
+//!   );
+//!   return impl.createDocument(
+//!     'http://www.w3.org/2000/svg',
+//!     'svg',
+//!     doctype
+//!   );
+//! }
+//!
+//! // Use case 3: Clone document structure (without content)
+//! function cloneDocumentStructure(doc) {
+//!   const impl = doc.implementation;
+//!   const doctype = doc.doctype ? impl.createDocumentType(
+//!     doc.doctype.name,
+//!     doc.doctype.publicId,
+//!     doc.doctype.systemId
+//!   ) : null;
+//!   const rootName = doc.documentElement ? doc.documentElement.nodeName : '';
+//!   return impl.createDocument(null, rootName, doctype);
+//! }
+//! ```
+//!
+//! ### Notes
+//! - **[NewObject]**: All create methods return new objects (fresh references)
+//! - **[LegacyNullToEmptyString]**: In `createDocument()`, null qualifiedName becomes empty string
+//! - **hasFeature() is deprecated**: Modern code should NOT use this for feature detection
+//! - **No createHTMLDocument()**: This generic DOM library does not implement HTML-specific features
+//! - **Namespace handling**: Full namespace support requires `createElementNS()` (not yet implemented)
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

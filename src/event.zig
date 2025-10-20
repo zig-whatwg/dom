@@ -535,6 +535,192 @@ pub const Event = struct {
             self.event_path = null;
         }
     }
+
+    // ========================================================================
+    // LEGACY PROPERTIES (Phase 8)
+    // ========================================================================
+
+    /// Returns the event target (legacy alias).
+    ///
+    /// Implements WHATWG DOM Event.srcElement per §2.2 (legacy).
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute EventTarget? srcElement; // legacy
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - srcElement: https://developer.mozilla.org/en-US/docs/Web/API/Event/srcElement
+    ///
+    /// ## Algorithm (from spec)
+    /// Return event's target.
+    ///
+    /// ## Returns
+    /// Event target (same as `target` property)
+    ///
+    /// ## Notes
+    /// - Legacy alias for `target` property
+    /// - Provided for compatibility with older code
+    /// - Modern code should use `target` instead
+    ///
+    /// ## Spec References
+    /// - WebIDL: dom.idl:34
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-event-srcelement
+    pub fn srcElement(self: *const Event) ?*anyopaque {
+        return self.target;
+    }
+
+    /// Gets or sets the cancelBubble flag (legacy alias of stopPropagation).
+    ///
+    /// Implements WHATWG DOM Event.cancelBubble per §2.2 (legacy).
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// attribute boolean cancelBubble; // legacy alias of .stopPropagation()
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - cancelBubble: https://developer.mozilla.org/en-US/docs/Web/API/Event/cancelBubble
+    ///
+    /// ## Algorithm (from spec - getter)
+    /// Return event's stop propagation flag.
+    ///
+    /// ## Algorithm (from spec - setter)
+    /// If the given value is true, set event's stop propagation flag.
+    ///
+    /// ## Returns
+    /// True if stopPropagation() was called, false otherwise
+    ///
+    /// ## Notes
+    /// - Legacy writable alias for stop propagation flag
+    /// - Setting to true calls stopPropagation()
+    /// - Setting to false has no effect (per spec)
+    /// - Modern code should use stopPropagation() method instead
+    ///
+    /// ## Spec References
+    /// - WebIDL: dom.idl:40
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-event-cancelbubble
+    pub fn getCancelBubble(self: *const Event) bool {
+        return self.stop_propagation_flag;
+    }
+
+    /// Sets the cancelBubble flag (calls stopPropagation if true).
+    ///
+    /// ## Parameters
+    /// - `value`: If true, stops event propagation
+    pub fn setCancelBubble(self: *Event, value: bool) void {
+        if (value) {
+            self.stopPropagation();
+        }
+    }
+
+    /// Gets or sets the returnValue flag (legacy alias of preventDefault).
+    ///
+    /// Implements WHATWG DOM Event.returnValue per §2.2 (legacy).
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// attribute boolean returnValue;  // legacy
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - returnValue: https://developer.mozilla.org/en-US/docs/Web/API/Event/returnValue
+    ///
+    /// ## Algorithm (from spec - getter)
+    /// Return true if event's canceled flag is unset, and false otherwise.
+    ///
+    /// ## Algorithm (from spec - setter)
+    /// If the given value is false, set event's canceled flag.
+    ///
+    /// ## Returns
+    /// False if preventDefault() was called, true otherwise
+    ///
+    /// ## Notes
+    /// - Legacy writable property (inverted logic from defaultPrevented)
+    /// - Setting to false calls preventDefault()
+    /// - Setting to true has no effect (per spec)
+    /// - Modern code should use preventDefault() method instead
+    ///
+    /// ## Spec References
+    /// - WebIDL: dom.idl:44
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-event-returnvalue
+    pub fn getReturnValue(self: *const Event) bool {
+        return !self.canceled_flag;
+    }
+
+    /// Sets the returnValue flag (calls preventDefault if false).
+    ///
+    /// ## Parameters
+    /// - `value`: If false, prevents default action
+    pub fn setReturnValue(self: *Event, value: bool) void {
+        if (!value) {
+            self.preventDefault();
+        }
+    }
+
+    /// Initializes the event (legacy).
+    ///
+    /// Implements WHATWG DOM Event.initEvent() per §2.3 (legacy).
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// undefined initEvent(DOMString type, optional boolean bubbles = false, optional boolean cancelable = false); // legacy
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - initEvent: https://developer.mozilla.org/en-US/docs/Web/API/Event/initEvent
+    ///
+    /// ## Algorithm (from spec)
+    /// 1. If event's dispatch flag is set, return.
+    /// 2. Set event's initialized flag.
+    /// 3. If event's stop propagation flag is set, clear it.
+    /// 4. If event's stop immediate propagation flag is set, clear it.
+    /// 5. If event's canceled flag is set, clear it.
+    /// 6. Set event's is trusted flag to false.
+    /// 7. Set event's target to null.
+    /// 8. Set event's type to type.
+    /// 9. Set event's bubbles to bubbles.
+    /// 10. Set event's cancelable to cancelable.
+    ///
+    /// ## Parameters
+    /// - `event_type`: The event type (e.g., "click")
+    /// - `bubbles`: Whether the event should bubble (default: false)
+    /// - `cancelable`: Whether the event can be canceled (default: false)
+    ///
+    /// ## Notes
+    /// - Legacy initialization method (deprecated)
+    /// - Modern code should use Event constructor instead
+    /// - Does nothing if event is currently being dispatched
+    /// - Clears all flags and resets state
+    ///
+    /// ## Spec References
+    /// - WebIDL: dom.idl:49
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-event-initevent
+    pub fn initEvent(self: *Event, event_type: []const u8, bubbles: bool, cancelable: bool) void {
+        // 1. If dispatch flag is set, return (no-op)
+        if (self.dispatch_flag) {
+            return;
+        }
+
+        // 2. Set initialized flag
+        self.initialized_flag = true;
+
+        // 3-5. Clear all propagation/cancellation flags
+        self.stop_propagation_flag = false;
+        self.stop_immediate_propagation_flag = false;
+        self.canceled_flag = false;
+
+        // 6. Set is_trusted to false
+        self.is_trusted = false;
+
+        // 7. Set target to null
+        self.target = null;
+
+        // 8-10. Set type, bubbles, cancelable
+        self.event_type = event_type;
+        self.bubbles = bubbles;
+        self.cancelable = cancelable;
+    }
 };
 
 /// Options for creating an Event.
@@ -566,16 +752,3 @@ pub const EventInit = struct {
 // ============================================================================
 // TESTS
 // ============================================================================
-
-
-
-
-
-
-
-
-
-
-
-
-

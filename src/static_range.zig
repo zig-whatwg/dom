@@ -188,6 +188,241 @@
 //! }
 //! Total: 40 bytes (50-70% smaller than Range)
 //! ```
+//!
+//! ## JavaScript Bindings
+//!
+//! StaticRange is a lightweight, immutable range that does NOT track DOM mutations.
+//!
+//! ### Constructor
+//! ```javascript
+//! // Per WebIDL: constructor(StaticRangeInit init);
+//! function StaticRange(init) {
+//!   // init is a StaticRangeInit dictionary with required fields:
+//!   // - startContainer: Node
+//!   // - startOffset: unsigned long
+//!   // - endContainer: Node
+//!   // - endOffset: unsigned long
+//!   this._ptr = zig.staticrange_init(
+//!     init.startContainer._ptr,
+//!     init.startOffset,
+//!     init.endContainer._ptr,
+//!     init.endOffset
+//!   );
+//! }
+//! ```
+//!
+//! ### Instance Properties (Readonly, inherited from AbstractRange)
+//! ```javascript
+//! // Per WebIDL: readonly attribute Node startContainer;
+//! Object.defineProperty(StaticRange.prototype, 'startContainer', {
+//!   get: function() { return wrapNode(zig.staticrange_get_startContainer(this._ptr)); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute unsigned long startOffset;
+//! Object.defineProperty(StaticRange.prototype, 'startOffset', {
+//!   get: function() { return zig.staticrange_get_startOffset(this._ptr); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute Node endContainer;
+//! Object.defineProperty(StaticRange.prototype, 'endContainer', {
+//!   get: function() { return wrapNode(zig.staticrange_get_endContainer(this._ptr)); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute unsigned long endOffset;
+//! Object.defineProperty(StaticRange.prototype, 'endOffset', {
+//!   get: function() { return zig.staticrange_get_endOffset(this._ptr); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute boolean collapsed;
+//! Object.defineProperty(StaticRange.prototype, 'collapsed', {
+//!   get: function() { return zig.staticrange_get_collapsed(this._ptr); }
+//! });
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Example 1: Create a StaticRange selecting text within a node
+//! const text = document.createTextNode('Hello, World!');
+//! const range = new StaticRange({
+//!   startContainer: text,
+//!   startOffset: 0,
+//!   endContainer: text,
+//!   endOffset: 5
+//! });
+//!
+//! console.log(range.startContainer === text); // true
+//! console.log(range.startOffset);             // 0
+//! console.log(range.endOffset);               // 5
+//! console.log(range.collapsed);               // false (different offsets)
+//!
+//! // Example 2: Create a collapsed range (insertion point)
+//! const collapsed = new StaticRange({
+//!   startContainer: text,
+//!   startOffset: 5,
+//!   endContainer: text,
+//!   endOffset: 5
+//! });
+//!
+//! console.log(collapsed.collapsed); // true (same container + offset)
+//!
+//! // Example 3: StaticRange allows out-of-bounds offsets!
+//! const invalid = new StaticRange({
+//!   startContainer: text,
+//!   startOffset: 999,  // Out of bounds! (text length is 13)
+//!   endContainer: text,
+//!   endOffset: 9999    // Also out of bounds!
+//! });
+//!
+//! // Constructor succeeds, but range is invalid
+//! console.log(invalid.startOffset); // 999 (allowed!)
+//! console.log(invalid.endOffset);   // 9999 (allowed!)
+//!
+//! // Example 4: Invalid node types throw
+//! const doctype = document.doctype;
+//! try {
+//!   const badRange = new StaticRange({
+//!     startContainer: doctype,  // DocumentType not allowed!
+//!     startOffset: 0,
+//!     endContainer: text,
+//!     endOffset: 0
+//!   });
+//! } catch (e) {
+//!   console.log('InvalidNodeTypeError:', e.message);
+//! }
+//!
+//! // Example 5: Cross-element ranges
+//! const elem1 = document.createElement('container');
+//! const elem2 = document.createElement('container');
+//! const text1 = document.createTextNode('Start');
+//! const text2 = document.createTextNode('End');
+//! elem1.appendChild(text1);
+//! elem2.appendChild(text2);
+//!
+//! const crossRange = new StaticRange({
+//!   startContainer: text1,
+//!   startOffset: 0,
+//!   endContainer: text2,
+//!   endOffset: 3
+//! });
+//!
+//! console.log(crossRange.startContainer === text1); // true
+//! console.log(crossRange.endContainer === text2);   // true
+//!
+//! // Example 6: Using with Input Events
+//! // StaticRange is commonly used in Input Events (beforeinput/input)
+//! input.addEventListener('beforeinput', (event) => {
+//!   // event.getTargetRanges() returns StaticRange[]
+//!   const ranges = event.getTargetRanges();
+//!   ranges.forEach(range => {
+//!     console.log('Input will affect:',
+//!       range.startContainer,
+//!       range.startOffset,
+//!       'to',
+//!       range.endOffset
+//!     );
+//!   });
+//! });
+//!
+//! // Example 7: Immutability - cannot modify after creation
+//! const range = new StaticRange({
+//!   startContainer: text,
+//!   startOffset: 0,
+//!   endContainer: text,
+//!   endOffset: 5
+//! });
+//!
+//! // These properties are readonly - no setters exist
+//! // range.startOffset = 10; // Does nothing (or throws in strict mode)
+//! // Use Range instead if you need mutability
+//! ```
+//!
+//! ### StaticRangeInit Dictionary
+//! ```javascript
+//! // All fields are REQUIRED
+//! const init = {
+//!   startContainer: node,  // required - must be a Node (not DocumentType or Attr)
+//!   startOffset: 0,        // required - can be out of bounds
+//!   endContainer: node,    // required - must be a Node (not DocumentType or Attr)
+//!   endOffset: 5          // required - can be out of bounds
+//! };
+//!
+//! const range = new StaticRange(init);
+//! ```
+//!
+//! ### Key Differences from Range
+//! ```javascript
+//! // StaticRange vs Range
+//!
+//! // StaticRange (immutable, lightweight)
+//! const staticRange = new StaticRange({
+//!   startContainer: text,
+//!   startOffset: 0,
+//!   endContainer: text,
+//!   endOffset: 5
+//! });
+//! // - Cannot be modified after creation
+//! // - Does NOT track DOM mutations
+//! // - Can have invalid offsets
+//! // - Smaller memory footprint
+//! // - Used in Input Events
+//!
+//! // Range (mutable, live)
+//! const liveRange = new Range();
+//! liveRange.setStart(text, 0);
+//! liveRange.setEnd(text, 5);
+//! // - Can be modified with setStart/setEnd
+//! // - Automatically updates on DOM mutations
+//! // - Always valid (throws on invalid operations)
+//! // - Larger memory footprint
+//! // - Used for Selection, editing
+//!
+//! // Modify text content
+//! text.textContent = 'Modified';
+//!
+//! console.log(staticRange.endOffset); // Still 5 (unchanged!)
+//! console.log(liveRange.endOffset);   // Updated to new position (tracks mutations)
+//! ```
+//!
+//! ### Common Use Cases
+//! ```javascript
+//! // Use case 1: Input event snapshots
+//! function logInputRanges(event) {
+//!   const ranges = event.getTargetRanges();
+//!   ranges.forEach(range => {
+//!     // StaticRange provides lightweight snapshot of affected ranges
+//!     console.log(`Affected: ${range.startOffset} - ${range.endOffset}`);
+//!   });
+//! }
+//!
+//! // Use case 2: Performance-critical range creation
+//! function createLightweightRanges(nodes) {
+//!   return nodes.map(node => new StaticRange({
+//!     startContainer: node,
+//!     startOffset: 0,
+//!     endContainer: node,
+//!     endOffset: node.textContent.length
+//!   }));
+//!   // Much faster than Range for read-only snapshots
+//! }
+//!
+//! // Use case 3: Serializing ranges
+//! function serializeRange(range) {
+//!   return {
+//!     start: { container: getNodePath(range.startContainer), offset: range.startOffset },
+//!     end: { container: getNodePath(range.endContainer), offset: range.endOffset }
+//!   };
+//! }
+//! ```
+//!
+//! ### Notes
+//! - **Immutable**: All properties readonly, cannot be changed after construction
+//! - **Lightweight**: ~50-70% smaller memory footprint than Range
+//! - **No mutation tracking**: Does NOT update when DOM changes
+//! - **Can be invalid**: Construction succeeds even with out-of-bounds offsets
+//! - **Node type restrictions**: Cannot use DocumentType or Attr nodes (throws)
+//! - **Input Events**: Primary use case is `beforeinput`/`input` events' `getTargetRanges()`
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

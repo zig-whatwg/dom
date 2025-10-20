@@ -121,6 +121,104 @@
 //!     .detail = &form_data,
 //! });
 //! ```
+//!
+//! ## JavaScript Bindings
+//!
+//! CustomEvent extends Event with a detail property for passing custom data.
+//!
+//! ### Constructor
+//! ```javascript
+//! // Per WebIDL: constructor(DOMString type, optional CustomEventInit eventInitDict = {});
+//! function CustomEvent(type, eventInitDict) {
+//!   const opts = eventInitDict || {};
+//!   this._ptr = zig.customevent_init(
+//!     type,
+//!     opts.bubbles || false,
+//!     opts.cancelable || false,
+//!     opts.composed || false,
+//!     opts.detail // Custom data (any type)
+//!   );
+//! }
+//! ```
+//!
+//! ### Instance Properties
+//! ```javascript
+//! // detail (readonly) - Per WebIDL: readonly attribute any detail;
+//! Object.defineProperty(CustomEvent.prototype, 'detail', {
+//!   get: function() { return zig.customevent_get_detail(this._ptr); }
+//! });
+//! ```
+//!
+//! ### Instance Methods (Legacy)
+//! ```javascript
+//! // Per WebIDL: undefined initCustomEvent(DOMString type, optional boolean bubbles, optional boolean cancelable, optional any detail);
+//! CustomEvent.prototype.initCustomEvent = function(type, bubbles, cancelable, detail) {
+//!   zig.customevent_initCustomEvent(
+//!     this._ptr,
+//!     type,
+//!     bubbles !== undefined ? bubbles : false,
+//!     cancelable !== undefined ? cancelable : false,
+//!     detail !== undefined ? detail : null
+//!   );
+//! };
+//! ```
+//!
+//! ### Inheritance from Event
+//! ```javascript
+//! // CustomEvent inherits all Event properties and methods:
+//! // - type, target, currentTarget, eventPhase
+//! // - bubbles, cancelable, composed
+//! // - stopPropagation(), stopImmediatePropagation(), preventDefault()
+//! // - isTrusted, timeStamp, defaultPrevented
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Create custom event with data
+//! const event = new CustomEvent('user-login', {
+//!   detail: {
+//!     username: 'alice',
+//!     timestamp: Date.now()
+//!   },
+//!   bubbles: true,
+//!   cancelable: true
+//! });
+//!
+//! // Dispatch event
+//! element.dispatchEvent(event);
+//!
+//! // Listen for custom event
+//! element.addEventListener('user-login', (e) => {
+//!   console.log('User logged in:', e.detail.username);
+//!   console.log('Timestamp:', e.detail.timestamp);
+//! });
+//!
+//! // Custom event with complex data
+//! const dataEvent = new CustomEvent('data-update', {
+//!   detail: {
+//!     items: [1, 2, 3],
+//!     action: 'add',
+//!     metadata: { source: 'api' }
+//!   }
+//! });
+//!
+//! // Legacy initialization (deprecated, use constructor instead)
+//! const legacyEvent = document.createEvent('CustomEvent');
+//! legacyEvent.initCustomEvent('my-event', true, true, { foo: 'bar' });
+//! ```
+//!
+//! ### Detail Property
+//! ```javascript
+//! // detail can be any JavaScript value
+//! new CustomEvent('event', { detail: 'string' });
+//! new CustomEvent('event', { detail: 42 });
+//! new CustomEvent('event', { detail: { complex: 'object' } });
+//! new CustomEvent('event', { detail: [1, 2, 3] });
+//! new CustomEvent('event', { detail: null });
+//! new CustomEvent('event', { detail: undefined });
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Event = @import("event.zig").Event;

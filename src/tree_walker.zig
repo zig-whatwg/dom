@@ -41,6 +41,179 @@
 //!     std.debug.print("Parent: {s}\n", .{parent.nodeName()});
 //! }
 //! ```
+//!
+//! ## JavaScript Bindings
+//!
+//! TreeWalker provides flexible DOM tree navigation with filtering support.
+//!
+//! ### Creation
+//! TreeWalker is typically created via `Document.createTreeWalker()`:
+//! ```javascript
+//! // Per WebIDL: TreeWalker createTreeWalker(Node root, optional unsigned long whatToShow = 0xFFFFFFFF, optional NodeFilter? filter = null);
+//! const walker = document.createTreeWalker(
+//!   rootNode,
+//!   NodeFilter.SHOW_ELEMENT,  // Optional: defaults to 0xFFFFFFFF (all nodes)
+//!   null                       // Optional: custom filter function
+//! );
+//! ```
+//!
+//! ### Instance Properties
+//! ```javascript
+//! // Per WebIDL: [SameObject] readonly attribute Node root;
+//! Object.defineProperty(TreeWalker.prototype, 'root', {
+//!   get: function() { return wrapNode(zig.treewalker_get_root(this._ptr)); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute unsigned long whatToShow;
+//! Object.defineProperty(TreeWalker.prototype, 'whatToShow', {
+//!   get: function() { return zig.treewalker_get_whatToShow(this._ptr); }
+//! });
+//!
+//! // Per WebIDL: readonly attribute NodeFilter? filter;
+//! Object.defineProperty(TreeWalker.prototype, 'filter', {
+//!   get: function() {
+//!     const ptr = zig.treewalker_get_filter(this._ptr);
+//!     return ptr ? wrapNodeFilter(ptr) : null;
+//!   }
+//! });
+//!
+//! // Per WebIDL: attribute Node currentNode;
+//! // NOTE: currentNode is WRITABLE (unlike NodeIterator's referenceNode which is readonly)
+//! Object.defineProperty(TreeWalker.prototype, 'currentNode', {
+//!   get: function() { return wrapNode(zig.treewalker_get_currentNode(this._ptr)); },
+//!   set: function(node) { zig.treewalker_set_currentNode(this._ptr, node._ptr); }
+//! });
+//! ```
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // Per WebIDL: Node? parentNode();
+//! TreeWalker.prototype.parentNode = function() {
+//!   const nodePtr = zig.treewalker_parentNode(this._ptr);
+//!   return nodePtr ? wrapNode(nodePtr) : null;
+//! };
+//!
+//! // Per WebIDL: Node? firstChild();
+//! TreeWalker.prototype.firstChild = function() {
+//!   const nodePtr = zig.treewalker_firstChild(this._ptr);
+//!   return nodePtr ? wrapNode(nodePtr) : null;
+//! };
+//!
+//! // Per WebIDL: Node? lastChild();
+//! TreeWalker.prototype.lastChild = function() {
+//!   const nodePtr = zig.treewalker_lastChild(this._ptr);
+//!   return nodePtr ? wrapNode(nodePtr) : null;
+//! };
+//!
+//! // Per WebIDL: Node? previousSibling();
+//! TreeWalker.prototype.previousSibling = function() {
+//!   const nodePtr = zig.treewalker_previousSibling(this._ptr);
+//!   return nodePtr ? wrapNode(nodePtr) : null;
+//! };
+//!
+//! // Per WebIDL: Node? nextSibling();
+//! TreeWalker.prototype.nextSibling = function() {
+//!   const nodePtr = zig.treewalker_nextSibling(this._ptr);
+//!   return nodePtr ? wrapNode(nodePtr) : null;
+//! };
+//!
+//! // Per WebIDL: Node? previousNode();
+//! TreeWalker.prototype.previousNode = function() {
+//!   const nodePtr = zig.treewalker_previousNode(this._ptr);
+//!   return nodePtr ? wrapNode(nodePtr) : null;
+//! };
+//!
+//! // Per WebIDL: Node? nextNode();
+//! TreeWalker.prototype.nextNode = function() {
+//!   const nodePtr = zig.treewalker_nextNode(this._ptr);
+//!   return nodePtr ? wrapNode(nodePtr) : null;
+//! };
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Create walker for all element nodes
+//! const root = document.createElement('container');
+//! const level1 = document.createElement('level1');
+//! const level2 = document.createElement('level2');
+//! level1.appendChild(level2);
+//! root.appendChild(level1);
+//!
+//! const walker = document.createTreeWalker(
+//!   root,
+//!   NodeFilter.SHOW_ELEMENT
+//! );
+//!
+//! // Navigate to first child
+//! const child = walker.firstChild();
+//! console.log('First child:', child.nodeName); // 'LEVEL1'
+//!
+//! // Navigate to first child of current node
+//! const grandchild = walker.firstChild();
+//! console.log('Grandchild:', grandchild.nodeName); // 'LEVEL2'
+//!
+//! // Navigate back to parent
+//! const parent = walker.parentNode();
+//! console.log('Parent:', parent.nodeName); // 'LEVEL1'
+//!
+//! // Navigate to next sibling (if exists)
+//! const sibling = walker.nextSibling();
+//! console.log('Sibling:', sibling); // null (no siblings)
+//!
+//! // Set current node manually (IMPORTANT: TreeWalker allows this!)
+//! walker.currentNode = root;
+//! console.log('Reset to:', walker.currentNode.nodeName); // 'CONTAINER'
+//!
+//! // Traverse entire tree in document order
+//! walker.currentNode = root;
+//! let node;
+//! while (node = walker.nextNode()) {
+//!   console.log('Found:', node.nodeName);
+//! }
+//!
+//! // Traverse backwards
+//! while (node = walker.previousNode()) {
+//!   console.log('Found:', node.nodeName);
+//! }
+//!
+//! // Custom filter (only nodes with specific name)
+//! const filtered = document.createTreeWalker(
+//!   root,
+//!   NodeFilter.SHOW_ELEMENT,
+//!   {
+//!     acceptNode: function(node) {
+//!       return node.nodeName === 'LEVEL2' ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+//!     }
+//!   }
+//! );
+//!
+//! filtered.currentNode = root;
+//! while (node = filtered.nextNode()) {
+//!   console.log('Filtered:', node.nodeName); // Only 'LEVEL2'
+//! }
+//!
+//! // FILTER_REJECT skips entire subtree (useful for complex filtering)
+//! const rejected = document.createTreeWalker(
+//!   root,
+//!   NodeFilter.SHOW_ELEMENT,
+//!   {
+//!     acceptNode: function(node) {
+//!       if (node.nodeName === 'LEVEL1') {
+//!         return NodeFilter.FILTER_REJECT; // Skip LEVEL1 and all its children
+//!       }
+//!       return NodeFilter.FILTER_ACCEPT;
+//!     }
+//!   }
+//! );
+//! ```
+//!
+//! ### Key Differences from NodeIterator
+//! - **currentNode is writable**: You can manually set the current position
+//! - **More navigation methods**: parentNode(), firstChild(), lastChild(), previousSibling(), nextSibling()
+//! - **No detach() method**: TreeWalker never had this legacy method
+//! - **FILTER_REJECT works**: Skips entire subtrees (NodeIterator treats it like FILTER_SKIP)
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

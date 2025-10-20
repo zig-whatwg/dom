@@ -148,6 +148,172 @@
 //! - Microtask delivery for async callbacks (caller-driven in headless mode)
 //! - Strong references prevent nodes from being freed during observation
 //! - Attribute filter uses HashSet for O(1) lookup performance
+//!
+//! ## JavaScript Bindings
+//!
+//! MutationObserver watches for changes to the DOM tree.
+//!
+//! ### Constructor
+//! ```javascript
+//! // Per WebIDL: constructor(MutationCallback callback);
+//! function MutationObserver(callback) {
+//!   // callback signature: function(mutations, observer) { }
+//!   this._ptr = zig.mutationobserver_init(callback);
+//! }
+//! ```
+//!
+//! ### Instance Methods
+//! ```javascript
+//! // Per WebIDL: undefined observe(Node target, optional MutationObserverInit options = {});
+//! MutationObserver.prototype.observe = function(target, options) {
+//!   const opts = options || {};
+//!   zig.mutationobserver_observe(
+//!     this._ptr,
+//!     target._ptr,
+//!     opts.childList || false,
+//!     opts.attributes,
+//!     opts.characterData,
+//!     opts.subtree || false,
+//!     opts.attributeOldValue,
+//!     opts.characterDataOldValue,
+//!     opts.attributeFilter || null
+//!   );
+//! };
+//!
+//! // Per WebIDL: undefined disconnect();
+//! MutationObserver.prototype.disconnect = function() {
+//!   zig.mutationobserver_disconnect(this._ptr);
+//! };
+//!
+//! // Per WebIDL: sequence<MutationRecord> takeRecords();
+//! MutationObserver.prototype.takeRecords = function() {
+//!   const records = zig.mutationobserver_takeRecords(this._ptr);
+//!   return records.map(ptr => wrapMutationRecord(ptr)); // Returns array of MutationRecords
+//! };
+//! ```
+//!
+//! ### MutationRecord Interface
+//! ```javascript
+//! // MutationRecord properties (readonly)
+//! Object.defineProperty(MutationRecord.prototype, 'type', {
+//!   get: function() { return zig.mutationrecord_get_type(this._ptr); } // 'attributes', 'characterData', or 'childList'
+//! });
+//!
+//! Object.defineProperty(MutationRecord.prototype, 'target', {
+//!   get: function() { return wrapNode(zig.mutationrecord_get_target(this._ptr)); }
+//! });
+//!
+//! Object.defineProperty(MutationRecord.prototype, 'addedNodes', {
+//!   get: function() { return wrapNodeList(zig.mutationrecord_get_addedNodes(this._ptr)); }
+//! });
+//!
+//! Object.defineProperty(MutationRecord.prototype, 'removedNodes', {
+//!   get: function() { return wrapNodeList(zig.mutationrecord_get_removedNodes(this._ptr)); }
+//! });
+//!
+//! Object.defineProperty(MutationRecord.prototype, 'previousSibling', {
+//!   get: function() {
+//!     const ptr = zig.mutationrecord_get_previousSibling(this._ptr);
+//!     return ptr ? wrapNode(ptr) : null;
+//!   }
+//! });
+//!
+//! Object.defineProperty(MutationRecord.prototype, 'nextSibling', {
+//!   get: function() {
+//!     const ptr = zig.mutationrecord_get_nextSibling(this._ptr);
+//!     return ptr ? wrapNode(ptr) : null;
+//!   }
+//! });
+//!
+//! Object.defineProperty(MutationRecord.prototype, 'attributeName', {
+//!   get: function() {
+//!     const name = zig.mutationrecord_get_attributeName(this._ptr);
+//!     return name; // String or null
+//!   }
+//! });
+//!
+//! Object.defineProperty(MutationRecord.prototype, 'attributeNamespace', {
+//!   get: function() {
+//!     const ns = zig.mutationrecord_get_attributeNamespace(this._ptr);
+//!     return ns; // String or null
+//!   }
+//! });
+//!
+//! Object.defineProperty(MutationRecord.prototype, 'oldValue', {
+//!   get: function() {
+//!     const value = zig.mutationrecord_get_oldValue(this._ptr);
+//!     return value; // String or null
+//!   }
+//! });
+//! ```
+//!
+//! ### Usage Examples
+//! ```javascript
+//! // Create observer
+//! const observer = new MutationObserver((mutations, observer) => {
+//!   mutations.forEach(mutation => {
+//!     console.log('Type:', mutation.type);
+//!
+//!     if (mutation.type === 'childList') {
+//!       mutation.addedNodes.forEach(node => {
+//!         console.log('Added:', node);
+//!       });
+//!       mutation.removedNodes.forEach(node => {
+//!         console.log('Removed:', node);
+//!       });
+//!     }
+//!
+//!     if (mutation.type === 'attributes') {
+//!       console.log('Attribute changed:', mutation.attributeName);
+//!       console.log('Old value:', mutation.oldValue);
+//!     }
+//!   });
+//! });
+//!
+//! // Observe element for all changes
+//! const element = document.createElement('div');
+//! observer.observe(element, {
+//!   childList: true,
+//!   attributes: true,
+//!   characterData: true,
+//!   subtree: true,
+//!   attributeOldValue: true,
+//!   characterDataOldValue: true
+//! });
+//!
+//! // Make changes (triggers callback)
+//! element.setAttribute('id', 'main');
+//! element.appendChild(document.createTextNode('Hello'));
+//!
+//! // Observe specific attributes only
+//! observer.observe(element, {
+//!   attributes: true,
+//!   attributeFilter: ['class', 'id'],
+//!   attributeOldValue: true
+//! });
+//!
+//! // Get pending records without waiting for callback
+//! const records = observer.takeRecords();
+//! console.log('Pending mutations:', records.length);
+//!
+//! // Stop observing
+//! observer.disconnect();
+//! ```
+//!
+//! ### Callback Signature
+//! ```javascript
+//! // MutationCallback receives two parameters
+//! function callback(mutations, observer) {
+//!   // mutations: Array of MutationRecord objects
+//!   // observer: The MutationObserver instance
+//!
+//!   mutations.forEach(record => {
+//!     // Process each mutation
+//!   });
+//! }
+//! ```
+//!
+//! See `JS_BINDINGS.md` for complete binding patterns and memory management.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

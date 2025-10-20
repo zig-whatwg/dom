@@ -942,3 +942,39 @@ test "Node.isConnected - shadow root disconnection propagates" {
     try std.testing.expect(!child.prototype.isConnected());
 }
 
+// ============================================================================
+// Phase 8: Legacy onslotchange property
+// ============================================================================
+
+test "ShadowRoot.onslotchange - can be set and retrieved" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const host = try doc.createElement("container");
+    defer host.prototype.release();
+
+    const shadow = try host.attachShadow(.{
+        .mode = .open,
+        .delegates_focus = false,
+        .slot_assignment = .named,
+        .clonable = false,
+        .serializable = false,
+    });
+
+    // Initially null
+    try std.testing.expect(shadow.onslotchange == null);
+
+    // Can be set (in real usage, would be a callback from JavaScript bindings)
+    const handler_ptr: *anyopaque = @ptrFromInt(0x1234);
+    shadow.onslotchange = handler_ptr;
+
+    // Verify it was set
+    try std.testing.expect(shadow.onslotchange != null);
+    try std.testing.expectEqual(@as(usize, 0x1234), @intFromPtr(shadow.onslotchange.?));
+
+    // Can be cleared
+    shadow.onslotchange = null;
+    try std.testing.expect(shadow.onslotchange == null);
+}
