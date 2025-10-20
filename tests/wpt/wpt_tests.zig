@@ -31,6 +31,7 @@ test {
 
 // CharacterData tests
 test {
+    _ = @import("nodes/CharacterData-appendChild.zig");
     _ = @import("nodes/CharacterData-appendData.zig");
     _ = @import("nodes/CharacterData-data.zig");
     _ = @import("nodes/CharacterData-deleteData.zig");
