@@ -27,6 +27,7 @@ test {
     _ = @import("nodes/Node-removeChild.zig");
     _ = @import("nodes/Node-replaceChild.zig");
     _ = @import("nodes/Node-textContent.zig");
+    _ = @import("nodes/Node-properties.zig");
 }
 
 // CharacterData tests
@@ -48,6 +49,8 @@ test {
     _ = @import("nodes/Element-childElementCount-nochild.zig");
     _ = @import("nodes/Element-children.zig");
     _ = @import("nodes/Element-firstElementChild.zig");
+    _ = @import("nodes/Element-getElementsByClassName.zig");
+    _ = @import("nodes/Element-getElementsByTagName.zig");
     _ = @import("nodes/Element-hasAttribute.zig");
     _ = @import("nodes/Element-hasAttributes.zig");
     _ = @import("nodes/Element-lastElementChild.zig");
@@ -82,11 +85,18 @@ test {
     _ = @import("nodes/Document-createTextNode.zig");
     _ = @import("nodes/Document-doctype.zig");
     _ = @import("nodes/Document-getElementById.zig");
+    _ = @import("nodes/Document-getElementsByClassName.zig");
+    _ = @import("nodes/Document-getElementsByTagName.zig");
 }
 
 // DocumentFragment tests
 test {
     _ = @import("nodes/DocumentFragment-constructor.zig");
+}
+
+// DocumentType tests
+test {
+    _ = @import("nodes/DocumentType-remove.zig");
 }
 
 // Comment tests
@@ -96,6 +106,7 @@ test {
 
 // Text tests
 test {
+    _ = @import("nodes/Text-constructor.zig");
     _ = @import("nodes/Text-splitText.zig");
     _ = @import("nodes/Text-wholeText.zig");
 }
