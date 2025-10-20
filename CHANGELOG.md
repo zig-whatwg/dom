@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Critical Bug: ChildNode.before() Algorithm** 🐛
+  - Fixed incorrect use of `this` as reference node instead of `viablePreviousSibling`
+  - **Issue**: When context object appears in nodes array, it gets moved to DocumentFragment during conversion
+  - After conversion, context object's parent changes, causing `NotFoundError` in validation
+  - **Per WHATWG DOM § 4.5**: Must calculate viable sibling (not in nodes) BEFORE converting
+  - **Fixed in**: Element, Text, Comment, DocumentType `.before()` methods
+  - **Algorithm**: Find previous sibling not in nodes → convert nodes → calculate reference → pre-insert
+  - **Impact**: `child.before([child, other])` now works correctly per spec
+
+- **Critical Bug: ChildNode.after() Algorithm** 🐛
+  - Fixed incorrect use of `this.next_sibling` as reference instead of `viableNextSibling`
+  - **Same root cause as before()**: Context object moves during node conversion
+  - **Per WHATWG DOM § 4.5**: Must calculate viable next sibling (not in nodes) BEFORE converting
+  - **Fixed in**: Element, Text, Comment, DocumentType `.after()` methods
+  - **Algorithm**: Find next sibling not in nodes → convert nodes → pre-insert before viableNextSibling
+  - **Impact**: `child.after([child, other])` now works correctly per spec
+
 - **Critical Bug: Document Element Validation** 🐛
   - Fixed pre-insertion validity check incorrectly excluding reference node
   - `ensureDocumentConstraints()` was treating reference node as node to exclude
@@ -65,6 +82,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Verification Date**: 2025-10-20
 
 ### Added
+
+- **Phase 3: ChildNode WPT Tests** 🧪 NEW (Part 1 of 2)
+  - **ChildNode-before.html** - 20 tests for before() on Element, Text, and Comment
+    - Tests: Empty before, single element/text, multiple arguments, sibling reordering
+    - Edge cases: Context object in nodes array, all siblings as arguments, parentless nodes
+  - **ChildNode-after.html** - 19 tests for after() on Element, Text, and Comment
+    - Tests: Empty after, single element/text, multiple arguments, sibling reordering
+    - Edge cases: Context object in nodes array, behaves like append when needed
+  - **ChildNode-remove.html** - 12 tests for remove() on Element, Text, and Comment
+    - Tests: Remove without parent (no-op), remove with parent, remove with siblings
+    - Validation: Parent's childNodes updated correctly, node becomes parentless
+  - **Test Count**: +51 WPT tests → **1402 total tests** (all passing)
+  - **Coverage**: ChildNode mixin methods (before, after, remove) fully tested
+  - **Note**: ChildNode-replaceWith deferred - requires additional work for edge cases
 
 - **Phase 2: ParentNode WPT Tests** 🧪 NEW
   - **ParentNode-append.html** - 19 tests for Element.append() and DocumentFragment.append()
