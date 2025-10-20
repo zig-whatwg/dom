@@ -51,6 +51,7 @@ test {
     _ = @import("nodes/Element-lastElementChild.zig");
     _ = @import("nodes/Element-nextElementSibling.zig");
     _ = @import("nodes/Element-previousElementSibling.zig");
+    _ = @import("nodes/Element-removeAttribute.zig");
     _ = @import("nodes/Element-setAttribute.zig");
     _ = @import("nodes/Element-siblingElement-null.zig");
     _ = @import("nodes/Element-tagName.zig");
