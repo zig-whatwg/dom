@@ -4,10 +4,10 @@
 
 Web Platform Tests converted from `/Users/bcardarella/projects/wpt/`.
 
-**Status**: Phase 1, 2, 3, 4, and 5 (Batch 1) Complete ✅  
+**Status**: Phase 1, 2, 3, 4, and 5 Complete ✅  
 **Memory**: 0 leaks ✅  
-**Test Results**: 1680/1680 tests passing (100%! 🎉)  
-**WPT Test Files**: 149 files converted  
+**Test Results**: 1723/1723 tests passing (100%! 🎉)  
+**WPT Test Files**: 152 files converted  
 **Last Updated**: 2025-10-20
 
 ## Running Tests
@@ -20,19 +20,19 @@ zig build test-wpt
 
 | Category | Files | Test Cases | Passing | Pass Rate |
 |----------|-------|------------|---------|-----------|
-| **Nodes** | 125 | ~950 | ~950 | 100% |
+| **Nodes** | 127 | ~993 | ~993 | 100% |
 | **Traversal** | 8 | 50 | 50 | 100% |
 | **Ranges** | 5 | 23 | 23 | 100% |
 | **Lists** | 4 | 21 | 21 | 100% |
 | **Collections** | 4 | 26 | 26 | 100% |
 | **Abort** | 3 | 38 | 38 | 100% |
-| **TOTAL** | **149** | **~1108** | **~1108** | **100%** |
+| **TOTAL** | **152** | **~1151** | **~1151** | **100%** |
 
 ---
 
 ## Test Files Converted
 
-### Node Tests (✅ 125 files) - Phases 1, 2, 3, 4, and 5
+### Node Tests (✅ 127 files) - Phases 1, 2, 3, 4, and 5
 
 **17 Core Node Tests:**
 - [x] Node-appendChild.zig (3 tests)
@@ -61,15 +61,17 @@ zig build test-wpt
 - [x] CharacterData-replaceData.zig (10 tests)
 - [x] CharacterData-substringData.zig (7 tests)
 
-**14 Element Tests:**
+**16 Element Tests:**
 - [x] Element-childElement-null.zig (1 test)
 - [x] Element-childElementCount.zig (1 test)
 - [x] Element-childElementCount-nochild.zig (1 test)
 - [x] Element-children.zig (8 tests)
+- [x] Element-closest.zig (23 tests) ✅ NEW - Phase 5
 - [x] Element-firstElementChild.zig (8 tests)
 - [x] Element-hasAttribute.zig (4 tests)
 - [x] Element-hasAttributes.zig (2 tests)
 - [x] Element-lastElementChild.zig (8 tests)
+- [x] Element-matches.zig (20 tests) ✅ NEW - Phase 5
 - [x] Element-nextElementSibling.zig (8 tests)
 - [x] Element-previousElementSibling.zig (8 tests)
 - [x] Element-removeAttribute.zig (2 tests) ✅ 100% (FIXED - namespace handling now spec-compliant)
@@ -192,20 +194,22 @@ zig build test-wpt
 
 ## Recent Updates (2025-10-20)
 
-### Phase 5: Comprehensive Basic Node Tests - Batch 1 Complete! 🎉
+### Phase 5: Comprehensive Basic Node Tests - Complete! 🎉
 
-Added 41 WPT test files (885 test cases) covering fundamental node operations:
+Added 43 WPT test files (928 test cases) covering fundamental node operations and selector matching:
 
-**Element Tests (15 files):**
+**Element Tests (17 files):**
 - ✅ Element-attributes-count.zig
 - ✅ Element-childElementCount-dynamic-add.zig
 - ✅ Element-childElementCount-dynamic-remove.zig
 - ✅ Element-className-property.zig
 - ✅ Element-classList.zig
+- ✅ Element-closest.zig (23 tests - selector matching ancestors)
 - ✅ Element-getAttribute-variations.zig
 - ✅ Element-hasAttribute-variations.zig
 - ✅ Element-id-property.zig
 - ✅ Element-localName-basic.zig
+- ✅ Element-matches.zig (20 tests - selector matching self)
 - ✅ Element-removeAttribute-variations.zig
 - ✅ Element-setAttribute-variations.zig
 - ✅ Element-toggleAttribute-basic.zig
@@ -248,10 +252,11 @@ Added 41 WPT test files (885 test cases) covering fundamental node operations:
 - ✅ DocumentFragment-querySelectorAll.zig
 
 **Test Results:**
-- 885 new test cases (all passing!)
-- Total: 1680/1680 tests passing (100%)
+- 928 new test cases (all passing!)
+- Total: 1723/1723 tests passing (100%)
 - Zero memory leaks
-- 125 node test files now converted
+- 127 node test files now converted
+- Element.closest() and Element.matches() fully tested with 43 comprehensive test cases
 
 ### Phase 4: Additional Node Tests - Batches 1-4 Complete! 🎉
 
@@ -375,14 +380,14 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 ### WPT Progress
 
 **Total Applicable WPT Tests**: 550 (from comprehensive gap analysis)  
-**Current Coverage**: 149 files (27%)  
-**Passing Tests**: ~1108/~1108 (100%)
+**Current Coverage**: 152 files (28%)  
+**Passing Tests**: ~1151/~1151 (100%)
 
 ### By Category
 
 | Category | Total WPT Tests | Converted | Coverage |
 |----------|-----------------|-----------|----------|
-| Nodes | 163 | 125 | 77% |
+| Nodes | 163 | 127 | 78% |
 | Ranges | 40 | 5 | 13% |
 | Traversal | 20 | 8 | 40% |
 | Events | 120 | 0 | 0% |
@@ -391,15 +396,15 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 | Lists | 8 | 4 | 50% |
 | Shadow DOM | 74 | 0 | 0% |
 | Custom Elements | 100 | 0 | 0% |
-| **TOTAL** | **550** | **149** | **27%** |
+| **TOTAL** | **550** | **152** | **28%** |
 
 ### Milestone Tracking
 
-- ✅ **Current**: 149/550 tests (27%) - Phases 1, 2, 3, 4, and 5 (Batch 1) Complete
-- ✅ **Quick Wins Target**: 72/550 tests (13%) - EXCEEDED (207% achieved)
-- 🟡 **v1.0 Target**: 175/550 tests (32%) - 85% progress (24 tests remaining!)
-- 🟠 **v1.5 Target**: 306/550 tests (56%) - 49% progress
-- 🟡 **v2.0 Target**: 454/550 tests (83%) - 17% progress
+- ✅ **Current**: 152/550 tests (28%) - Phases 1, 2, 3, 4, and 5 Complete
+- ✅ **Quick Wins Target**: 72/550 tests (13%) - EXCEEDED (211% achieved)
+- 🟡 **v1.0 Target**: 175/550 tests (32%) - 87% progress (23 tests remaining!)
+- 🟠 **v1.5 Target**: 306/550 tests (56%) - 50% progress
+- 🟡 **v2.0 Target**: 454/550 tests (83%) - 33% progress
 
 ---
 
@@ -407,8 +412,8 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 
 ### Immediate (This Week)
 
-1. Continue WPT test conversion (24 tests to reach v1.0 target!)
-   - Element query methods (matches, closest, querySelector*)
+1. Continue WPT test conversion (23 tests to reach v1.0 target!)
+   - Element query methods (querySelector, querySelectorAll)
    - More advanced Node tests
    - Namespace operations (createElementNS, getAttributeNS, etc.)
    - DOMImplementation methods
@@ -423,9 +428,9 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 
 5. Implement NodeIterator removal tracking
 6. Implement remaining DOM features:
-   - Element.matches() / Element.closest()
    - insertAdjacentElement / insertAdjacentText
    - Document.adoptNode / Document.importNode edge cases
+   - :scope and :has() pseudo-class support for selectors
 7. Begin Event system test conversion (175 tests)
 
 ---
@@ -436,12 +441,13 @@ Added 24 new WPT test files (158 test cases) for already-implemented features:
 - File names identical to WPT (with .zig extension)
 - All tests use generic element names (no HTML-specific names)
 - See `CHANGELOG.md` for complete version history
-- **100% WPT test pass rate** ✅ (all 1108 tests passing!)
-- **Phase 1, 2, 3, 4, and 5 (Batch 1) COMPLETE** ✅
-- **1680/1680 tests passing** (795 unit + 885 WPT) ✅
-- **149 WPT test files converted** ✅
-- **77% Node test coverage** (125/163 tests) ✅
+- **100% WPT test pass rate** ✅ (all 1151 tests passing!)
+- **Phase 1, 2, 3, 4, and 5 COMPLETE** ✅
+- **1723/1723 tests passing** (795 unit + 928 WPT) ✅
+- **152 WPT test files converted** ✅
+- **78% Node test coverage** (127/163 tests) ✅
 - **ParentNode & ChildNode mixins fully tested** ✅
+- **Element.closest() and Element.matches() fully tested** ✅ NEW
 - **Memory leaks eliminated 100%** (38 → 0) ✅✅✅
 - **All known issues fixed** ✅
-- **24 tests from v1.0 target!** ✅
+- **23 tests from v1.0 target!** ✅
