@@ -90,6 +90,11 @@ test {
     _ = @import("nodes/Comment-constructor.zig");
 }
 
+// Text tests
+test {
+    _ = @import("nodes/Text-splitText.zig");
+}
+
 // DOMTokenList tests
 test {
     _ = @import("nodes/DOMTokenList-classList.zig");
