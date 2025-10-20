@@ -940,6 +940,74 @@ pub const Document = struct {
         return Range.init(self.prototype.allocator, self);
     }
 
+    /// Creates a new NodeIterator for traversing the document tree.
+    ///
+    /// Implements WHATWG DOM Document.createNodeIterator() per §6.1.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] NodeIterator createNodeIterator(
+    ///   Node root,
+    ///   optional unsigned long whatToShow = 0xFFFFFFFF,
+    ///   optional NodeFilter? filter = null
+    /// );
+    /// ```
+    ///
+    /// ## Parameters
+    /// - `root`: Root node of traversal (boundary)
+    /// - `what_to_show`: Bitfield of node types to show (default: all nodes)
+    /// - `node_filter`: Optional custom filter callback
+    ///
+    /// ## Returns
+    /// New NodeIterator positioned before root (caller must deinit)
+    ///
+    /// ## Spec References
+    /// - Method: https://dom.spec.whatwg.org/#dom-document-createnodeiterator
+    /// - WebIDL: dom.idl:308
+    pub fn createNodeIterator(
+        self: *Document,
+        root: *Node,
+        what_to_show: u32,
+        node_filter: ?@import("node_filter.zig").NodeFilter,
+    ) !*@import("node_iterator.zig").NodeIterator {
+        const NodeIterator = @import("node_iterator.zig").NodeIterator;
+        return NodeIterator.init(self.prototype.allocator, root, what_to_show, node_filter);
+    }
+
+    /// Creates a new TreeWalker for navigating the document tree.
+    ///
+    /// Implements WHATWG DOM Document.createTreeWalker() per §6.2.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] TreeWalker createTreeWalker(
+    ///   Node root,
+    ///   optional unsigned long whatToShow = 0xFFFFFFFF,
+    ///   optional NodeFilter? filter = null
+    /// );
+    /// ```
+    ///
+    /// ## Parameters
+    /// - `root`: Root node of traversal (boundary)
+    /// - `what_to_show`: Bitfield of node types to show (default: all nodes)
+    /// - `node_filter`: Optional custom filter callback
+    ///
+    /// ## Returns
+    /// New TreeWalker positioned at root (caller must deinit)
+    ///
+    /// ## Spec References
+    /// - Method: https://dom.spec.whatwg.org/#dom-document-createtreewalker
+    /// - WebIDL: dom.idl:309
+    pub fn createTreeWalker(
+        self: *Document,
+        root: *Node,
+        what_to_show: u32,
+        node_filter: ?@import("node_filter.zig").NodeFilter,
+    ) !*@import("tree_walker.zig").TreeWalker {
+        const TreeWalker = @import("tree_walker.zig").TreeWalker;
+        return TreeWalker.init(self.prototype.allocator, root, what_to_show, node_filter);
+    }
+
     /// Creates a new Attr node with the specified name.
     ///
     /// Implements WHATWG DOM Document.createAttribute() per §4.10.

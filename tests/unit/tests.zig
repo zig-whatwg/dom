@@ -59,6 +59,12 @@ test {
     _ = @import("static_range_isvalid_test.zig");
 }
 
+// Traversal tests (Phase 21)
+test {
+    _ = @import("node_iterator_test.zig");
+    _ = @import("tree_walker_test.zig");
+}
+
 // Misc tests
 test {
     _ = @import("main_test.zig");

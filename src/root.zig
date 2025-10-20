@@ -227,6 +227,12 @@ pub const BoundaryPointComparison = @import("range.zig").BoundaryPointComparison
 pub const StaticRange = @import("static_range.zig").StaticRange;
 pub const StaticRangeInit = @import("static_range.zig").StaticRangeInit;
 
+// Export traversal (Phase 21)
+pub const NodeFilter = @import("node_filter.zig").NodeFilter;
+pub const FilterResult = @import("node_filter.zig").FilterResult;
+pub const NodeIterator = @import("node_iterator.zig").NodeIterator;
+pub const TreeWalker = @import("tree_walker.zig").TreeWalker;
+
 // Export collections
 pub const NodeList = @import("node_list.zig").NodeList;
 pub const HTMLCollection = @import("html_collection.zig").HTMLCollection;
