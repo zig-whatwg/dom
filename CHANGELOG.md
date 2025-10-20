@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Critical Bug: ChildNode.replaceWith() Algorithm** 🐛
+  - Fixed incorrect assumption that context object (`this`) is always available for replaceChild
+  - **Issue**: When context object is in nodes array, it moves to DocumentFragment during conversion
+  - After conversion, `this.parent_node` changes from original parent to DocumentFragment
+  - **Per WHATWG DOM § 4.5**: Must check if `this.parent_node == parent` after conversion
+  - **Two-path algorithm**:
+    1. If `this` still in original parent: Use `replaceChild(node, this)` (normal case)
+    2. If `this` moved to DocumentFragment: Use `insertBefore(node, viableNextSibling)` (edge case)
+  - **Fixed in**: Element, Text, Comment, DocumentType `.replaceWith()` methods
+  - **Impact**: `child.replaceWith([x, child])` now works correctly - child moves into replacement position
+  - **Memory Fix**: Tests must NOT defer release when child remains in tree after operation
+
 - **Critical Bug: ChildNode.before() Algorithm** 🐛
   - Fixed incorrect use of `this` as reference node instead of `viablePreviousSibling`
   - **Issue**: When context object appears in nodes array, it gets moved to DocumentFragment during conversion
@@ -83,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Phase 3: ChildNode WPT Tests** 🧪 NEW (Part 1 of 2)
+- **Phase 3: ChildNode WPT Tests** 🧪 NEW (Complete)
   - **ChildNode-before.html** - 20 tests for before() on Element, Text, and Comment
     - Tests: Empty before, single element/text, multiple arguments, sibling reordering
     - Edge cases: Context object in nodes array, all siblings as arguments, parentless nodes
@@ -93,9 +105,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **ChildNode-remove.html** - 12 tests for remove() on Element, Text, and Comment
     - Tests: Remove without parent (no-op), remove with parent, remove with siblings
     - Validation: Parent's childNodes updated correctly, node becomes parentless
-  - **Test Count**: +51 WPT tests → **1402 total tests** (all passing)
-  - **Coverage**: ChildNode mixin methods (before, after, remove) fully tested
-  - **Note**: ChildNode-replaceWith deferred - requires additional work for edge cases
+  - **ChildNode-replaceWith.html** - 13 tests for replaceWith() on Element, Text, and Comment
+    - Tests: Replace with empty, single element/text, sibling replacement, child in replacement
+    - Edge cases: Context object in replacement nodes (uses insertBefore instead of replaceChild)
+    - Parentless replacement (no-op per spec)
+  - **Test Count**: +64 WPT tests → **1415 total tests** (all passing)
+  - **Coverage**: ChildNode mixin methods (before, after, remove, replaceWith) fully tested
+  - **Implementation**: All methods fixed to match WHATWG algorithms precisely
 
 - **Phase 2: ParentNode WPT Tests** 🧪 NEW
   - **ParentNode-append.html** - 19 tests for Element.append() and DocumentFragment.append()

@@ -65,6 +65,7 @@ test {
     _ = @import("nodes/ChildNode-before.zig");
     _ = @import("nodes/ChildNode-after.zig");
     _ = @import("nodes/ChildNode-remove.zig");
+    _ = @import("nodes/ChildNode-replaceWith.zig");
 }
 
 // Document tests

@@ -567,17 +567,47 @@ pub const DocumentType = struct {
     /// try doctype.replaceWith(&[_]NodeOrString{.{ .node = &new_doctype.prototype }});
     /// ```
     pub fn replaceWith(self: *DocumentType, nodes: []const NodeOrString) !void {
+        // WHATWG DOM § 4.5 ChildNode.replaceWith() algorithm
+        // 1. Let parent be this's parent
         const parent = self.prototype.parent_node orelse return;
 
+        // 2. If parent is null, then return (handled above)
+
+        // 3. Let viableNextSibling be this's first following sibling not in nodes, or null
+        var viable_next = self.prototype.next_sibling;
+        while (viable_next) |next| {
+            var is_in_nodes = false;
+            for (nodes) |item| {
+                if (item == .node and item.node == next) {
+                    is_in_nodes = true;
+                    break;
+                }
+            }
+            if (!is_in_nodes) break;
+            viable_next = next.next_sibling;
+        }
+
+        // 4. Let node be the result of converting nodes into a node
         const result = try convertNodesToNode(&self.prototype, nodes);
 
         if (result) |r| {
-            _ = try parent.replaceChild(r.node, &self.prototype);
+            // 5. If this's parent is parent, replace this with node within parent
+            //    Note: this could have been inserted into node (the DocumentFragment)
+            if (self.prototype.parent_node == parent) {
+                _ = try parent.replaceChild(r.node, &self.prototype);
+            } else {
+                // 6. Otherwise, pre-insert node into parent before viableNextSibling
+                _ = try parent.insertBefore(r.node, viable_next);
+            }
+
             if (r.should_release_after_insert) {
                 r.node.release();
             }
         } else {
-            _ = try parent.removeChild(&self.prototype);
+            // Empty nodes array - just remove self if still in parent
+            if (self.prototype.parent_node == parent) {
+                _ = try parent.removeChild(&self.prototype);
+            }
         }
     }
 
