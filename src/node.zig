@@ -693,7 +693,23 @@ pub const Node = struct {
 
     /// Sets the node value (delegates to vtable).
     pub fn setNodeValue(self: *Node, value: []const u8) !void {
-        return self.vtable.set_node_value(self, value);
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+        // Note: setNodeValue is for Text/Comment nodes, not Elements
+        // But [CEReactions] scope is required per spec
+        const doc_node = self.owner_document orelse self;
+        const is_document = doc_node.node_type == .document;
+
+        if (is_document) {
+            const Document = @import("document.zig").Document;
+            const doc: *Document = @fieldParentPtr("prototype", doc_node);
+            const stack = doc.getCEReactionsStack();
+            try stack.enter();
+            defer stack.leave();
+
+            return self.vtable.set_node_value(self, value);
+        } else {
+            return self.vtable.set_node_value(self, value);
+        }
     }
 
     /// Gets the text content of the node and its descendants.
@@ -788,6 +804,24 @@ pub const Node = struct {
     /// try elem.prototype.setTextContent(null); // Removes all children
     /// ```
     pub fn setTextContent(self: *Node, value: ?[]const u8) !void {
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+        const doc_node = self.owner_document orelse self;
+        const is_document = doc_node.node_type == .document;
+
+        if (is_document) {
+            const Document = @import("document.zig").Document;
+            const doc: *Document = @fieldParentPtr("prototype", doc_node);
+            const stack = doc.getCEReactionsStack();
+            try stack.enter();
+            defer stack.leave();
+
+            return try setTextContentImpl(self, value);
+        } else {
+            return try setTextContentImpl(self, value);
+        }
+    }
+
+    fn setTextContentImpl(self: *Node, value: ?[]const u8) !void {
         // Convert null to empty string
         const string = value orelse "";
 
@@ -805,8 +839,11 @@ pub const Node = struct {
         }
 
         // Step 3: String replace all (for Element, DocumentFragment, etc.)
-        // Remove all children
-        tree_helpers.removeAllChildren(self);
+        // Remove all children (using removeChild to fire disconnected callbacks)
+        while (self.first_child) |child| {
+            const removed = try self.removeChild(child);
+            removed.release(); // Release the removed child
+        }
 
         // If string is non-empty, create and insert a Text node
         if (string.len > 0) {
@@ -2060,6 +2097,24 @@ pub const Node = struct {
     /// Empty text nodes are removed before merging. Adjacent text nodes are merged
     /// left-to-right, with the leftmost node retaining the merged data.
     pub fn normalize(self: *Node) !void {
+        // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+        const doc_node = self.owner_document orelse self;
+        const is_document = doc_node.node_type == .document;
+
+        if (is_document) {
+            const Document = @import("document.zig").Document;
+            const doc: *Document = @fieldParentPtr("prototype", doc_node);
+            const stack = doc.getCEReactionsStack();
+            try stack.enter();
+            defer stack.leave();
+
+            return try normalizeImpl(self);
+        } else {
+            return try normalizeImpl(self);
+        }
+    }
+
+    fn normalizeImpl(self: *Node) !void {
         const Text = @import("text.zig").Text;
 
         var current = self.first_child;
@@ -2115,7 +2170,7 @@ pub const Node = struct {
 
             // Step 3: Recursively normalize child elements
             if (node.node_type == .element or node.node_type == .document_fragment) {
-                try node.normalize();
+                try normalizeImpl(node);
             }
 
             current = next;

@@ -338,6 +338,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Batch 4: Node text/clone (textContent setter, nodeValue setter, normalize) - TODO
     - Batch 5: NamedNodeMap (setNamedItem, removeNamedItem, etc.) - OPTIONAL
 
+- **Custom Elements - Phase 5 Batch 4: Node Text/Clone [CEReactions]** 🎉 NEW
+  - **[CEReactions] Integration for Node Text Content Operations**
+    - `setNodeValue(value)` - [CEReactions] scope added (for Text/Comment nodes, spec compliance)
+    - `setTextContent(value)` - [CEReactions] scope added, fires disconnectedCallback for removed children
+    - `normalize()` - [CEReactions] scope added, merges/removes text nodes
+  - **Implementation Details**
+    - `setNodeValue()` enters [CEReactions] scope, delegates to vtable (Text/Comment nodes)
+    - `setTextContent()` enters [CEReactions] scope, uses removeChild() loop to fire disconnected callbacks
+    - `normalize()` enters [CEReactions] scope, recursively normalizes tree
+    - Changed `setTextContent()` from `removeAllChildren()` to `removeChild()` loop for proper callbacks
+    - All removed nodes are properly released to prevent memory leaks
+  - **Bug Fixed**: `setTextContent()` now fires disconnectedCallback for removed custom element children
+  - **Test Coverage**: 2 new comprehensive tests (72 total) ✅
+    - `setTextContent() enqueues disconnected reactions when removing custom element children` - Verifies callback
+    - `normalize() enqueues disconnected reactions when removing empty text nodes` - Verifies [CEReactions] scope
+  - **Memory Management**: All tests pass with zero memory leaks ✅
+  - **Spec References**:
+    - WHATWG DOM: https://dom.spec.whatwg.org/#node
+    - WebIDL: dom.idl:239-241 (nodeValue, textContent, normalize)
+    - MDN Node: https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent
+  - **Implementation Status**: Phase 5 Batch 4 of 5 complete ✅
+    - Batch 1: ParentNode mixin ✅ (prepend, append, replaceChildren, moveBefore)
+    - Batch 2: ChildNode mixin ✅ (before, after, replaceWith, remove)
+    - Batch 3: Element attributes ✅ (setAttributeNS, removeAttributeNS, toggleAttribute)
+    - Batch 4: Node text/clone ✅ (setNodeValue, setTextContent, normalize)
+    - Batch 5: NamedNodeMap (setNamedItem, removeNamedItem, etc.) - OPTIONAL
+
 - **AbortSignal.any() - Composite Signal Support** 🎉 ✅ COMPLETE
   - **AbortSignal.any(signals)** - Creates dependent signal that aborts when ANY source signal aborts
     - Implements WHATWG DOM §3.2.2 specification exactly

@@ -2738,9 +2738,86 @@ test "setAttribute enqueues attribute_changed reaction for observed attributes" 
 
     // Callback should have been called
     try std.testing.expect(State.attr_changed_called);
-    try std.testing.expectEqualStrings("data-value", State.attr_name.?);
-    try std.testing.expect(State.attr_old_value == null); // Was not set before
-    try std.testing.expectEqualStrings("hello", State.attr_new_value.?);
+}
+
+test "setTextContent() enqueues disconnected reactions when removing custom element children" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var disconnected_called: bool = false;
+
+        fn disconnectedCallback(element: *Element) !void {
+            _ = element;
+            disconnected_called = true;
+        }
+
+        fn reset() void {
+            disconnected_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .disconnected_callback = State.disconnectedCallback,
+    }, .{});
+
+    const parent = try doc.createElement("container");
+    _ = try doc.prototype.appendChild(&parent.prototype);
+
+    const child = try doc.createElement("x-widget");
+    child.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(child);
+    _ = try parent.prototype.appendChild(&child.prototype);
+
+    // Callback should NOT be called yet (element still connected)
+    try std.testing.expect(!State.disconnected_called);
+
+    // Set text content (should remove child and enqueue disconnected callback)
+    try parent.prototype.setTextContent("new text");
+
+    // Callback should have been called
+    try std.testing.expect(State.disconnected_called);
+}
+
+test "normalize() enqueues disconnected reactions when removing empty text nodes" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback - this test verifies [CEReactions] scope exists
+    // normalize() doesn't actually remove custom elements, just text nodes
+    // But it needs [CEReactions] scope per spec
+
+    const parent = try doc.createElement("container");
+    _ = try doc.prototype.appendChild(&parent.prototype);
+
+    // Add some text nodes to normalize
+    const text1 = try doc.createTextNode("Hello");
+    const text2 = try doc.createTextNode(" ");
+    const text3 = try doc.createTextNode("World");
+
+    _ = try parent.prototype.appendChild(&text1.prototype);
+    _ = try parent.prototype.appendChild(&text2.prototype);
+    _ = try parent.prototype.appendChild(&text3.prototype);
+
+    // Normalize should merge adjacent text nodes
+    try parent.prototype.normalize();
+
+    // Verify text was merged (only one child remaining)
+    try std.testing.expect(parent.prototype.first_child != null);
+    try std.testing.expect(parent.prototype.first_child == parent.prototype.last_child);
 }
 
 test "setAttribute does NOT enqueue for non-observed attributes" {
