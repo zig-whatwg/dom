@@ -14,10 +14,15 @@ test "doctypes should be compared on name, public ID, and system ID" {
     defer doc.release();
 
     const doctype1 = try doc.createDocumentType("qualifiedName", "publicId", "systemId");
+    defer doctype1.prototype.release();
     const doctype2 = try doc.createDocumentType("qualifiedName", "publicId", "systemId");
+    defer doctype2.prototype.release();
     const doctype3 = try doc.createDocumentType("qualifiedName2", "publicId", "systemId");
+    defer doctype3.prototype.release();
     const doctype4 = try doc.createDocumentType("qualifiedName", "publicId2", "systemId");
+    defer doctype4.prototype.release();
     const doctype5 = try doc.createDocumentType("qualifiedName", "publicId", "systemId3");
+    defer doctype5.prototype.release();
 
     // self-comparison
     try std.testing.expect(doctype1.prototype.isEqualNode(&doctype1.prototype));
@@ -41,12 +46,18 @@ test "elements should be compared on namespace, namespace prefix, local name, an
     defer doc.release();
 
     const element1 = try doc.createElementNS("namespace", "prefix:localName");
+    defer element1.prototype.release();
     const element2 = try doc.createElementNS("namespace", "prefix:localName");
+    defer element2.prototype.release();
     const element3 = try doc.createElementNS("namespace2", "prefix:localName");
+    defer element3.prototype.release();
     const element4 = try doc.createElementNS("namespace", "prefix2:localName");
+    defer element4.prototype.release();
     const element5 = try doc.createElementNS("namespace", "prefix:localName2");
+    defer element5.prototype.release();
 
     const element6 = try doc.createElementNS("namespace", "prefix:localName");
+    defer element6.prototype.release();
     try element6.setAttribute("foo", "bar");
 
     // self-comparison
@@ -74,21 +85,27 @@ test "elements should be compared on attribute namespace, local name, and value"
     defer doc.release();
 
     const element1 = try doc.createElement("element");
+    defer element1.prototype.release();
     try element1.setAttributeNS("namespace", "prefix:localName", "value");
 
     const element2 = try doc.createElement("element");
+    defer element2.prototype.release();
     try element2.setAttributeNS("namespace", "prefix:localName", "value");
 
     const element3 = try doc.createElement("element");
+    defer element3.prototype.release();
     try element3.setAttributeNS("namespace2", "prefix:localName", "value");
 
     const element4 = try doc.createElement("element");
+    defer element4.prototype.release();
     try element4.setAttributeNS("namespace", "prefix2:localName", "value");
 
     const element5 = try doc.createElement("element");
+    defer element5.prototype.release();
     try element5.setAttributeNS("namespace", "prefix:localName2", "value");
 
     const element6 = try doc.createElement("element");
+    defer element6.prototype.release();
     try element6.setAttributeNS("namespace", "prefix:localName", "value2");
 
     // self-comparison
@@ -116,9 +133,13 @@ test "processing instructions should be compared on target and data" {
     defer doc.release();
 
     const pi1 = try doc.createProcessingInstruction("target", "data");
+    defer pi1.prototype.prototype.release();
     const pi2 = try doc.createProcessingInstruction("target", "data");
+    defer pi2.prototype.prototype.release();
     const pi3 = try doc.createProcessingInstruction("target2", "data");
+    defer pi3.prototype.prototype.release();
     const pi4 = try doc.createProcessingInstruction("target", "data2");
+    defer pi4.prototype.prototype.release();
 
     // self-comparison
     try std.testing.expect(pi1.prototype.prototype.isEqualNode(&pi1.prototype.prototype));
@@ -139,8 +160,11 @@ test "text nodes should be compared on data" {
     defer doc.release();
 
     const text1 = try doc.createTextNode("data");
+    defer text1.prototype.release();
     const text2 = try doc.createTextNode("data");
+    defer text2.prototype.release();
     const text3 = try doc.createTextNode("data2");
+    defer text3.prototype.release();
 
     // self-comparison
     try std.testing.expect(text1.prototype.isEqualNode(&text1.prototype));
@@ -158,8 +182,11 @@ test "comments should be compared on data" {
     defer doc.release();
 
     const comment1 = try doc.createComment("data");
+    defer comment1.prototype.release();
     const comment2 = try doc.createComment("data");
+    defer comment2.prototype.release();
     const comment3 = try doc.createComment("data2");
+    defer comment3.prototype.release();
 
     // self-comparison
     try std.testing.expect(comment1.prototype.isEqualNode(&comment1.prototype));
@@ -211,7 +238,9 @@ test "node equality testing should test descendant equality too - element" {
     defer doc.release();
 
     const parentA = try doc.createElement("parent");
+    defer parentA.prototype.release();
     const parentB = try doc.createElement("parent");
+    defer parentB.prototype.release();
 
     // Different: parentA has comment, parentB doesn't
     const commentA = try doc.createComment("data");
