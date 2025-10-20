@@ -358,6 +358,7 @@ pub const NodeType = enum(u8) {
     element = 1,
     attribute = 2,
     text = 3,
+    cdata_section = 4,
     comment = 8,
     document = 9,
     document_type = 10,
@@ -875,6 +876,10 @@ pub const Node = struct {
                 const Text = @import("text.zig").Text;
                 const text: *const Text = @fieldParentPtr("prototype", self);
                 return try Text.cloneWithAllocator(text, allocator);
+            },
+            .cdata_section => {
+                // CDATASection uses vtable dispatch (handled by CDATASection.cloneNodeImpl)
+                return try self.vtable.clone_node(self, deep);
             },
             .comment => {
                 const Comment = @import("comment.zig").Comment;

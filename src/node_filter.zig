@@ -314,6 +314,7 @@ pub const NodeFilter = struct {
             .element => SHOW_ELEMENT,
             .attribute => SHOW_ATTRIBUTE,
             .text => SHOW_TEXT,
+            .cdata_section => SHOW_CDATA_SECTION,
             .processing_instruction => SHOW_PROCESSING_INSTRUCTION,
             .comment => SHOW_COMMENT,
             .document => SHOW_DOCUMENT,

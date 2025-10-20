@@ -381,3 +381,147 @@ pub fn replaceChildren(self: *Node, nodes: []const NodeOrString) !void {
         try append(self, nodes);
     }
 }
+
+/// Moves node before child in this node's children.
+///
+/// Implements WHATWG DOM ParentNode.moveBefore() per §4.2.6.
+///
+/// ## WebIDL
+/// ```webidl
+/// [CEReactions] undefined moveBefore(Node node, Node? child);
+/// ```
+///
+/// ## Algorithm (WHATWG DOM §4.2.6)
+/// Moves node to a new position among this node's children:
+/// 1. If node is not a child of this, throw NotFoundError
+/// 2. If child is not null and not a child of this, throw NotFoundError
+/// 3. If node == child, return (no-op)
+/// 4. Remove node from its current position
+/// 5. Insert node before child (or append if child is null)
+///
+/// ## Parameters
+/// - `node`: Child node to move (must be a direct child of this)
+/// - `child`: Reference child to move before (null = move to end)
+///
+/// ## Errors
+/// - `error.NotFoundError`: Node or child is not a child of this node
+/// - `error.OutOfMemory`: Failed to allocate during operation
+///
+/// ## Spec References
+/// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+/// - WebIDL: dom.idl (ParentNode mixin)
+///
+/// ## Example
+/// ```zig
+/// const doc = try Document.init(allocator);
+/// defer doc.release();
+///
+/// const parent = try doc.createElement("list");
+/// const child1 = try doc.createElement("first");
+/// const child2 = try doc.createElement("second");
+/// const child3 = try doc.createElement("third");
+///
+/// _ = try parent.prototype.appendChild(&child1.prototype);
+/// _ = try parent.prototype.appendChild(&child2.prototype);
+/// _ = try parent.prototype.appendChild(&child3.prototype);
+///
+/// // Move child3 before child1
+/// try parent.moveBefore(&child3.prototype, &child1.prototype);
+/// // Order: third, first, second
+///
+/// // Move child2 to end (child = null)
+/// try parent.moveBefore(&child2.prototype, null);
+/// // Order: third, first, second
+/// ```
+pub fn moveBefore(self: *Node, node: *Node, child: ?*Node) !void {
+    // Step 1: Verify node is a child of this
+    if (node.parent_node != self) {
+        return error.NotFoundError;
+    }
+
+    // Step 2: Verify child is null or a child of this
+    if (child) |ref_child| {
+        if (ref_child.parent_node != self) {
+            return error.NotFoundError;
+        }
+
+        // Step 3: If node == child, return (no-op)
+        if (node == ref_child) {
+            return;
+        }
+    }
+
+    // Step 4: Remove node from current position
+    // We don't use removeChild because we're just moving within same parent
+    // Update sibling pointers
+    if (node.previous_sibling) |prev| {
+        prev.next_sibling = node.next_sibling;
+    } else {
+        // node was first child
+        self.first_child = node.next_sibling;
+    }
+
+    if (node.next_sibling) |next| {
+        next.previous_sibling = node.previous_sibling;
+    } else {
+        // node was last child
+        self.last_child = node.previous_sibling;
+    }
+
+    // Step 5: Insert node before child (or append if child is null)
+    if (child) |ref_child| {
+        // Insert before ref_child
+        node.next_sibling = ref_child;
+        node.previous_sibling = ref_child.previous_sibling;
+
+        if (ref_child.previous_sibling) |prev| {
+            prev.next_sibling = node;
+        } else {
+            // Inserting at beginning
+            self.first_child = node;
+        }
+
+        ref_child.previous_sibling = node;
+    } else {
+        // Append to end (child is null)
+        node.previous_sibling = self.last_child;
+        node.next_sibling = null;
+
+        if (self.last_child) |last| {
+            last.next_sibling = node;
+        } else {
+            // Was empty, now first child
+            self.first_child = node;
+        }
+
+        self.last_child = node;
+    }
+
+    // node.parent_node remains unchanged (same parent)
+    // No need to update has_parent flag
+    // No need to change connected state
+    // No need to update document maps (same parent, same document)
+
+    self.generation += 1;
+
+    // Queue mutation record for childList (optional, for MutationObserver)
+    const node_mod = @import("node.zig");
+    var removed_array = [_]*Node{node};
+    var added_array = [_]*Node{node};
+
+    // Get the previous sibling before the move (for mutation record)
+    const prev_sibling = if (child) |ref_child| ref_child.previous_sibling else self.last_child;
+    const next_sibling = child;
+
+    node_mod.queueMutationRecord(
+        self,
+        "childList",
+        &added_array, // added_nodes (re-added at new position)
+        &removed_array, // removed_nodes (removed from old position)
+        prev_sibling, // previousSibling
+        next_sibling, // nextSibling
+        null, // attribute_name
+        null, // attribute_namespace
+        null, // old_value
+    ) catch {}; // Best effort
+}

@@ -251,6 +251,7 @@ const Text = @import("text.zig").Text;
 const Comment = @import("comment.zig").Comment;
 const Attr = @import("attr.zig").Attr;
 const DocumentFragment = @import("document_fragment.zig").DocumentFragment;
+const parent_node_mod = @import("parent_node.zig");
 const SelectorList = @import("selector/parser.zig").SelectorList;
 const FastPathType = @import("fast_path.zig").FastPathType;
 const HTMLCollection = @import("html_collection.zig").HTMLCollection;
@@ -835,6 +836,141 @@ pub const Document = struct {
         return comment;
     }
 
+    /// Creates a new CDATA section node with the specified content.
+    ///
+    /// Implements WHATWG DOM Document.createCDATASection() per §4.10.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] CDATASection createCDATASection(DOMString data);
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.10)
+    /// Create a new CDATASection node with its data set to data and node document set to this.
+    ///
+    /// ## Memory Management
+    /// Returns CDATASection with ref_count=1. Caller MUST call `cdata.prototype.prototype.release()`.
+    /// CDATA content is duplicated and owned by the node.
+    ///
+    /// ## Parameters
+    /// - `data`: CDATA section content (may contain XML special characters)
+    ///
+    /// ## Returns
+    /// New CDATA section node owned by this document
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-createcdatasection
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:518
+    ///
+    /// ## MDN
+    /// - Document.createCDATASection(): https://developer.mozilla.org/en-US/docs/Web/API/Document/createCDATASection
+    ///
+    /// ## Note
+    /// CDATA sections are primarily used in XML documents to include text that would
+    /// otherwise be treated as markup (e.g., containing `<`, `>`, `&` characters).
+    /// CDATA sections are NOT supported in HTML5 documents.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// const cdata = try doc.createCDATASection("if (x < y && y > z) { }");
+    /// defer cdata.prototype.prototype.release();
+    ///
+    /// const script = try doc.createElement("script");
+    /// _ = try script.prototype.appendChild(&cdata.prototype.prototype);
+    /// // <script><![CDATA[if (x < y && y > z) { }]]></script>
+    /// ```
+    pub fn createCDATASection(self: *Document, data: []const u8) !*@import("cdata_section.zig").CDATASection {
+        const CDATASection = @import("cdata_section.zig").CDATASection;
+
+        const cdata = try CDATASection.create(self.prototype.allocator, data);
+        errdefer cdata.prototype.prototype.release();
+
+        // Set owner document and assign node ID
+        cdata.prototype.prototype.owner_document = &self.prototype;
+        cdata.prototype.prototype.node_id = self.allocateNodeId();
+
+        // Increment document's node ref count
+        self.acquireNodeRef();
+
+        return cdata;
+    }
+
+    /// Creates a new processing instruction node with the specified target and data.
+    ///
+    /// Implements WHATWG DOM Document.createProcessingInstruction() per §4.10.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] ProcessingInstruction createProcessingInstruction(DOMString target, DOMString data);
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §4.10)
+    /// Create a new ProcessingInstruction node with its target set to target,
+    /// data set to data, and node document set to this.
+    ///
+    /// ## Memory Management
+    /// Returns ProcessingInstruction with ref_count=1. Caller MUST call `pi.prototype.prototype.release()`.
+    /// Target and data are duplicated and owned by the node.
+    ///
+    /// ## Parameters
+    /// - `target`: Target application name (e.g., "xml", "xml-stylesheet")
+    /// - `data`: Instruction data (e.g., "version=\"1.0\"", "type=\"text/css\"")
+    ///
+    /// ## Returns
+    /// New processing instruction node owned by this document
+    ///
+    /// ## Errors
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-createprocessinginstruction
+    /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:520
+    ///
+    /// ## MDN
+    /// - Document.createProcessingInstruction(): https://developer.mozilla.org/en-US/docs/Web/API/Document/createProcessingInstruction
+    ///
+    /// ## Note
+    /// Processing instructions are used in XML documents to provide instructions
+    /// to applications. They are NOT supported in HTML5 documents.
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// // XML declaration
+    /// const xml_decl = try doc.createProcessingInstruction("xml", "version=\"1.0\" encoding=\"UTF-8\"");
+    /// defer xml_decl.prototype.prototype.release();
+    ///
+    /// // Stylesheet link
+    /// const stylesheet = try doc.createProcessingInstruction("xml-stylesheet", "type=\"text/css\" href=\"style.css\"");
+    /// defer stylesheet.prototype.prototype.release();
+    ///
+    /// _ = try doc.prototype.appendChild(&xml_decl.prototype.prototype);
+    /// _ = try doc.prototype.appendChild(&stylesheet.prototype.prototype);
+    /// ```
+    pub fn createProcessingInstruction(self: *Document, target: []const u8, data: []const u8) !*@import("processing_instruction.zig").ProcessingInstruction {
+        const ProcessingInstruction = @import("processing_instruction.zig").ProcessingInstruction;
+
+        const pi = try ProcessingInstruction.create(self.prototype.allocator, target, data);
+        errdefer pi.prototype.prototype.release();
+
+        // Set owner document and assign node ID
+        pi.prototype.prototype.owner_document = &self.prototype;
+        pi.prototype.prototype.node_id = self.allocateNodeId();
+
+        // Increment document's node ref count
+        self.acquireNodeRef();
+
+        return pi;
+    }
+
     /// Creates a new DocumentFragment node owned by this document.
     ///
     /// Implements WHATWG DOM Document.createDocumentFragment() per §4.10.
@@ -938,6 +1074,79 @@ pub const Document = struct {
     pub fn createRange(self: *Document) !*@import("range.zig").Range {
         const Range = @import("range.zig").Range;
         return Range.init(self.prototype.allocator, self);
+    }
+
+    /// Creates an event of the specified type (legacy method).
+    ///
+    /// Implements WHATWG DOM Document.createEvent() per §2.3.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [NewObject] Event createEvent(DOMString interface); // legacy
+    /// ```
+    ///
+    /// ## Algorithm (WHATWG DOM §2.3)
+    /// For legacy DOM applications. Modern applications should use Event constructors.
+    /// This method creates an uninitialized event that must be initialized using
+    /// initEvent() before dispatch.
+    ///
+    /// ## Parameters
+    /// - `interface`: Interface name (e.g., "Event", "CustomEvent", "UIEvent")
+    ///
+    /// ## Returns
+    /// New event object (uninitialized - must call initEvent())
+    ///
+    /// ## Errors
+    /// - `error.NotSupported`: Unknown interface name
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-document-createevent
+    /// - WebIDL: dom.idl (legacy method)
+    ///
+    /// ## MDN
+    /// - Document.createEvent(): https://developer.mozilla.org/en-US/docs/Web/API/Document/createEvent
+    ///
+    /// ## Note
+    /// This is a legacy method. Modern code should use Event constructors:
+    /// ```zig
+    /// // Legacy (deprecated):
+    /// const event = try doc.createEvent("Event");
+    /// event.initEvent("click", true, true);
+    ///
+    /// // Modern (preferred):
+    /// const event = Event.init("click", .{ .bubbles = true, .cancelable = true });
+    /// ```
+    ///
+    /// ## Example
+    /// ```zig
+    /// const doc = try Document.init(allocator);
+    /// defer doc.release();
+    ///
+    /// // Create event (legacy style)
+    /// const event = try doc.createEvent("Event");
+    /// event.initEvent("custom", true, false);
+    ///
+    /// // Dispatch
+    /// const elem = try doc.createElement("button");
+    /// _ = try elem.prototype.dispatchEvent(event);
+    /// ```
+    pub fn createEvent(self: *Document, interface: []const u8) !*@import("event.zig").Event {
+        const Event = @import("event.zig").Event;
+
+        // For simplicity, we only support "Event" interface
+        // Full implementation would support "CustomEvent", "UIEvent", "MouseEvent", etc.
+        if (std.mem.eql(u8, interface, "Event") or
+            std.mem.eql(u8, interface, "Events") or
+            std.mem.eql(u8, interface, "HTMLEvents"))
+        {
+            // Return uninitialized event (caller must call initEvent)
+            const event = try self.prototype.allocator.create(Event);
+            event.* = Event.init("", .{});
+            return event;
+        }
+
+        return error.NotSupported;
     }
 
     /// Creates a new NodeIterator for traversing the document tree.
@@ -2326,6 +2535,28 @@ pub const Document = struct {
                 returned_node.release();
             }
         }
+    }
+
+    /// Moves node before child in this document's children.
+    ///
+    /// Implements WHATWG DOM ParentNode.moveBefore() per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] undefined moveBefore(Node node, Node? child);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - moveBefore(): https://developer.mozilla.org/en-US/docs/Web/API/ParentNode/moveBefore
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// Moves node to a new position among this node's children.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+    /// - WebIDL: dom.idl (ParentNode mixin)
+    pub fn moveBefore(self: *Document, node: *Node, child: ?*Node) !void {
+        try parent_node_mod.moveBefore(&self.prototype, node, child);
     }
 
     // ========================================================================

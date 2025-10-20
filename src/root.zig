@@ -189,6 +189,8 @@ pub const character_data = @import("character_data.zig");
 // Export text and comment modules
 pub const Text = @import("text.zig").Text;
 pub const Comment = @import("comment.zig").Comment;
+pub const CDATASection = @import("cdata_section.zig").CDATASection;
+pub const ProcessingInstruction = @import("processing_instruction.zig").ProcessingInstruction;
 pub const DocumentType = @import("document_type.zig").DocumentType;
 
 // Export attribute modules

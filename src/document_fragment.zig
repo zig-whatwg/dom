@@ -756,6 +756,29 @@ pub const DocumentFragment = struct {
         }
     }
 
+    /// Moves node before child in this document fragment's children.
+    ///
+    /// Implements WHATWG DOM ParentNode.moveBefore() per §4.2.6.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions] undefined moveBefore(Node node, Node? child);
+    /// ```
+    ///
+    /// ## MDN Documentation
+    /// - moveBefore(): https://developer.mozilla.org/en-US/docs/Web/API/ParentNode/moveBefore
+    ///
+    /// ## Algorithm (from spec §4.2.6)
+    /// Moves node to a new position among this fragment's children.
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+    /// - WebIDL: dom.idl (ParentNode mixin)
+    pub fn moveBefore(self: *DocumentFragment, node: *Node, child: ?*Node) !void {
+        const parent_node_mod = @import("parent_node.zig");
+        try parent_node_mod.moveBefore(&self.prototype, node, child);
+    }
+
     // === Private vtable implementations ===
 
     /// Result of converting nodes/strings

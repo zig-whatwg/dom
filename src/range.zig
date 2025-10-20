@@ -1985,6 +1985,13 @@ fn nodeLength(node: *Node) u32 {
             const text_node: *const Text = @fieldParentPtr("prototype", node);
             break :blk @intCast(text_node.data.len);
         },
+        .cdata_section => blk: {
+            const Text = @import("text.zig").Text;
+            const CDATASection = @import("cdata_section.zig").CDATASection;
+            const text_node: *const Text = @fieldParentPtr("prototype", node);
+            const cdata_node: *const CDATASection = @fieldParentPtr("prototype", text_node);
+            break :blk @intCast(cdata_node.prototype.data.len);
+        },
         .comment => blk: {
             const Comment = @import("comment.zig").Comment;
             const comment_node: *const Comment = @fieldParentPtr("prototype", node);
