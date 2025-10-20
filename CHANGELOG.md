@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Critical Bug: Document Element Validation** 🐛
+  - Fixed pre-insertion validity check incorrectly excluding reference node
+  - `ensureDocumentConstraints()` was treating reference node as node to exclude
+  - Per WHATWG spec, "parent has an element child" check should NOT exclude anything
+  - Affected operations: `insertBefore()`, `prepend()` on Documents
+  - **Root Cause**: Validation logic designed for `replaceChild()` (which DOES exclude) was incorrectly applied to insertion
+  - **Fix**: Changed `parentHasElementChild(parent, child)` → `parentHasElementChild(parent, null)` in `ensureDocumentConstraints()`
+  - **Impact**: Documents now correctly reject multiple element children per spec
+  - **Separate function**: `ensureDocumentReplaceConstraints()` handles replaceChild correctly
+
 ### Changed
 
 - **Spec Compliance Update: 98-99% Complete** 🎉
@@ -53,6 +65,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Verification Date**: 2025-10-20
 
 ### Added
+
+- **Phase 2: ParentNode WPT Tests** 🧪 NEW
+  - **ParentNode-append.html** - 19 tests for Element.append() and DocumentFragment.append()
+    - Tests: Empty append, single element/text, multiple arguments, element reuse
+    - Pre-insertion hierarchy validation (ancestor checks, invalid nodes, Document constraints)
+  - **ParentNode-prepend.html** - 18 tests for Element.prepend() and DocumentFragment.prepend()
+    - Tests: Empty prepend, single element/text, multiple arguments at start
+    - Pre-insertion hierarchy validation (same constraints as append)
+  - **ParentNode-replaceChildren.html** - 21 tests for Element.replaceChildren() and DocumentFragment.replaceChildren()
+    - Tests: Replace with empty, replace with element/text, clear children
+    - Pre-insertion hierarchy validation (ensures atomic replace operation)
+  - **Test Count**: +58 WPT tests → **1351 total tests** (all passing)
+  - **Coverage**: ParentNode mixin methods now have comprehensive WPT coverage
+  - **Implementation**: All methods already implemented, tests validate spec compliance
 
 - **Phase 8: Legacy Compatibility Features** 🎉 NEW
   - **Event Legacy Properties**

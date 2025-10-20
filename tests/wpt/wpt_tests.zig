@@ -53,6 +53,13 @@ test {
     _ = @import("nodes/Element-tagName.zig");
 }
 
+// ParentNode tests
+test {
+    _ = @import("nodes/ParentNode-append.zig");
+    _ = @import("nodes/ParentNode-prepend.zig");
+    _ = @import("nodes/ParentNode-replaceChildren.zig");
+}
+
 // Document tests
 test {
     _ = @import("nodes/Document-createComment.zig");

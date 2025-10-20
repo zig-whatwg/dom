@@ -583,8 +583,8 @@ fn ensureDocumentConstraints(
 
             // If fragment has one element child, check document constraints
             if (element_count == 1) {
-                // Parent already has an element child (other than child being replaced)
-                if (parentHasElementChild(parent, child)) {
+                // Parent already has an element child (don't exclude anything for pre-insertion)
+                if (parentHasElementChild(parent, null)) {
                     return error.HierarchyRequestError;
                 }
 
@@ -610,8 +610,8 @@ fn ensureDocumentConstraints(
         },
 
         .element => {
-            // Parent has an element child
-            if (parentHasElementChild(parent, child)) {
+            // Parent has an element child (don't exclude anything for pre-insertion)
+            if (parentHasElementChild(parent, null)) {
                 return error.HierarchyRequestError;
             }
 
