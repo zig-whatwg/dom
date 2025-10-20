@@ -10,6 +10,7 @@ test {
     _ = @import("nodes/Node-appendChild.zig");
     _ = @import("nodes/Node-baseURI.zig");
     _ = @import("nodes/Node-childNodes.zig");
+    _ = @import("nodes/Node-childNodes-cache.zig");
     _ = @import("nodes/Node-cloneNode.zig");
     _ = @import("nodes/Node-compareDocumentPosition.zig");
     _ = @import("nodes/Node-constants.zig");
