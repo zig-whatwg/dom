@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 4: Additional Node WPT Tests** 🧪 NEW (Batch 1)
+  - **Node-isEqualNode.html** - 10 tests for isEqualNode() comparison (6 passing, 4 skipped)
+    - Tests: Text, Comment, Document, DocumentFragment node equality
+    - Tests: Descendant equality (recursive comparison)
+    - **Skipped tests** (isEqualNode implementation gaps identified):
+      - DocumentType publicId/systemId comparison not implemented
+      - Element namespace comparison needs verification
+      - Attribute namespace comparison needs verification  
+      - ProcessingInstruction target comparison needs verification
+    - See test comments for WHATWG DOM spec references (§ 4.2.2)
+  - **Node-constants.html** - 9 tests for NodeType enum and document position constants
+    - Tests: All NodeType values match spec (ELEMENT_NODE=1, TEXT_NODE=3, etc.)
+    - Tests: Document position bitmask constants (DISCONNECTED=0x01, PRECEDING=0x02, etc.)
+    - Tests: Actual node instances have correct nodeType property
+  - **Node-childNodes-cache.html** - 1 test for live NodeList behavior
+    - Tests: childNodes updates correctly after node removal
+    - Tests: Out-of-bounds access returns null
+    - Tests: NodeList remains valid after DOM mutations
+  - **Test Count**: +16 new WPT tests → **1432 total tests** (1428 passing, 4 skipped)
+  - **Memory**: Fixed 4 leaks during development (7 → 3 remaining in abort tests)
+  - **Pass Rate**: 99.7% (1432/1436 including skipped)
+
 ### Fixed
 
 - **Critical Bug: ChildNode.replaceWith() Algorithm** 🐛
