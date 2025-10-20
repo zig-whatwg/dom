@@ -93,6 +93,7 @@ test {
 // Text tests
 test {
     _ = @import("nodes/Text-splitText.zig");
+    _ = @import("nodes/Text-wholeText.zig");
 }
 
 // DOMTokenList tests
