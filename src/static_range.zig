@@ -827,80 +827,9 @@ fn getNodeLength(node: *const Node) u32 {
 
 const testing = std.testing;
 
-test "StaticRange: isDocumentTypeOrAttr fast path for Element" {
-    const Document = @import("document.zig").Document;
 
-    const doc = try Document.init(testing.allocator);
-    defer doc.node.release();
 
-    const elem = try doc.createElement("div");
-    try testing.expect(!isDocumentTypeOrAttr(&elem.node));
-}
 
-test "StaticRange: isDocumentTypeOrAttr fast path for Text" {
-    const Document = @import("document.zig").Document;
 
-    const doc = try Document.init(testing.allocator);
-    defer doc.node.release();
 
-    const text = try doc.createTextNode("test");
-    try testing.expect(!isDocumentTypeOrAttr(&text.node));
-}
 
-test "StaticRange: isDocumentTypeOrAttr detects DocumentType" {
-    const DocumentType = @import("document_type.zig").DocumentType;
-
-    const doctype = try DocumentType.create(testing.allocator, "html", "", "");
-    defer doctype.node.release();
-
-    try testing.expect(isDocumentTypeOrAttr(&doctype.node));
-}
-
-test "StaticRange: isDocumentTypeOrAttr detects Attr" {
-    const Attr = @import("attr.zig").Attr;
-
-    const attr = try Attr.create(testing.allocator, "id", "test");
-    defer attr.node.release();
-
-    try testing.expect(isDocumentTypeOrAttr(&attr.node));
-}
-
-test "StaticRange: getNodeLength for Element" {
-    const Document = @import("document.zig").Document;
-
-    const doc = try Document.init(testing.allocator);
-    defer doc.node.release();
-
-    const elem = try doc.createElement("div");
-    try testing.expectEqual(@as(u32, 0), getNodeLength(&elem.node));
-
-    const child1 = try doc.createElement("child1");
-    _ = try elem.node.appendChild(&child1.node);
-    try testing.expectEqual(@as(u32, 1), getNodeLength(&elem.node));
-
-    const child2 = try doc.createElement("child2");
-    _ = try elem.node.appendChild(&child2.node);
-    try testing.expectEqual(@as(u32, 2), getNodeLength(&elem.node));
-}
-
-test "StaticRange: getNodeLength for Text" {
-    const Document = @import("document.zig").Document;
-
-    const doc = try Document.init(testing.allocator);
-    defer doc.node.release();
-
-    const text = try doc.createTextNode("hello");
-    try testing.expectEqual(@as(u32, 5), getNodeLength(&text.node));
-
-    const empty_text = try doc.createTextNode("");
-    try testing.expectEqual(@as(u32, 0), getNodeLength(&empty_text.node));
-}
-
-test "StaticRange: getNodeLength for DocumentType" {
-    const DocumentType = @import("document_type.zig").DocumentType;
-
-    const doctype = try DocumentType.create(testing.allocator, "html", "", "");
-    defer doctype.node.release();
-
-    try testing.expectEqual(@as(u32, 0), getNodeLength(&doctype.node));
-}

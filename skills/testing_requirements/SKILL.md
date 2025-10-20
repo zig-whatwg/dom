@@ -1,10 +1,46 @@
 # Testing Requirements Skill
 
-## ⚠️ CRITICAL: Generic DOM Library - Test Naming Rules
+## 🚨 CRITICAL RULES - READ FIRST
+
+### Rule #1: NEVER Write Tests in src/ Files
+
+**❌ ABSOLUTELY FORBIDDEN: Tests in `src/` directory**
+
+```zig
+// ❌ WRONG - src/element.zig
+pub const Element = struct {
+    // ... implementation ...
+};
+
+test "element test" {  // ❌ FORBIDDEN!
+    // This test belongs in tests/unit/element_test.zig
+}
+```
+
+```zig
+// ✅ CORRECT - tests/unit/element_test.zig
+const std = @import("std");
+const Element = @import("dom").Element;
+
+test "element test" {  // ✅ CORRECT LOCATION
+    // Test code here
+}
+```
+
+**WHY THIS RULE EXISTS:**
+1. **Compilation speed** - Tests in src/ are compiled even for production builds
+2. **Code clarity** - Source files should contain only implementation
+3. **Zig best practices** - Separate test files are the standard
+4. **Maintainability** - Easy to find and run tests separately
+
+**WHERE TO PUT TESTS:**
+- ✅ `tests/unit/` - Unit tests (one file per src/ file)
+- ✅ `tests/wpt/` - Web Platform Tests (converted from upstream)
+- ❌ NEVER in `src/` - Source files are for implementation ONLY
+
+### Rule #2: Generic DOM Library - No HTML Names
 
 **THIS IS A GENERIC DOM LIBRARY** - Tests MUST use generic element/attribute names.
-
-### Test Naming Rules
 
 ✅ **ALWAYS use generic names**:
 - Elements: `element`, `container`, `item`, `node`, `component`, `widget`, `panel`, `view`, `content`, `wrapper`, `parent`, `child`, `root`
@@ -14,22 +50,62 @@
 - NO HTML elements: `div`, `span`, `p`, `a`, `button`, `input`, `form`, `table`, `ul`, `li`, `header`, `footer`, `section`, `article`, `nav`, `main`, `aside`, `h1`, `body`, `html`
 - NO HTML attributes: `id`, `class`, `href`, `src`, `type`, `name`, `action`, `method`, `placeholder`
 
-### Test Location Rules ⚠️ CRITICAL
+---
 
-**NEVER write tests inside `src/` files!**
+## Test Organization
 
-- **Unit tests**: Separate files in `tests/unit/` directory
-  - One test file per source file (e.g., `src/element.zig` → `tests/unit/element_test.zig`)
-  - Import the module under test: `const Element = @import("dom").Element;`
-  - Use `std.testing.allocator` for memory leak detection
+### Unit Tests (`tests/unit/`)
 
-- **WPT tests**: Converted from Web Platform Tests, placed in `tests/wpt/` directory ONLY
-  - Organized by interface (e.g., `tests/wpt/nodes/Element-*.zig`)
-  - Replace ALL HTML element/attribute names with generic names during conversion
+**One test file per source file:**
+- `src/element.zig` → `tests/unit/element_test.zig`
+- `src/document.zig` → `tests/unit/document_test.zig`
+- `src/string_utils.zig` → `tests/unit/string_utils_test.zig`
 
-- **Integration tests**: Can be in `tests/` root for cross-module tests
+**File structure:**
+```zig
+// tests/unit/element_test.zig
+const std = @import("std");
+const Element = @import("dom").Element;
 
-**Rationale**: Separate test files keep source code clean, enable faster compilation (tests only compiled when needed), and follow Zig best practices.
+test "Element.create - creates element with tag name" {
+    const allocator = std.testing.allocator;
+    const elem = try Element.create(allocator, "item");
+    defer elem.node.release();
+    
+    try std.testing.expectEqualStrings("item", elem.tag_name);
+}
+
+test "Element.setAttribute - sets attribute value" {
+    // More tests...
+}
+```
+
+### WPT Tests (`tests/wpt/`)
+
+**Converted from Web Platform Tests:**
+- Organized by interface: `tests/wpt/nodes/Element-*.zig`
+- Replace ALL HTML names with generic names during conversion
+- Preserve test structure and assertions exactly
+
+### Integration Tests (`tests/`)
+
+**Cross-module tests** can be in `tests/` root if needed.
+
+---
+
+## Before Writing ANY Test
+
+**🛑 STOP - Check this first:**
+
+```bash
+# Is there already a test file?
+ls tests/unit/my_module_test.zig
+
+# If YES → Add tests there
+# If NO → Create new file in tests/unit/
+```
+
+**❌ NEVER add `test "..."` blocks to src/ files!**
 
 ## When to use this skill
 

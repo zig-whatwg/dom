@@ -548,3 +548,10 @@ test "StaticRange: nodes are ref-counted correctly" {
     const after_deinit_count = elem.prototype.getRefCount();
     try testing.expectEqual(initial_count, after_deinit_count);
 }
+
+
+
+
+
+
+

@@ -12,6 +12,8 @@ test {
     _ = @import("text_test.zig");
     _ = @import("comment_test.zig");
     _ = @import("shadow_root_test.zig");
+    // TODO: Extract tests from src/processing_instruction.zig, src/cdata_section.zig, src/custom_element_registry.zig
+    // These files have tests that reference internal/unexported APIs and need careful refactoring
 }
 
 // Collection and list tests
@@ -46,6 +48,7 @@ test {
     _ = @import("rare_data_test.zig");
     _ = @import("validation_test.zig");
     _ = @import("qualified_name_test.zig");
+    // TODO: Extract tests from src/string_utils.zig (internal module, not exported)
 }
 
 // Specialized feature tests
