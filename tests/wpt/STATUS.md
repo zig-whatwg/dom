@@ -119,7 +119,7 @@ zig build test-wpt
 
 ### Traversal Tests (✅ 8 files) - Phase 1 Quick Wins 🎉
 
-**Location**: `/Users/bcardarella/projects/dom2/tests/wpt/traversal/`
+**Location**: `/Users/bcardarella/projects/dom/tests/wpt/traversal/`
 
 **TreeWalker (5 files, 22 tests):**
 - [x] TreeWalker-basic.zig (4 tests) ✅ 100%
@@ -137,7 +137,7 @@ zig build test-wpt
 
 ### Range Tests (✅ 5 files) - Phase 1 Quick Wins 🎉
 
-**Location**: `/Users/bcardarella/projects/dom2/tests/wpt/ranges/`
+**Location**: `/Users/bcardarella/projects/dom/tests/wpt/ranges/`
 
 - [x] Range-constructor.zig (1 test) ✅ 100%
 - [x] Range-compareBoundaryPoints.zig (6 tests) ✅ 100%
@@ -149,7 +149,7 @@ zig build test-wpt
 
 ### DOMTokenList Tests (⚠️ 4 files) - Phase 1 Quick Wins 🎉
 
-**Location**: `/Users/bcardarella/projects/dom2/tests/wpt/lists/`
+**Location**: `/Users/bcardarella/projects/dom/tests/wpt/lists/`
 
 - [x] DOMTokenList-Iterable.zig (3 tests) ✅ 100%
 - [x] DOMTokenList-iteration.zig (8 tests) ⚠️ 75% (2 failures)
@@ -164,7 +164,7 @@ zig build test-wpt
 
 ### HTMLCollection Tests (⚠️ 4 files) - Phase 1 Quick Wins 🎉
 
-**Location**: `/Users/bcardarella/projects/dom2/tests/wpt/collections/`
+**Location**: `/Users/bcardarella/projects/dom/tests/wpt/collections/`
 
 - [x] HTMLCollection-iterator.zig (4 tests) ✅ 100%
 - [x] HTMLCollection-supported-property-indices.zig (8 tests) ✅ 100%
@@ -178,7 +178,7 @@ zig build test-wpt
 
 ### AbortSignal Tests (✅ 3 files) - Phase 1 Quick Wins 🎉
 
-**Location**: `/Users/bcardarella/projects/dom2/tests/wpt/abort/`
+**Location**: `/Users/bcardarella/projects/dom/tests/wpt/abort/`
 
 - [x] AbortSignal.zig (17 tests) ✅ 100% (⚠️ 17 memory leaks)
 - [x] event.zig (13 tests) ✅ 100% (⚠️ 13 memory leaks)

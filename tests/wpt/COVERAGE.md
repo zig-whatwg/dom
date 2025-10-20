@@ -1,7 +1,7 @@
 # WPT DOM Coverage Report
 
 **Generated**: 2025-10-18  
-**Library**: dom2 (WHATWG DOM Implementation in Zig)
+**Library**: dom (WHATWG DOM Implementation in Zig)
 
 ---
 
@@ -352,4 +352,4 @@ The library is **production-ready for its implemented features**, with clear doc
 ---
 
 **Last Updated**: 2025-10-18  
-**Maintainer**: dom2 project
+**Maintainer**: dom project

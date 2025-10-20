@@ -15,6 +15,7 @@ test {
     _ = @import("nodes/Node-compareDocumentPosition.zig");
     _ = @import("nodes/Node-constants.zig");
     _ = @import("nodes/Node-contains.zig");
+    _ = @import("nodes/Node-hasChildNodes.zig");
     _ = @import("nodes/Node-insertBefore.zig");
     _ = @import("nodes/Node-isConnected.zig");
     _ = @import("nodes/Node-isEqualNode.zig");
@@ -22,6 +23,7 @@ test {
     _ = @import("nodes/Node-nodeName.zig");
     _ = @import("nodes/Node-nodeValue.zig");
     _ = @import("nodes/Node-normalize.zig");
+    _ = @import("nodes/Node-ownerDocument.zig");
     _ = @import("nodes/Node-parentElement.zig");
     _ = @import("nodes/Node-parentNode.zig");
     _ = @import("nodes/Node-removeChild.zig");
@@ -58,6 +60,7 @@ test {
     _ = @import("nodes/Element-hasAttributes.zig");
     _ = @import("nodes/Element-id.zig");
     _ = @import("nodes/Element-lastElementChild.zig");
+    _ = @import("nodes/Element-localName.zig");
     _ = @import("nodes/Element-namespaceURI.zig");
     _ = @import("nodes/Element-nextElementSibling.zig");
     _ = @import("nodes/Element-prefix.zig");
@@ -66,6 +69,7 @@ test {
     _ = @import("nodes/Element-setAttribute.zig");
     _ = @import("nodes/Element-siblingElement-null.zig");
     _ = @import("nodes/Element-tagName.zig");
+    _ = @import("nodes/Element-tagName-case.zig");
 }
 
 // ParentNode tests
@@ -90,6 +94,7 @@ test {
     _ = @import("nodes/Document-createProcessingInstruction.zig");
     _ = @import("nodes/Document-createTextNode.zig");
     _ = @import("nodes/Document-doctype.zig");
+    _ = @import("nodes/Document-documentElement.zig");
     _ = @import("nodes/Document-getElementById.zig");
     _ = @import("nodes/Document-getElementsByClassName.zig");
     _ = @import("nodes/Document-getElementsByTagName.zig");
@@ -98,6 +103,7 @@ test {
 
 // DocumentFragment tests
 test {
+    _ = @import("nodes/DocumentFragment-children.zig");
     _ = @import("nodes/DocumentFragment-constructor.zig");
 }
 
@@ -110,11 +116,13 @@ test {
 // Comment tests
 test {
     _ = @import("nodes/Comment-constructor.zig");
+    _ = @import("nodes/Comment-data.zig");
 }
 
 // Text tests
 test {
     _ = @import("nodes/Text-constructor.zig");
+    _ = @import("nodes/Text-data.zig");
     _ = @import("nodes/Text-splitText.zig");
     _ = @import("nodes/Text-wholeText.zig");
 }

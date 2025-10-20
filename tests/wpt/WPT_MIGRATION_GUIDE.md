@@ -349,9 +349,9 @@ If feature isn't implemented:
 ### File Locations
 
 - **WPT Source**: `/Users/bcardarella/projects/wpt/dom/nodes/`
-- **Test Destination**: `/Users/bcardarella/projects/dom2/tests/wpt/nodes/`
-- **Test Runner**: `/Users/bcardarella/projects/dom2/tests/wpt/wpt_tests.zig`
-- **Implementation**: `/Users/bcardarella/projects/dom2/src/`
+- **Test Destination**: `/Users/bcardarella/projects/dom/tests/wpt/nodes/`
+- **Test Runner**: `/Users/bcardarella/projects/dom/tests/wpt/wpt_tests.zig`
+- **Implementation**: `/Users/bcardarella/projects/dom/src/`
 
 ### Commands
 
@@ -515,4 +515,4 @@ Current status: **33/158 tests (20.9%)**
 ---
 
 **Last Updated**: 2025-10-18  
-**Maintainer**: dom2 project
+**Maintainer**: dom project

@@ -2023,7 +2023,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Element.removeAttribute()** now returns void instead of bool per WebIDL spec
 - **Node.removeEventListener()** now returns void instead of bool per WebIDL spec
-- **Project renamed** from `dom2` to `dom` (import as `@import("dom")`)
+- **Project renamed** from `dom` to `dom` (import as `@import("dom")`)
 
 ### Fixed
 - Event listener API ergonomics - now WHATWG-compliant delegation from Node
