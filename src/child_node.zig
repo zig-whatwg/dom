@@ -246,13 +246,24 @@ fn convertNodesToNode(
 pub fn before(self: *Node, nodes: []const NodeOrString) !void {
     const parent = self.parent_node orelse return; // No parent = no-op
 
-    // Find owner document for text node creation
-    const owner_doc = self.ownerDocument() orelse return;
+    // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+    const doc_node = self.owner_document orelse self;
+    const is_document = doc_node.node_type == .document;
+
+    if (!is_document) return;
+
+    const owner_doc: *Document = @fieldParentPtr("prototype", doc_node);
+
+    // Enter [CEReactions] scope
+    const stack = owner_doc.getCEReactionsStack();
+    try stack.enter();
+    defer stack.leave();
 
     // Convert nodes
     const node = try convertNodesToNode(owner_doc, nodes) orelse return;
 
     // Insert before self
+    // insertBefore will handle enqueuing reactions
     _ = try parent.insertBefore(node, self);
 }
 
@@ -308,11 +319,23 @@ pub fn before(self: *Node, nodes: []const NodeOrString) !void {
 pub fn after(self: *Node, nodes: []const NodeOrString) !void {
     const parent = self.parent_node orelse return; // No parent = no-op
 
-    const owner_doc = self.ownerDocument() orelse return;
+    // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+    const doc_node = self.owner_document orelse self;
+    const is_document = doc_node.node_type == .document;
+
+    if (!is_document) return;
+
+    const owner_doc: *Document = @fieldParentPtr("prototype", doc_node);
+
+    // Enter [CEReactions] scope
+    const stack = owner_doc.getCEReactionsStack();
+    try stack.enter();
+    defer stack.leave();
 
     const node = try convertNodesToNode(owner_doc, nodes) orelse return;
 
     // Insert after self = insert before next sibling (or append if last)
+    // insertBefore will handle enqueuing reactions
     _ = try parent.insertBefore(node, self.next_sibling);
 }
 
@@ -369,11 +392,23 @@ pub fn after(self: *Node, nodes: []const NodeOrString) !void {
 pub fn replaceWith(self: *Node, nodes: []const NodeOrString) !void {
     const parent = self.parent_node orelse return; // No parent = no-op
 
-    const owner_doc = self.ownerDocument() orelse return;
+    // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+    const doc_node = self.owner_document orelse self;
+    const is_document = doc_node.node_type == .document;
+
+    if (!is_document) return;
+
+    const owner_doc: *Document = @fieldParentPtr("prototype", doc_node);
+
+    // Enter [CEReactions] scope
+    const stack = owner_doc.getCEReactionsStack();
+    try stack.enter();
+    defer stack.leave();
 
     const node = try convertNodesToNode(owner_doc, nodes) orelse return;
 
     // Replace this node with the new node(s)
+    // replaceChild will handle enqueuing reactions
     _ = try parent.replaceChild(node, self);
 }
 
@@ -422,5 +457,20 @@ pub fn replaceWith(self: *Node, nodes: []const NodeOrString) !void {
 /// ```
 pub fn remove(self: *Node) void {
     const parent = self.parent_node orelse return;
-    _ = parent.removeChild(self) catch {}; // Ignore errors (shouldn't happen)
+
+    // [CEReactions] scope for custom element lifecycle callbacks (Phase 5)
+    const doc_node = self.owner_document orelse self;
+    const is_document = doc_node.node_type == .document;
+
+    if (is_document) {
+        const owner_doc: *Document = @fieldParentPtr("prototype", doc_node);
+        const stack = owner_doc.getCEReactionsStack();
+        stack.enter() catch return; // Ignore allocation errors
+        defer stack.leave();
+
+        // removeChild will handle enqueuing reactions
+        _ = parent.removeChild(self) catch {}; // Ignore errors (shouldn't happen)
+    } else {
+        _ = parent.removeChild(self) catch {}; // Ignore errors (shouldn't happen)
+    }
 }

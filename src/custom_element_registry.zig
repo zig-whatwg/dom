@@ -3447,3 +3447,225 @@ test "moveBefore() does NOT enqueue reactions (same parent)" {
     try std.testing.expect(!State.disconnected_called);
     try std.testing.expect(!State.connected_called);
 }
+
+test "before() enqueues connected reaction" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var connected_called: bool = false;
+
+        fn connectedCallback(element: *Element) !void {
+            _ = element;
+            connected_called = true;
+        }
+
+        fn reset() void {
+            connected_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .connected_callback = State.connectedCallback,
+    }, .{});
+
+    const parent = try doc.createElement("container");
+    _ = try doc.prototype.appendChild(&parent.prototype);
+
+    const existing = try doc.createElement("existing");
+    _ = try parent.prototype.appendChild(&existing.prototype);
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Callback should NOT be called yet (element not connected)
+    try std.testing.expect(!State.connected_called);
+
+    // Insert element before existing using ChildNode.before()
+    const child_node = @import("child_node.zig");
+    try child_node.before(&existing.prototype, &[_]child_node.NodeOrString{
+        .{ .node = &elem.prototype },
+    });
+
+    // Callback should have been called
+    try std.testing.expect(State.connected_called);
+}
+
+test "after() enqueues connected reaction" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var connected_called: bool = false;
+
+        fn connectedCallback(element: *Element) !void {
+            _ = element;
+            connected_called = true;
+        }
+
+        fn reset() void {
+            connected_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .connected_callback = State.connectedCallback,
+    }, .{});
+
+    const parent = try doc.createElement("container");
+    _ = try doc.prototype.appendChild(&parent.prototype);
+
+    const existing = try doc.createElement("existing");
+    _ = try parent.prototype.appendChild(&existing.prototype);
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Callback should NOT be called yet (element not connected)
+    try std.testing.expect(!State.connected_called);
+
+    // Insert element after existing using ChildNode.after()
+    const child_node = @import("child_node.zig");
+    try child_node.after(&existing.prototype, &[_]child_node.NodeOrString{
+        .{ .node = &elem.prototype },
+    });
+
+    // Callback should have been called
+    try std.testing.expect(State.connected_called);
+}
+
+test "replaceWith() enqueues disconnected and connected reactions" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callbacks
+    const State = struct {
+        var disconnected_called: bool = false;
+        var connected_called: bool = false;
+
+        fn disconnectedCallback(element: *Element) !void {
+            _ = element;
+            disconnected_called = true;
+        }
+
+        fn connectedCallback(element: *Element) !void {
+            _ = element;
+            connected_called = true;
+        }
+
+        fn reset() void {
+            disconnected_called = false;
+            connected_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .connected_callback = State.connectedCallback,
+        .disconnected_callback = State.disconnectedCallback,
+    }, .{});
+
+    const parent = try doc.createElement("container");
+    _ = try doc.prototype.appendChild(&parent.prototype);
+
+    // Add old element
+    const old_elem = try doc.createElement("x-widget");
+    old_elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(old_elem);
+    _ = try parent.prototype.appendChild(&old_elem.prototype);
+
+    State.reset();
+
+    // Create new element
+    const new_elem = try doc.createElement("x-widget");
+    new_elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(new_elem);
+
+    // Replace old element using ChildNode.replaceWith()
+    const child_node = @import("child_node.zig");
+    try child_node.replaceWith(&old_elem.prototype, &[_]child_node.NodeOrString{
+        .{ .node = &new_elem.prototype },
+    });
+
+    // Both callbacks should have been called
+    try std.testing.expect(State.disconnected_called); // old_elem removed
+    try std.testing.expect(State.connected_called); // new_elem added
+
+    // Clean up removed element
+    old_elem.prototype.release();
+}
+
+test "remove() enqueues disconnected reaction" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var disconnected_called: bool = false;
+
+        fn disconnectedCallback(element: *Element) !void {
+            _ = element;
+            disconnected_called = true;
+        }
+
+        fn reset() void {
+            disconnected_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .disconnected_callback = State.disconnectedCallback,
+    }, .{});
+
+    const parent = try doc.createElement("container");
+    _ = try doc.prototype.appendChild(&parent.prototype);
+
+    const elem = try doc.createElement("x-widget");
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+    _ = try parent.prototype.appendChild(&elem.prototype);
+
+    // Callback should NOT be called yet (element still connected)
+    try std.testing.expect(!State.disconnected_called);
+
+    // Remove element using ChildNode.remove()
+    const child_node = @import("child_node.zig");
+    child_node.remove(&elem.prototype);
+
+    // Callback should have been called
+    try std.testing.expect(State.disconnected_called);
+
+    // Clean up removed element
+    elem.prototype.release();
+}
