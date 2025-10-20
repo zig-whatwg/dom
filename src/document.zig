@@ -256,6 +256,7 @@ const parent_node_mod = @import("parent_node.zig");
 const SelectorList = @import("selector/parser.zig").SelectorList;
 const FastPathType = @import("fast_path.zig").FastPathType;
 const HTMLCollection = @import("html_collection.zig").HTMLCollection;
+const CEReactionsStack = @import("custom_element_registry.zig").CEReactionsStack;
 
 /// String interning pool for per-document string deduplication.
 ///
@@ -552,6 +553,10 @@ pub const Document = struct {
     xml_namespace: []const u8 = undefined,
     xmlns_namespace: []const u8 = undefined,
 
+    /// Custom element reactions stack (Phase 3)
+    /// Manages nested [CEReactions] scopes for lifecycle callbacks
+    ce_reactions_stack: CEReactionsStack,
+
     /// Vtable for Document nodes.
     const vtable = NodeVTable{
         .deinit = deinitImpl,
@@ -696,6 +701,9 @@ pub const Document = struct {
         doc.xml_namespace = try doc.string_pool.intern("http://www.w3.org/XML/1998/namespace");
         doc.xmlns_namespace = try doc.string_pool.intern("http://www.w3.org/2000/xmlns/");
 
+        // Initialize custom element reactions stack (Phase 3)
+        doc.ce_reactions_stack = CEReactionsStack.init(allocator);
+
         return doc;
     }
 
@@ -759,6 +767,28 @@ pub const Document = struct {
         // Document destruction happens when external_ref_count reaches 0,
         // not when node_ref_count reaches 0
         _ = self.node_ref_count.fetchSub(1, .monotonic);
+    }
+
+    /// Gets the custom element reactions stack for this document (Phase 3).
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#custom-element-reactions-stack
+    ///
+    /// ## Returns
+    ///
+    /// Pointer to document's CE reactions stack
+    ///
+    /// ## Usage
+    ///
+    /// ```zig
+    /// const stack = doc.getCEReactionsStack();
+    /// try stack.enter(); // Push new [CEReactions] scope
+    /// defer stack.leave(); // Pop scope, invoke reactions
+    ///
+    /// // DOM operations enqueue reactions
+    /// _ = try element.node.appendChild(&child.node);
+    /// ```
+    pub fn getCEReactionsStack(self: *Document) *CEReactionsStack {
+        return &self.ce_reactions_stack;
     }
 
     /// Creates a new element with the specified tag name.
@@ -2939,6 +2969,9 @@ pub const Document = struct {
         self.tag_map.deinit();
 
         // NOTE: class_map removed in Phase 3 - no cleanup needed
+
+        // Clean up custom element reactions stack (Phase 3)
+        self.ce_reactions_stack.deinit();
 
         // Clean up string pool (must be AFTER tag_map)
         self.string_pool.deinit();

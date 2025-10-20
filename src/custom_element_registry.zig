@@ -894,6 +894,420 @@ fn treeTraversalNext(current: *Node, root: *Node) ?*Node {
 }
 
 // ============================================================================
+// Custom Element Reactions (Phase 3)
+// ============================================================================
+
+/// Custom element reaction (pending callback invocation).
+///
+/// Represents one lifecycle callback waiting to be invoked on an element.
+/// Stored in per-element reaction queues, processed FIFO order.
+///
+/// **Browser Research**: All 3 browsers use variant/union pattern
+/// - Chrome: virtual base class (inheritance)
+/// - Firefox: union with explicit type enum
+/// - WebKit: std::variant (C++17)
+///
+/// **Zig Adaptation**: union(enum) - Compile-time type safety, no virtual dispatch
+///
+/// **Spec**: https://dom.spec.whatwg.org/#concept-custom-element-reaction
+///
+/// ## Variants
+///
+/// - `upgrade` - Run constructor (mostly for spec compliance, Phase 2 handles this)
+/// - `connected` - Element inserted into document
+/// - `disconnected` - Element removed from document
+/// - `adopted` - Element moved to new document
+/// - `attribute_changed` - Observed attribute changed
+///
+/// ## Memory Layout
+///
+/// - Tag: 1 byte (enum discriminant)
+/// - Padding: 7 bytes (alignment)
+/// - Largest variant: 64 bytes (attribute_changed)
+/// - **Total: 72 bytes per reaction**
+pub const CustomElementReaction = union(enum) {
+    /// Upgrade element (run constructor).
+    /// Note: Phase 2 already handles upgrades in upgradeElement().
+    /// This reaction type is for spec compliance and explicit upgrade() calls.
+    upgrade: void,
+
+    /// Element connected to document (inserted).
+    /// Triggers: appendChild, insertBefore, etc.
+    /// Callback: connectedCallback()
+    connected: void,
+
+    /// Element disconnected from document (removed).
+    /// Triggers: removeChild, replaceChild, etc.
+    /// Callback: disconnectedCallback()
+    disconnected: void,
+
+    /// Element adopted into new document.
+    /// Triggers: adoptNode
+    /// Callback: adoptedCallback(oldDocument, newDocument)
+    adopted: struct {
+        old_document: *Document,
+        new_document: *Document,
+    },
+
+    /// Observed attribute changed.
+    /// Triggers: setAttribute, removeAttribute, etc.
+    /// Callback: attributeChangedCallback(name, oldValue, newValue, namespace)
+    attribute_changed: struct {
+        name: []const u8,
+        old_value: ?[]const u8,
+        new_value: ?[]const u8,
+        namespace_uri: ?[]const u8,
+    },
+};
+
+/// Per-element reaction queue (lazy allocation).
+///
+/// Stores pending lifecycle callbacks for one element. Created lazily
+/// when first reaction is enqueued. Owned by Element, freed on deinit.
+///
+/// **Browser Research**:
+/// - Chrome: HeapVector with 1 inline reaction (micro-optimization)
+/// - Firefox: nsTArray (dynamic array)
+/// - WebKit: Vector (similar to std::vector)
+///
+/// **Zig Adaptation**: ArrayList (no inline storage, but simpler)
+///
+/// **Spec**: Implied by https://dom.spec.whatwg.org/#enqueue-a-custom-element-callback-reaction
+///
+/// ## Lifetime
+///
+/// - Created: When first reaction enqueued
+/// - Cleared: After all reactions invoked
+/// - Destroyed: When element deinit'd or queue explicitly freed
+///
+/// ## Memory
+///
+/// - Queue header: ~32 bytes (ArrayList + allocator)
+/// - Per reaction: 72 bytes
+/// - **Total: ~32 + (72 × reaction count)**
+pub const CustomElementReactionQueue = struct {
+    allocator: Allocator,
+    reactions: ArrayList(CustomElementReaction),
+
+    /// Creates a new reaction queue.
+    ///
+    /// ## Parameters
+    ///
+    /// - `allocator`: Memory allocator
+    ///
+    /// ## Returns
+    ///
+    /// Heap-allocated queue pointer
+    ///
+    /// ## Errors
+    ///
+    /// - `error.OutOfMemory`: Failed to allocate queue
+    pub fn init(allocator: Allocator) !*CustomElementReactionQueue {
+        const queue = try allocator.create(CustomElementReactionQueue);
+        queue.* = .{
+            .allocator = allocator,
+            .reactions = .{},
+        };
+        return queue;
+    }
+
+    /// Destroys the queue and frees memory.
+    pub fn deinit(self: *CustomElementReactionQueue) void {
+        self.reactions.deinit(self.allocator);
+        const allocator = self.allocator;
+        allocator.destroy(self);
+    }
+
+    /// Enqueues a reaction to be invoked later.
+    ///
+    /// ## Parameters
+    ///
+    /// - `reaction`: Reaction to enqueue (copied)
+    ///
+    /// ## Errors
+    ///
+    /// - `error.OutOfMemory`: Failed to grow queue
+    pub fn enqueue(self: *CustomElementReactionQueue, reaction: CustomElementReaction) !void {
+        try self.reactions.append(self.allocator, reaction);
+    }
+
+    /// Invokes all reactions in FIFO order.
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#invoke-custom-element-reactions
+    ///
+    /// ## Parameters
+    ///
+    /// - `element`: Element to invoke callbacks on
+    ///
+    /// ## Errors
+    ///
+    /// - Callback errors are caught and logged (not propagated)
+    ///
+    /// ## Notes
+    ///
+    /// - Reactions are NOT removed from queue (caller must clear)
+    /// - Processes all reactions even if one throws
+    pub fn invokeAll(self: *CustomElementReactionQueue, element: *Element) void {
+        const definition = element.getCustomElementDefinition() orelse return;
+
+        for (self.reactions.items) |reaction| {
+            invokeReaction(element, definition, reaction);
+        }
+    }
+
+    /// Clears all reactions from queue.
+    pub fn clear(self: *CustomElementReactionQueue) void {
+        self.reactions.clearRetainingCapacity();
+    }
+
+    /// Checks if queue is empty.
+    pub fn isEmpty(self: *const CustomElementReactionQueue) bool {
+        return self.reactions.items.len == 0;
+    }
+};
+
+/// Invokes a single reaction on an element.
+///
+/// **Spec**: Implied by https://dom.spec.whatwg.org/#invoke-custom-element-reactions
+///
+/// ## Parameters
+///
+/// - `element`: Element to invoke callback on
+/// - `definition`: Custom element definition with callbacks
+/// - `reaction`: Reaction to invoke
+///
+/// ## Notes
+///
+/// - Callback errors are caught and logged (spec says catch + ignore)
+/// - Element is NOT marked as "failed" on error (only constructor errors do that)
+fn invokeReaction(
+    element: *Element,
+    definition: *const CustomElementDefinition,
+    reaction: CustomElementReaction,
+) void {
+    switch (reaction) {
+        .upgrade => {
+            // Constructor already run in Phase 2 (upgradeElement)
+            // This reaction type is mostly for spec compliance
+            if (definition.callbacks.constructor_fn) |constructor| {
+                constructor(element, element.prototype.allocator) catch |err| {
+                    // Log error but don't propagate (spec says catch + ignore)
+                    std.log.warn("Custom element constructor threw: {}", .{err});
+                    return;
+                };
+            }
+        },
+
+        .connected => {
+            if (definition.callbacks.connected_callback) |callback| {
+                callback(element) catch |err| {
+                    std.log.warn("connectedCallback threw: {}", .{err});
+                    return;
+                };
+            }
+        },
+
+        .disconnected => {
+            if (definition.callbacks.disconnected_callback) |callback| {
+                callback(element) catch |err| {
+                    std.log.warn("disconnectedCallback threw: {}", .{err});
+                    return;
+                };
+            }
+        },
+
+        .adopted => |payload| {
+            if (definition.callbacks.adopted_callback) |callback| {
+                callback(element, payload.old_document, payload.new_document) catch |err| {
+                    std.log.warn("adoptedCallback threw: {}", .{err});
+                    return;
+                };
+            }
+        },
+
+        .attribute_changed => |payload| {
+            if (definition.callbacks.attribute_changed_callback) |callback| {
+                callback(
+                    element,
+                    payload.name,
+                    payload.old_value,
+                    payload.new_value,
+                    payload.namespace_uri,
+                ) catch |err| {
+                    std.log.warn("attributeChangedCallback threw: {}", .{err});
+                    return;
+                };
+            }
+        },
+    }
+}
+
+/// Invokes all pending reactions for an element.
+///
+/// **Spec**: https://dom.spec.whatwg.org/#invoke-custom-element-reactions
+///
+/// ## Parameters
+///
+/// - `element`: Element with pending reactions
+fn invokeReactionsForElement(element: *Element) void {
+    const queue_ptr = element.custom_element_reaction_queue orelse return;
+    const queue: *CustomElementReactionQueue = @ptrCast(@alignCast(queue_ptr));
+
+    // Invoke all reactions
+    queue.invokeAll(element);
+
+    // Clear queue after processing
+    queue.clear();
+}
+
+/// Custom element reactions stack (per-document).
+///
+/// Manages nested [CEReactions] scopes. Each scope has a list of elements
+/// with pending reactions. When scope exits, all reactions are invoked.
+///
+/// **Browser Research**:
+/// - Chrome: Per-Agent (thread-isolated)
+/// - Firefox: Per-Document
+/// - WebKit: Thread-local static
+///
+/// **Zig Adaptation**: Per-Document (simpler than thread-local, no Zig TLS yet)
+///
+/// **Spec**: https://dom.spec.whatwg.org/#custom-element-reactions-stack
+///
+/// ## Usage Pattern
+///
+/// ```zig
+/// const stack = doc.getCEReactionsStack();
+/// stack.enter(); // Push new scope
+/// defer stack.leave(); // Pop scope, invoke reactions
+///
+/// // DOM operations enqueue reactions
+/// _ = try element.node.appendChild(&child.node);
+/// ```
+///
+/// ## Memory
+///
+/// - Stack ArrayList: ~24 bytes
+/// - Backup queue ArrayList: ~24 bytes
+/// - Allocator: 8 bytes
+/// - **Total: ~56 bytes per document**
+pub const CEReactionsStack = struct {
+    allocator: Allocator,
+
+    /// Stack of element queues (one per [CEReactions] scope).
+    /// Each scope contains elements with pending reactions.
+    stack: ArrayList(ArrayList(*Element)),
+
+    /// Backup queue for async/microtask processing.
+    /// Used when no explicit [CEReactions] scope is active.
+    backup_queue: ArrayList(*Element),
+
+    /// Creates a new CE reactions stack.
+    pub fn init(allocator: Allocator) CEReactionsStack {
+        return .{
+            .allocator = allocator,
+            .stack = .{},
+            .backup_queue = .{},
+        };
+    }
+
+    /// Destroys the stack and frees memory.
+    pub fn deinit(self: *CEReactionsStack) void {
+        // Free all queues in stack
+        for (self.stack.items) |*queue| {
+            queue.deinit(self.allocator);
+        }
+        self.stack.deinit(self.allocator);
+        self.backup_queue.deinit(self.allocator);
+    }
+
+    /// Enters a new [CEReactions] scope (push queue).
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#concept-push-new-element-queue
+    ///
+    /// ## Errors
+    ///
+    /// - `error.OutOfMemory`: Failed to allocate queue
+    pub fn enter(self: *CEReactionsStack) !void {
+        const queue: ArrayList(*Element) = .{};
+        try self.stack.append(self.allocator, queue);
+    }
+
+    /// Exits [CEReactions] scope (pop queue, invoke reactions).
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#concept-pop-current-element-queue
+    ///
+    /// ## Panics (Debug)
+    ///
+    /// Asserts stack is not empty
+    pub fn leave(self: *CEReactionsStack) void {
+        std.debug.assert(self.stack.items.len > 0);
+
+        var queue = self.stack.pop().?; // Guaranteed non-null by assert
+        defer queue.deinit(self.allocator);
+
+        // Invoke reactions for all elements in queue
+        self.invokeReactionsForQueue(queue);
+    }
+
+    /// Enqueues element to current or backup queue.
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#enqueue-an-element-on-the-appropriate-element-queue
+    ///
+    /// ## Parameters
+    ///
+    /// - `element`: Element with pending reactions
+    ///
+    /// ## Errors
+    ///
+    /// - `error.OutOfMemory`: Failed to grow queue
+    pub fn enqueueElement(self: *CEReactionsStack, element: *Element) !void {
+        if (self.stack.items.len > 0) {
+            // Active [CEReactions] scope - add to current queue
+            const current_queue = &self.stack.items[self.stack.items.len - 1];
+            try current_queue.append(self.allocator, element);
+        } else {
+            // No active scope - add to backup queue
+            try self.backup_queue.append(self.allocator, element);
+        }
+    }
+
+    /// Invokes reactions for all elements in backup queue.
+    ///
+    /// Called at microtask checkpoint or when explicitly flushed.
+    ///
+    /// ## Errors
+    ///
+    /// - `error.OutOfMemory`: Failed to duplicate queue
+    pub fn invokeBackupQueue(self: *CEReactionsStack) !void {
+        if (self.backup_queue.items.len == 0) return;
+
+        // Copy queue to avoid modification during iteration
+        const elements = try self.allocator.dupe(*Element, self.backup_queue.items);
+        defer self.allocator.free(elements);
+        self.backup_queue.clearRetainingCapacity();
+
+        // Invoke reactions for all elements
+        for (elements) |element| {
+            invokeReactionsForElement(element);
+        }
+    }
+
+    /// Checks if stack is empty (no active [CEReactions] scopes).
+    pub fn isEmpty(self: *const CEReactionsStack) bool {
+        return self.stack.items.len == 0;
+    }
+
+    /// Helper: Invokes reactions for all elements in a queue.
+    fn invokeReactionsForQueue(self: *CEReactionsStack, queue: ArrayList(*Element)) void {
+        _ = self;
+        for (queue.items) |element| {
+            invokeReactionsForElement(element);
+        }
+    }
+};
+
+// ============================================================================
 // Errors
 // ============================================================================
 
@@ -1514,4 +1928,468 @@ test "CustomElementRegistry: upgrade() skips non-element nodes" {
     try registry.upgrade(&doc.prototype);
 
     try std.testing.expectEqual(CustomElementState.custom, elem.getCustomElementState());
+}
+
+// ============================================================================
+// Phase 3: Reaction Queue Tests
+// ============================================================================
+
+test "CustomElementReaction: create all reaction types" {
+    // Test tagged union variants compile and can be created
+
+    // upgrade
+    const upgrade_reaction = CustomElementReaction{ .upgrade = {} };
+    try std.testing.expectEqual(CustomElementReaction.upgrade, upgrade_reaction);
+
+    // connected
+    const connected_reaction = CustomElementReaction{ .connected = {} };
+    try std.testing.expectEqual(CustomElementReaction.connected, connected_reaction);
+
+    // disconnected
+    const disconnected_reaction = CustomElementReaction{ .disconnected = {} };
+    try std.testing.expectEqual(CustomElementReaction.disconnected, disconnected_reaction);
+}
+
+test "CustomElementReaction: adopted reaction with documents" {
+    const allocator = std.testing.allocator;
+
+    const doc1 = try Document.init(allocator);
+    defer doc1.release();
+
+    const doc2 = try Document.init(allocator);
+    defer doc2.release();
+
+    const adopted_reaction = CustomElementReaction{
+        .adopted = .{
+            .old_document = doc1,
+            .new_document = doc2,
+        },
+    };
+
+    switch (adopted_reaction) {
+        .adopted => |payload| {
+            try std.testing.expectEqual(doc1, payload.old_document);
+            try std.testing.expectEqual(doc2, payload.new_document);
+        },
+        else => try std.testing.expect(false), // Should be adopted variant
+    }
+}
+
+test "CustomElementReaction: attribute_changed reaction with strings" {
+    const attr_reaction = CustomElementReaction{
+        .attribute_changed = .{
+            .name = "data-value",
+            .old_value = "old",
+            .new_value = "new",
+            .namespace_uri = null,
+        },
+    };
+
+    switch (attr_reaction) {
+        .attribute_changed => |payload| {
+            try std.testing.expectEqualStrings("data-value", payload.name);
+            try std.testing.expectEqualStrings("old", payload.old_value.?);
+            try std.testing.expectEqualStrings("new", payload.new_value.?);
+            try std.testing.expect(payload.namespace_uri == null);
+        },
+        else => try std.testing.expect(false), // Should be attribute_changed variant
+    }
+}
+
+test "CustomElementReactionQueue: init and deinit" {
+    const allocator = std.testing.allocator;
+
+    const queue = try CustomElementReactionQueue.init(allocator);
+    defer queue.deinit();
+
+    try std.testing.expect(queue.isEmpty());
+}
+
+test "CustomElementReactionQueue: enqueue reactions" {
+    const allocator = std.testing.allocator;
+
+    const queue = try CustomElementReactionQueue.init(allocator);
+    defer queue.deinit();
+
+    // Enqueue connected reaction
+    try queue.enqueue(.{ .connected = {} });
+    try std.testing.expect(!queue.isEmpty());
+    try std.testing.expectEqual(@as(usize, 1), queue.reactions.items.len);
+
+    // Enqueue disconnected reaction
+    try queue.enqueue(.{ .disconnected = {} });
+    try std.testing.expectEqual(@as(usize, 2), queue.reactions.items.len);
+}
+
+test "CustomElementReactionQueue: clear removes all reactions" {
+    const allocator = std.testing.allocator;
+
+    const queue = try CustomElementReactionQueue.init(allocator);
+    defer queue.deinit();
+
+    try queue.enqueue(.{ .connected = {} });
+    try queue.enqueue(.{ .disconnected = {} });
+    try std.testing.expectEqual(@as(usize, 2), queue.reactions.items.len);
+
+    queue.clear();
+    try std.testing.expect(queue.isEmpty());
+}
+
+test "CustomElementReactionQueue: isEmpty returns correct state" {
+    const allocator = std.testing.allocator;
+
+    const queue = try CustomElementReactionQueue.init(allocator);
+    defer queue.deinit();
+
+    // Initially empty
+    try std.testing.expect(queue.isEmpty());
+
+    // Not empty after enqueue
+    try queue.enqueue(.{ .connected = {} });
+    try std.testing.expect(!queue.isEmpty());
+
+    // Empty after clear
+    queue.clear();
+    try std.testing.expect(queue.isEmpty());
+}
+
+test "CustomElementReactionQueue: invokeAll calls callbacks" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback invocations
+    const State = struct {
+        var connected_called: bool = false;
+        var disconnected_called: bool = false;
+
+        fn connectedCallback(element: *Element) !void {
+            _ = element;
+            connected_called = true;
+        }
+
+        fn disconnectedCallback(element: *Element) !void {
+            _ = element;
+            disconnected_called = true;
+        }
+
+        fn reset() void {
+            connected_called = false;
+            disconnected_called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .connected_callback = State.connectedCallback,
+        .disconnected_callback = State.disconnectedCallback,
+    }, .{});
+
+    const elem = try Element.create(allocator, "x-widget");
+    defer elem.prototype.release();
+
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    const queue = try CustomElementReactionQueue.init(allocator);
+    defer queue.deinit();
+
+    try queue.enqueue(.{ .connected = {} });
+    try queue.enqueue(.{ .disconnected = {} });
+
+    // Invoke all reactions
+    queue.invokeAll(elem);
+
+    try std.testing.expect(State.connected_called);
+    try std.testing.expect(State.disconnected_called);
+}
+
+test "CustomElementReactionQueue: FIFO processing order" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback order
+    const State = struct {
+        var order: ArrayList(u8) = undefined;
+        var test_alloc: Allocator = undefined;
+
+        fn connectedCallback(element: *Element) !void {
+            _ = element;
+            try order.append(test_alloc, 1);
+        }
+
+        fn disconnectedCallback(element: *Element) !void {
+            _ = element;
+            try order.append(test_alloc, 2);
+        }
+
+        fn init_order(alloc: Allocator) void {
+            test_alloc = alloc;
+            order = .{};
+        }
+
+        fn deinit_order() void {
+            order.deinit(test_alloc);
+        }
+    };
+
+    State.init_order(allocator);
+    defer State.deinit_order();
+
+    try registry.define("x-widget", .{
+        .connected_callback = State.connectedCallback,
+        .disconnected_callback = State.disconnectedCallback,
+    }, .{});
+
+    const elem = try Element.create(allocator, "x-widget");
+    defer elem.prototype.release();
+
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    const queue = try CustomElementReactionQueue.init(allocator);
+    defer queue.deinit();
+
+    // Enqueue in specific order
+    try queue.enqueue(.{ .connected = {} });
+    try queue.enqueue(.{ .disconnected = {} });
+    try queue.enqueue(.{ .connected = {} });
+
+    queue.invokeAll(elem);
+
+    // Should be called in FIFO order: 1, 2, 1
+    try std.testing.expectEqual(@as(usize, 3), State.order.items.len);
+    try std.testing.expectEqual(@as(u8, 1), State.order.items[0]);
+    try std.testing.expectEqual(@as(u8, 2), State.order.items[1]);
+    try std.testing.expectEqual(@as(u8, 1), State.order.items[2]);
+}
+
+// ============================================================================
+// Phase 3: CE Reactions Stack Tests
+// ============================================================================
+
+test "CEReactionsStack: init and deinit" {
+    const allocator = std.testing.allocator;
+
+    var stack = CEReactionsStack.init(allocator);
+    defer stack.deinit();
+
+    try std.testing.expect(stack.isEmpty());
+}
+
+test "CEReactionsStack: enter and leave scope" {
+    const allocator = std.testing.allocator;
+
+    var stack = CEReactionsStack.init(allocator);
+    defer stack.deinit();
+
+    // Initially empty
+    try std.testing.expect(stack.isEmpty());
+
+    // Enter scope
+    try stack.enter();
+    try std.testing.expect(!stack.isEmpty());
+    try std.testing.expectEqual(@as(usize, 1), stack.stack.items.len);
+
+    // Leave scope
+    stack.leave();
+    try std.testing.expect(stack.isEmpty());
+}
+
+test "CEReactionsStack: nested scopes" {
+    const allocator = std.testing.allocator;
+
+    var stack = CEReactionsStack.init(allocator);
+    defer stack.deinit();
+
+    // Enter first scope
+    try stack.enter();
+    try std.testing.expectEqual(@as(usize, 1), stack.stack.items.len);
+
+    // Enter second scope (nested)
+    try stack.enter();
+    try std.testing.expectEqual(@as(usize, 2), stack.stack.items.len);
+
+    // Leave second scope
+    stack.leave();
+    try std.testing.expectEqual(@as(usize, 1), stack.stack.items.len);
+
+    // Leave first scope
+    stack.leave();
+    try std.testing.expect(stack.isEmpty());
+}
+
+test "CEReactionsStack: enqueueElement to current queue" {
+    const allocator = std.testing.allocator;
+
+    var stack = CEReactionsStack.init(allocator);
+    defer stack.deinit();
+
+    const elem = try Element.create(allocator, "widget");
+    defer elem.prototype.release();
+
+    // Enter scope
+    try stack.enter();
+
+    // Enqueue element (should go to current queue)
+    try stack.enqueueElement(elem);
+
+    const current_queue = stack.stack.items[0];
+    try std.testing.expectEqual(@as(usize, 1), current_queue.items.len);
+    try std.testing.expectEqual(elem, current_queue.items[0]);
+
+    // Leave scope
+    stack.leave();
+}
+
+test "CEReactionsStack: enqueueElement to backup queue" {
+    const allocator = std.testing.allocator;
+
+    var stack = CEReactionsStack.init(allocator);
+    defer stack.deinit();
+
+    const elem = try Element.create(allocator, "widget");
+    defer elem.prototype.release();
+
+    // No active scope - should go to backup queue
+    try stack.enqueueElement(elem);
+
+    try std.testing.expectEqual(@as(usize, 1), stack.backup_queue.items.len);
+    try std.testing.expectEqual(elem, stack.backup_queue.items[0]);
+}
+
+test "CEReactionsStack: invokeBackupQueue processes elements" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var called: bool = false;
+
+        fn connectedCallback(element: *Element) !void {
+            _ = element;
+            called = true;
+        }
+
+        fn reset() void {
+            called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .connected_callback = State.connectedCallback,
+    }, .{});
+
+    const elem = try Element.create(allocator, "x-widget");
+    defer elem.prototype.release();
+
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Enqueue reaction
+    const queue = try elem.getOrCreateReactionQueue();
+    try queue.enqueue(.{ .connected = {} });
+
+    var stack = CEReactionsStack.init(allocator);
+    defer stack.deinit();
+
+    // Add element to backup queue
+    try stack.enqueueElement(elem);
+
+    // Invoke backup queue
+    try stack.invokeBackupQueue();
+
+    // Callback should have been called
+    try std.testing.expect(State.called);
+
+    // Backup queue should be empty
+    try std.testing.expectEqual(@as(usize, 0), stack.backup_queue.items.len);
+}
+
+test "CEReactionsStack: leave invokes reactions" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Track callback
+    const State = struct {
+        var called: bool = false;
+
+        fn connectedCallback(element: *Element) !void {
+            _ = element;
+            called = true;
+        }
+
+        fn reset() void {
+            called = false;
+        }
+    };
+
+    State.reset();
+
+    try registry.define("x-widget", .{
+        .connected_callback = State.connectedCallback,
+    }, .{});
+
+    const elem = try Element.create(allocator, "x-widget");
+    defer elem.prototype.release();
+
+    elem.setIsUndefined();
+    _ = try registry.tryToUpgradeElement(elem);
+
+    // Enqueue reaction
+    const queue = try elem.getOrCreateReactionQueue();
+    try queue.enqueue(.{ .connected = {} });
+
+    var stack = CEReactionsStack.init(allocator);
+    defer stack.deinit();
+
+    // Enter scope and enqueue element
+    try stack.enter();
+    try stack.enqueueElement(elem);
+
+    // Leave scope - should invoke reactions
+    stack.leave();
+
+    // Callback should have been called
+    try std.testing.expect(State.called);
+}
+
+test "CEReactionsStack: isEmpty returns correct state" {
+    const allocator = std.testing.allocator;
+
+    var stack = CEReactionsStack.init(allocator);
+    defer stack.deinit();
+
+    // Initially empty
+    try std.testing.expect(stack.isEmpty());
+
+    // Not empty after enter
+    try stack.enter();
+    try std.testing.expect(!stack.isEmpty());
+
+    // Empty after leave
+    stack.leave();
+    try std.testing.expect(stack.isEmpty());
 }

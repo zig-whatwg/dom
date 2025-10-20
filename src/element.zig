@@ -242,6 +242,7 @@ const NamedNodeMap = @import("named_node_map.zig").NamedNodeMap;
 const DOMError = @import("validation.zig").DOMError;
 const AttributeArray = @import("attribute_array.zig").AttributeArray;
 const CustomElementDefinition = @import("custom_element_registry.zig").CustomElementDefinition;
+const CustomElementReactionQueue = @import("custom_element_registry.zig").CustomElementReactionQueue;
 
 // ============================================================================
 // Custom Element State (Phase 2)
@@ -4451,6 +4452,12 @@ pub const Element = struct {
             elem.prototype.allocator.free(elem.tag_name);
         }
 
+        // Clean up custom element reaction queue (Phase 3)
+        if (elem.custom_element_reaction_queue) |queue_ptr| {
+            const queue: *CustomElementReactionQueue = @ptrCast(@alignCast(queue_ptr));
+            queue.deinit();
+        }
+
         elem.attributes.deinit();
         elem.prototype.allocator.destroy(elem);
     }
@@ -4710,6 +4717,32 @@ pub const Element = struct {
     /// Current state (undefined, uncustomized, custom, or failed)
     pub fn getCustomElementState(self: *const Element) CustomElementState {
         return self.custom_element_state;
+    }
+
+    // ========================================================================
+    // Custom Element Reaction Queue (Phase 3)
+    // ========================================================================
+
+    /// Gets or creates the reaction queue for this element (lazy allocation).
+    ///
+    /// **Spec**: Implied by https://dom.spec.whatwg.org/#enqueue-a-custom-element-callback-reaction
+    ///
+    /// ## Returns
+    ///
+    /// Pointer to element's reaction queue (never null after call)
+    ///
+    /// ## Errors
+    ///
+    /// - `error.OutOfMemory`: Failed to allocate queue
+    pub fn getOrCreateReactionQueue(self: *Element) !*CustomElementReactionQueue {
+        if (self.custom_element_reaction_queue) |queue_ptr| {
+            const aligned_ptr: *CustomElementReactionQueue = @ptrCast(@alignCast(queue_ptr));
+            return aligned_ptr;
+        }
+
+        const queue = try CustomElementReactionQueue.init(self.prototype.allocator);
+        self.custom_element_reaction_queue = @ptrCast(queue);
+        return queue;
     }
 };
 
