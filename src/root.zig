@@ -278,3 +278,10 @@ pub const FastPathType = @import("fast_path.zig").FastPathType;
 pub const detectFastPath = @import("fast_path.zig").detectFastPath;
 pub const extractIdentifier = @import("fast_path.zig").extractIdentifier;
 pub const ElementIterator = @import("element_iterator.zig").ElementIterator;
+
+// Export custom elements (Phase 1 - Registry Foundation)
+pub const CustomElementRegistry = @import("custom_element_registry.zig").CustomElementRegistry;
+pub const CustomElementDefinition = @import("custom_element_registry.zig").CustomElementDefinition;
+pub const CustomElementCallbacks = @import("custom_element_registry.zig").CustomElementCallbacks;
+pub const CustomElementError = @import("custom_element_registry.zig").CustomElementError;
+pub const isValidCustomElementName = @import("custom_element_registry.zig").isValidCustomElementName;
