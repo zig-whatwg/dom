@@ -1172,14 +1172,14 @@ pub const Element = struct {
         const old_value = self.getAttributeNS(namespace, components.local_name);
 
         // Intern the strings via document's string pool if we have an owner document
-        const interned_local = if (self.prototype.owner_document) |owner| blk: {
+        const interned_qualified = if (self.prototype.owner_document) |owner| blk: {
             if (owner.node_type == .document) {
                 const Document = @import("document.zig").Document;
                 const doc: *Document = @fieldParentPtr("prototype", owner);
-                break :blk try doc.string_pool.intern(components.local_name);
+                break :blk try doc.string_pool.intern(qualified_name);
             }
-            break :blk components.local_name;
-        } else components.local_name;
+            break :blk qualified_name;
+        } else qualified_name;
 
         const interned_value = if (self.prototype.owner_document) |owner| blk: {
             if (owner.node_type == .document) {
@@ -1201,8 +1201,9 @@ pub const Element = struct {
             break :blk ns;
         } else null;
 
-        // Step 2: Set attribute value with namespace
-        try self.attributes.array.set(interned_local, interned_ns, interned_value);
+        // Step 2: Set attribute value with namespace (use qualified name for AttributeArray)
+        // AttributeArray.set needs to be updated to accept qualified_name for NS attributes
+        try self.attributes.array.setNS(interned_qualified, interned_ns, interned_value);
 
         // Queue mutation record for attributes
         node_mod.queueMutationRecord(
@@ -1770,6 +1771,44 @@ pub const Element = struct {
         try self.attr_cache.?.put(name, attr);
 
         // Return to caller (they hold the original ref_count=1)
+        return attr;
+    }
+
+    /// Gets or creates a cached Attr node with namespace information.
+    ///
+    /// This is similar to getOrCreateCachedAttr but handles namespaced attributes.
+    /// For simplicity, we DON'T cache namespaced attributes since they're rare.
+    /// This avoids complexity with cache key management for qualified names.
+    ///
+    /// ## Parameters
+    /// - `namespace_uri`: Namespace URI (nullable)
+    /// - `prefix`: Namespace prefix (nullable)
+    /// - `local_name`: Local name without prefix
+    /// - `value`: Attribute value
+    ///
+    /// ## Returns
+    /// Attr node with ref_count=1 (caller must release)
+    pub fn getOrCreateCachedAttrNS(
+        self: *Element,
+        namespace_uri: ?[]const u8,
+        prefix: ?[]const u8,
+        local_name: []const u8,
+        value: []const u8,
+    ) !*Attr {
+        // Create new namespaced Attr directly (ref_count=1)
+        // We don't cache namespaced attributes to avoid cache key management complexity
+        const attr = try Attr.create(self.prototype.allocator, local_name);
+        errdefer attr.node.release();
+
+        // Set namespace info manually to avoid temporary string issues
+        attr.namespace_uri = namespace_uri;
+        attr.prefix = prefix;
+        attr.local_name = local_name;
+
+        try attr.setValue(value);
+        attr.owner_element = self;
+
+        // Return to caller (they hold ref_count=1, must release)
         return attr;
     }
 

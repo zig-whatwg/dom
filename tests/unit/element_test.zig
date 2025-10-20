@@ -1597,10 +1597,8 @@ test "Element.removeAttributeNS" {
     try std.testing.expect(elem.getAttributeNS(xml_ns, "lang") == null);
 }
 
-// TODO: Fix getAttributeNodeNS to preserve namespace info in returned Attr
-// Currently getOrCreateAttr doesn't pass namespace data to the Attr node
-test "Element.getAttributeNodeNS - SKIP" {
-    if (true) return error.SkipZigTest;
+// Fixed: getAttributeNodeNS now preserves namespace info in returned Attr
+test "Element.getAttributeNodeNS" {
     const allocator = std.testing.allocator;
     const doc = try Document.init(allocator);
     defer doc.release();
@@ -1616,17 +1614,18 @@ test "Element.getAttributeNodeNS - SKIP" {
     // Get Attr node
     const attr = try elem.getAttributeNodeNS(xlink_ns, "href");
     try std.testing.expect(attr != null);
+    defer attr.?.node.release(); // Must release returned Attr node
+
     try std.testing.expectEqualStrings("#target", attr.?.value());
     try std.testing.expectEqualStrings("href", attr.?.local_name);
 
-    // Check if namespace_uri is set
-    if (attr.?.namespace_uri) |ns| {
-        try std.testing.expectEqualStrings(xlink_ns, ns);
-    } else {
-        // For now, just verify the attribute works even if namespace isn't preserved
-        // This is a known limitation we can fix later
-        std.debug.print("Warning: namespace_uri not preserved in Attr\n", .{});
-    }
+    // Verify namespace_uri is preserved
+    try std.testing.expect(attr.?.namespace_uri != null);
+    try std.testing.expectEqualStrings(xlink_ns, attr.?.namespace_uri.?);
+
+    // Verify prefix is preserved
+    try std.testing.expect(attr.?.prefix != null);
+    try std.testing.expectEqualStrings("xlink", attr.?.prefix.?);
 }
 
 test "Element.setAttributeNodeNS" {

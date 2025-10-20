@@ -75,6 +75,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Attribute = @import("attribute.zig").Attribute;
+const QualifiedName = @import("qualified_name.zig").QualifiedName;
 
 /// AttributeArray stores element attributes in insertion order.
 ///
@@ -272,6 +273,79 @@ pub const AttributeArray = struct {
         }
     }
 
+    /// Sets a namespaced attribute using qualified name.
+    ///
+    /// This is similar to `set` but accepts a qualified name (prefix:localName)
+    /// instead of just local_name. This preserves the prefix in the attribute.
+    ///
+    /// ## Parameters
+    ///
+    /// - `qualified_name`: Full attribute name with prefix (e.g., "xml:lang", "xlink:href")
+    /// - `namespace_uri`: Namespace URI (nullable, must not be null for NS attributes)
+    /// - `value`: Attribute value
+    ///
+    /// ## Example
+    ///
+    /// ```zig
+    /// try attrs.setNS("xlink:href", "http://www.w3.org/1999/xlink", "#target");
+    /// ```
+    pub fn setNS(
+        self: *AttributeArray,
+        qualified_name: []const u8,
+        namespace_uri: ?[]const u8,
+        value: []const u8,
+    ) !void {
+        // Extract local_name from qualified_name for matching
+        const local_name = if (std.mem.indexOf(u8, qualified_name, ":")) |colon_idx|
+            qualified_name[colon_idx + 1 ..]
+        else
+            qualified_name;
+
+        // Try to find and replace existing (match by localName + namespace)
+        if (self.inline_count > 0) {
+            for (0..self.inline_count) |i| {
+                if (self.inline_storage[i].matches(local_name, namespace_uri)) {
+                    self.inline_storage[i].value = value;
+                    // Update the qualified name to preserve the prefix
+                    self.inline_storage[i].name = QualifiedName.initNS(namespace_uri, qualified_name);
+                    return;
+                }
+            }
+        } else {
+            for (self.attributes.items, 0..) |attr, i| {
+                if (attr.matches(local_name, namespace_uri)) {
+                    self.attributes.items[i].value = value;
+                    // Update the qualified name to preserve the prefix
+                    self.attributes.items[i].name = QualifiedName.initNS(namespace_uri, qualified_name);
+                    return;
+                }
+            }
+        }
+
+        // Not found - append new attribute (use initNS to preserve prefix)
+        const new_attr = Attribute.initNS(namespace_uri, qualified_name, value);
+
+        // Determine storage location
+        if (self.attributes.items.len > 0) {
+            // Already using heap - append
+            try self.attributes.append(self.allocator, new_attr);
+        } else if (self.inline_count < 4) {
+            // Using inline storage with room - add to inline
+            self.inline_storage[self.inline_count] = new_attr;
+            self.inline_count += 1;
+        } else {
+            // inline_count == 4 - first overflow, migrate to heap
+            try self.attributes.ensureTotalCapacity(self.allocator, 8);
+            for (self.inline_storage[0..4]) |attr| {
+                self.attributes.appendAssumeCapacity(attr);
+            }
+
+            // Append the new attribute
+            try self.attributes.append(self.allocator, new_attr);
+            self.inline_count = 0; // Mark as using heap
+        }
+    }
+
     /// Removes attribute by qualified name.
     ///
     /// ## Parameters
@@ -389,4 +463,3 @@ pub const AttributeArray = struct {
         return .{ .array = self };
     }
 };
-

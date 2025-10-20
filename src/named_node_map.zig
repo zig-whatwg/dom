@@ -404,8 +404,13 @@ pub const NamedNodeMap = struct {
                 false;
 
             if (ns_match) {
-                // Found matching attribute - create Attr node for it
-                return try self.getOrCreateAttr(attribute.name.local_name, attribute.value);
+                // Found matching attribute - create Attr node with namespace info
+                return try self.element.getOrCreateCachedAttrNS(
+                    attribute.name.namespace_uri,
+                    attribute.name.prefix,
+                    attribute.name.local_name,
+                    attribute.value,
+                );
             }
         }
 
