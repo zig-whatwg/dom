@@ -2,8 +2,8 @@
 // META: link=https://dom.spec.whatwg.org/#dom-text-splittextoffset
 
 // NOTE: WHATWG DOM uses UTF-16 code units for string offsets (DOMString is UTF-16).
-// Our implementation uses UTF-8 byte offsets. Tests with non-ASCII characters
-// may have offset mismatches. See: https://dom.spec.whatwg.org/#concept-cd-substring
+// Our implementation now correctly converts UTF-16 offsets to UTF-8 byte offsets internally.
+// See string_utils.zig for conversion utilities.
 
 const std = @import("std");
 const dom = @import("dom");
@@ -56,16 +56,15 @@ test "Split text at end" {
     const doc = try Document.init(allocator);
     defer doc.release();
 
-    // Note: "comté" is 6 bytes in UTF-8 (é = 2 bytes), but WPT expects character-based indexing
-    // WHATWG spec uses UTF-16 code units for offset, but we use UTF-8 bytes
-    // For now, use ASCII string to avoid UTF-8/UTF-16 offset mismatch
-    const text = try doc.createTextNode("comte");
+    // "comté" is 6 bytes in UTF-8 (é = 2 bytes), but 5 UTF-16 code units
+    // Our implementation now correctly handles UTF-16 offsets
+    const text = try doc.createTextNode("comté");
     defer text.prototype.release();
 
     const new_text = try text.splitText(5);
     defer new_text.prototype.release();
 
-    try std.testing.expectEqualStrings("comte", text.data);
+    try std.testing.expectEqualStrings("comté", text.data);
     try std.testing.expectEqualStrings("", new_text.data);
 }
 

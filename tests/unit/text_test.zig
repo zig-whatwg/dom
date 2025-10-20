@@ -343,6 +343,63 @@ test "Text.splitText - invalid offset" {
     );
 }
 
+test "Text.splitText - UTF-16 with BMP characters" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // "comté" = "com"(3) + "t"(1) + "é"(1) = 5 UTF-16 code units
+    const text = try doc.createTextNode("comté");
+    defer text.prototype.release();
+
+    // Split at UTF-16 offset 3 (after "com")
+    const second = try text.splitText(3);
+    defer second.prototype.release();
+
+    try std.testing.expectEqualStrings("com", text.data);
+    try std.testing.expectEqualStrings("té", second.data);
+}
+
+test "Text.splitText - UTF-16 with supplementary characters" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    // "Hello 𝄞" = "Hello "(6) + "𝄞"(2 UTF-16 code units) = 8 UTF-16 code units
+    const text = try doc.createTextNode("Hello 𝄞");
+    defer text.prototype.release();
+
+    // Split at UTF-16 offset 6 (before "𝄞")
+    const second = try text.splitText(6);
+    defer second.prototype.release();
+
+    try std.testing.expectEqualStrings("Hello ", text.data);
+    try std.testing.expectEqualStrings("𝄞", second.data);
+}
+
+test "Text.splitText - UTF-16 mixed characters in tree" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("container");
+    defer parent.prototype.release();
+
+    // "世界𝄞" = "世"(1) + "界"(1) + "𝄞"(2) = 4 UTF-16 code units
+    const text = try doc.createTextNode("世界𝄞");
+    _ = try parent.prototype.appendChild(&text.prototype);
+
+    // Split at UTF-16 offset 2 (after "世界", before "𝄞")
+    const second = try text.splitText(2);
+
+    try std.testing.expectEqualStrings("世界", text.data);
+    try std.testing.expectEqualStrings("𝄞", second.data);
+    try std.testing.expect(text.prototype.next_sibling == &second.prototype);
+    try std.testing.expect(second.prototype.parent_node == &parent.prototype);
+}
 
 test "Text - wholeText with single text node" {
     const allocator = std.testing.allocator;

@@ -643,27 +643,39 @@ pub const Text = struct {
     /// ## Spec Notes
     /// The split happens BEFORE the character at offset. So splitText(0) creates
     /// an empty node and moves all text to the new node.
+    ///
+    /// ## Implementation Notes
+    /// Per WHATWG spec, offset is measured in UTF-16 code units (DOMString semantics).
+    /// We convert UTF-16 offsets to UTF-8 byte offsets internally.
     pub fn splitText(self: *Text, offset: usize) !*Text {
-        // Step 1: Validate offset
-        if (offset > self.data.len) {
+        const string_utils = @import("string_utils.zig");
+
+        // Calculate length in UTF-16 code units
+        const utf16_len = string_utils.utf16Length(self.data);
+
+        // Step 1: Validate offset (in UTF-16 code units)
+        if (offset > utf16_len) {
             return error.IndexSizeError;
         }
 
-        // Step 2: Create new text node with text after offset
+        // Step 2: Convert UTF-16 offset to UTF-8 byte offset
+        const byte_offset = string_utils.utf16OffsetToUtf8Byte(self.data, offset);
+
+        // Step 3: Create new text node with text after offset
         // Text.create will dupe the content, so just pass the slice
-        const new_text = try Text.create(self.prototype.allocator, self.data[offset..]);
+        const new_text = try Text.create(self.prototype.allocator, self.data[byte_offset..]);
         errdefer new_text.prototype.release();
 
         // Set owner document from the original text node's document
         // (following the same pattern as cloneNode)
         new_text.prototype.owner_document = self.prototype.owner_document;
 
-        // Step 3: Truncate this node's data to before offset
-        const truncated = try self.prototype.allocator.dupe(u8, self.data[0..offset]);
+        // Step 4: Truncate this node's data to before offset
+        const truncated = try self.prototype.allocator.dupe(u8, self.data[0..byte_offset]);
         self.prototype.allocator.free(self.data);
         self.data = truncated;
 
-        // Step 4: If this node has a parent, insert new node after this one
+        // Step 5: If this node has a parent, insert new node after this one
         if (self.prototype.parent_node) |parent| {
             // Insert new_text after self
             _ = try parent.insertBefore(&new_text.prototype, self.prototype.next_sibling);

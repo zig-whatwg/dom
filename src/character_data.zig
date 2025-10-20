@@ -169,16 +169,20 @@ const Allocator = std.mem.Allocator;
 /// 3. Return substring from offset to end
 ///
 /// ## Parameters
-/// - `data`: The character data string
+/// - `data`: The character data string (UTF-8)
 /// - `allocator`: Allocator for the returned substring
-/// - `offset`: Starting position (0-based)
-/// - `count`: Number of characters to extract (null = to end)
+/// - `offset`: Starting position in UTF-16 code units (per WHATWG spec)
+/// - `count`: Number of UTF-16 code units to extract (null = to end)
 ///
 /// ## Returns
 /// Owned substring (caller must free)
 ///
 /// ## Errors
-/// - `IndexOutOfBounds`: offset > data.len
+/// - `IndexOutOfBounds`: offset > length (in UTF-16 code units)
+///
+/// ## Note
+/// Per WHATWG DOM, offsets are measured in UTF-16 code units (DOMString is UTF-16).
+/// This function converts UTF-16 offsets to UTF-8 byte positions internally.
 ///
 /// ## Spec References
 /// - Algorithm: https://dom.spec.whatwg.org/#dom-characterdata-substringdata
@@ -189,14 +193,24 @@ pub fn substringData(
     offset: usize,
     count: ?usize,
 ) ![]u8 {
-    if (offset > data.len) {
+    const string_utils = @import("string_utils.zig");
+
+    // Get length in UTF-16 code units
+    const utf16_len = string_utils.utf16Length(data);
+
+    if (offset > utf16_len) {
         return error.IndexOutOfBounds;
     }
 
-    const actual_count = count orelse (data.len - offset);
-    const end = @min(offset + actual_count, data.len);
+    // Convert UTF-16 offset to UTF-8 byte offset
+    const start_byte = string_utils.utf16OffsetToUtf8Byte(data, offset);
 
-    return try allocator.dupe(u8, data[offset..end]);
+    // Calculate end position in UTF-16 code units, then convert to bytes
+    const actual_count = count orelse (utf16_len - offset);
+    const end_utf16 = @min(offset + actual_count, utf16_len);
+    const end_byte = string_utils.utf16OffsetToUtf8Byte(data, end_utf16);
+
+    return try allocator.dupe(u8, data[start_byte..end_byte]);
 }
 
 /// Append data to the end of character data.
@@ -253,33 +267,47 @@ pub fn appendData(
 /// ## Parameters
 /// - `data_ptr`: Pointer to the data field to modify
 /// - `allocator`: Allocator for the new string
-/// - `offset`: Position to insert at (0-based)
+/// - `offset`: Position to insert at in UTF-16 code units (0-based)
 /// - `text_to_insert`: String to insert
 ///
 /// ## Errors
-/// - `IndexOutOfBounds`: offset > data.len
+/// - `IndexOutOfBounds`: offset > data.len (in UTF-16 code units)
 /// - `OutOfMemory`: Failed to allocate new string
 ///
 /// ## Spec References
 /// - Algorithm: https://dom.spec.whatwg.org/#dom-characterdata-insertdata
 /// - WebIDL: dom.idl:88
+///
+/// ## Implementation Notes
+/// Per WHATWG spec, offset is measured in UTF-16 code units (DOMString semantics).
+/// We convert UTF-16 offsets to UTF-8 byte offsets internally.
 pub fn insertData(
     data_ptr: *[]u8,
     allocator: Allocator,
     offset: usize,
     text_to_insert: []const u8,
 ) !void {
-    if (offset > data_ptr.len) {
+    const string_utils = @import("string_utils.zig");
+
+    // Calculate length in UTF-16 code units
+    const utf16_len = string_utils.utf16Length(data_ptr.*);
+
+    // Step 1: Validate offset (in UTF-16 code units)
+    if (offset > utf16_len) {
         return error.IndexOutOfBounds;
     }
 
+    // Step 2: Convert UTF-16 offset to UTF-8 byte offset
+    const byte_offset = string_utils.utf16OffsetToUtf8Byte(data_ptr.*, offset);
+
+    // Step 3: Insert at the byte offset
     const new_data = try std.mem.concat(
         allocator,
         u8,
         &[_][]const u8{
-            data_ptr.*[0..offset],
+            data_ptr.*[0..byte_offset],
             text_to_insert,
-            data_ptr.*[offset..],
+            data_ptr.*[byte_offset..],
         },
     );
 
@@ -304,34 +332,50 @@ pub fn insertData(
 /// ## Parameters
 /// - `data_ptr`: Pointer to the data field to modify
 /// - `allocator`: Allocator for the new string
-/// - `offset`: Starting position (0-based)
-/// - `count`: Number of characters to delete
+/// - `offset`: Starting position in UTF-16 code units (0-based)
+/// - `count`: Number of UTF-16 code units to delete
 ///
 /// ## Errors
-/// - `IndexOutOfBounds`: offset > data.len
+/// - `IndexOutOfBounds`: offset > data.len (in UTF-16 code units)
 /// - `OutOfMemory`: Failed to allocate new string
 ///
 /// ## Spec References
 /// - Algorithm: https://dom.spec.whatwg.org/#dom-characterdata-deletedata
 /// - WebIDL: dom.idl:89
+///
+/// ## Implementation Notes
+/// Per WHATWG spec, offset and count are measured in UTF-16 code units (DOMString semantics).
+/// We convert UTF-16 offsets to UTF-8 byte offsets internally.
 pub fn deleteData(
     data_ptr: *[]u8,
     allocator: Allocator,
     offset: usize,
     count: usize,
 ) !void {
-    if (offset > data_ptr.len) {
+    const string_utils = @import("string_utils.zig");
+
+    // Calculate length in UTF-16 code units
+    const utf16_len = string_utils.utf16Length(data_ptr.*);
+
+    // Step 1: Validate offset (in UTF-16 code units)
+    if (offset > utf16_len) {
         return error.IndexOutOfBounds;
     }
 
-    const end = @min(offset + count, data_ptr.len);
+    // Step 2: Calculate end position (in UTF-16 code units)
+    const end_utf16 = @min(offset + count, utf16_len);
 
+    // Step 3: Convert UTF-16 offsets to UTF-8 byte offsets
+    const start_byte = string_utils.utf16OffsetToUtf8Byte(data_ptr.*, offset);
+    const end_byte = string_utils.utf16OffsetToUtf8Byte(data_ptr.*, end_utf16);
+
+    // Step 4: Delete the range
     const new_data = try std.mem.concat(
         allocator,
         u8,
         &[_][]const u8{
-            data_ptr.*[0..offset],
-            data_ptr.*[end..],
+            data_ptr.*[0..start_byte],
+            data_ptr.*[end_byte..],
         },
     );
 
@@ -356,17 +400,21 @@ pub fn deleteData(
 /// ## Parameters
 /// - `data_ptr`: Pointer to the data field to modify
 /// - `allocator`: Allocator for the new string
-/// - `offset`: Starting position (0-based)
-/// - `count`: Number of characters to replace
+/// - `offset`: Starting position in UTF-16 code units (0-based)
+/// - `count`: Number of UTF-16 code units to replace
 /// - `replacement`: New string to insert
 ///
 /// ## Errors
-/// - `IndexOutOfBounds`: offset > data.len
+/// - `IndexOutOfBounds`: offset > data.len (in UTF-16 code units)
 /// - `OutOfMemory`: Failed to allocate new string
 ///
 /// ## Spec References
 /// - Algorithm: https://dom.spec.whatwg.org/#dom-characterdata-replacedata
 /// - WebIDL: dom.idl:90
+///
+/// ## Implementation Notes
+/// Per WHATWG spec, offset and count are measured in UTF-16 code units (DOMString semantics).
+/// We convert UTF-16 offsets to UTF-8 byte offsets internally.
 pub fn replaceData(
     data_ptr: *[]u8,
     allocator: Allocator,
@@ -374,19 +422,31 @@ pub fn replaceData(
     count: usize,
     replacement: []const u8,
 ) !void {
-    if (offset > data_ptr.len) {
+    const string_utils = @import("string_utils.zig");
+
+    // Calculate length in UTF-16 code units
+    const utf16_len = string_utils.utf16Length(data_ptr.*);
+
+    // Step 1: Validate offset (in UTF-16 code units)
+    if (offset > utf16_len) {
         return error.IndexOutOfBounds;
     }
 
-    const end = @min(offset + count, data_ptr.len);
+    // Step 2: Calculate end position (in UTF-16 code units)
+    const end_utf16 = @min(offset + count, utf16_len);
 
+    // Step 3: Convert UTF-16 offsets to UTF-8 byte offsets
+    const start_byte = string_utils.utf16OffsetToUtf8Byte(data_ptr.*, offset);
+    const end_byte = string_utils.utf16OffsetToUtf8Byte(data_ptr.*, end_utf16);
+
+    // Step 4: Replace the range
     const new_data = try std.mem.concat(
         allocator,
         u8,
         &[_][]const u8{
-            data_ptr.*[0..offset],
+            data_ptr.*[0..start_byte],
             replacement,
-            data_ptr.*[end..],
+            data_ptr.*[end_byte..],
         },
     );
 

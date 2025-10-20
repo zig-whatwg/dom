@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **UTF-16 Offset Support for CharacterData and Text** ✨ NEW
+  - **New Module**: `string_utils.zig` - UTF-8 ↔ UTF-16 offset conversion utilities
+    - `utf16Length()` - Calculate string length in UTF-16 code units
+    - `utf16OffsetToUtf8Byte()` - Convert UTF-16 offset → UTF-8 byte offset
+    - `utf8ByteToUtf16Offset()` - Convert UTF-8 byte offset → UTF-16 offset
+  - **Updated CharacterData methods** to use UTF-16 offsets per WHATWG spec:
+    - `substringData()` - Extract substring using UTF-16 offsets
+    - `insertData()` - Insert at UTF-16 offset
+    - `deleteData()` - Delete UTF-16 code unit range
+    - `replaceData()` - Replace UTF-16 code unit range
+  - **Updated Text methods** to use UTF-16 offsets:
+    - `splitText()` - Split at UTF-16 offset
+  - **UTF-16 Code Unit Counting**:
+    - ASCII (U+0000..U+007F): 1 code unit
+    - BMP (U+0080..U+FFFF): 1 code unit
+    - Supplementary (U+10000..U+10FFFF): 2 code units (surrogate pair)
+  - **Example**: "Hello 世界 𝄞" = 11 UTF-16 code units (6 ASCII + 2 BMP + 1 space + 2 for surrogate pair)
+  - **Spec Compliance**: Per WHATWG DOM, DOMString uses UTF-16 semantics for offsets
+  - **Tests**: Added 11 comprehensive UTF-16 tests covering ASCII, BMP, and supplementary characters
+  - **Impact**: Non-ASCII strings (Chinese, emoji, musical symbols) now work correctly in all string operations
+
 - **Phase 4: Additional Node WPT Tests** 🧪 NEW (Batch 1)
   - **Node-isEqualNode.html** - 10 tests for isEqualNode() comparison (6 passing, 4 skipped)
     - Tests: Text, Comment, Document, DocumentFragment node equality
