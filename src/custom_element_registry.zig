@@ -91,6 +91,9 @@ const ArrayList = std.ArrayList;
 
 const Document = @import("document.zig").Document;
 const Element = @import("element.zig").Element;
+const CustomElementState = @import("element.zig").CustomElementState;
+const Node = @import("node.zig").Node;
+const NodeType = @import("node.zig").NodeType;
 
 // ============================================================================
 // Custom Element Name Validation
@@ -711,10 +714,184 @@ pub const CustomElementRegistry = struct {
         try self.definitions.put(interned_name, definition);
 
         // 9. Upgrade existing elements (spec step 10)
-        // TODO: Implement in Phase 2
-        // try self.upgradeCandidates(interned_name, definition);
+        try self.upgradeCandidates(interned_name, definition);
+    }
+
+    // ========================================================================
+    // Element Upgrade Operations (Phase 2)
+    // ========================================================================
+
+    /// Attempts to upgrade an element if it's in "undefined" state.
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#concept-try-upgrade
+    ///
+    /// ## Algorithm (WHATWG DOM)
+    ///
+    /// 1. Check if element is in "undefined" state (early exit if not)
+    /// 2. Look up definition by element's tag name
+    /// 3. If found, upgrade element to "custom" state
+    ///
+    /// ## Parameters
+    ///
+    /// - `element`: Element to potentially upgrade
+    ///
+    /// ## Errors
+    ///
+    /// - `error.ConstructorThrew`: Constructor threw during upgrade (element → failed state)
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Complexity
+    ///
+    /// O(1) - Hash map lookup + element state check
+    pub fn tryToUpgradeElement(self: *CustomElementRegistry, element: *Element) !void {
+        // 1. Check state (spec step 1)
+        if (element.custom_element_state != .undefined) {
+            return; // Not in undefined state, skip
+        }
+
+        // 2. Look up definition (spec step 2)
+        const definition = self.definitions.get(element.tag_name) orelse return;
+
+        // 3. Upgrade element (spec step 3)
+        try upgradeElement(element, definition);
+    }
+
+    /// Upgrades all elements in a tree that match defined custom element names.
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#dom-customelementregistry-upgrade
+    ///
+    /// ## Algorithm (WHATWG DOM)
+    ///
+    /// Performs depth-first traversal of tree, calling tryToUpgradeElement on each element.
+    ///
+    /// ## Parameters
+    ///
+    /// - `root`: Root node to start traversal from
+    ///
+    /// ## Errors
+    ///
+    /// - `error.ConstructorThrew`: Constructor threw during upgrade
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    ///
+    /// ## Complexity
+    ///
+    /// O(n) where n = number of nodes in tree
+    pub fn upgrade(self: *CustomElementRegistry, root: *Node) !void {
+        // 1. Walk tree depth-first (all browsers use this pattern)
+        var node: ?*Node = root;
+        while (node) |current| {
+            // 2. Skip non-elements
+            if (current.node_type != .element) {
+                node = treeTraversalNext(current, root);
+                continue;
+            }
+
+            const element: *Element = @fieldParentPtr("prototype", current);
+
+            // 3. Try to upgrade
+            try self.tryToUpgradeElement(element);
+
+            // 4. Next node
+            node = treeTraversalNext(current, root);
+        }
+    }
+
+    /// Upgrades all candidates for a specific element name.
+    ///
+    /// Called by define() after adding new definition to upgrade existing elements.
+    ///
+    /// ## Parameters
+    ///
+    /// - `name`: Element name that was just defined
+    /// - `definition`: Definition to apply to candidates
+    ///
+    /// ## Errors
+    ///
+    /// - `error.ConstructorThrew`: Constructor threw during upgrade
+    /// - `error.OutOfMemory`: Failed to allocate memory
+    fn upgradeCandidates(
+        self: *CustomElementRegistry,
+        name: []const u8,
+        definition: *CustomElementDefinition,
+    ) !void {
+        // 1. Get upgrade candidates for this name
+        const candidates = self.upgrade_candidates.get(name) orelse return;
+
+        // 2. Upgrade each candidate
+        for (candidates.items) |element| {
+            // Check element is still undefined (may have changed)
+            if (element.custom_element_state != .undefined) continue;
+
+            // Upgrade element
+            try upgradeElement(element, definition);
+        }
+
+        // 3. Clear candidates list (all upgraded or failed)
+        // Note: In browsers this uses weak refs (auto-cleanup)
+        // In Zig: manual cleanup with strong refs
+        _ = self.upgrade_candidates.remove(name);
     }
 };
+
+/// Upgrades an element to a custom element by running its constructor.
+///
+/// **Spec**: https://dom.spec.whatwg.org/#concept-upgrade-an-element
+///
+/// ## Algorithm (WHATWG DOM)
+///
+/// 1. Try to run constructor (while still in "undefined" state)
+/// 2. If constructor succeeds, set state to "custom"
+/// 3. If constructor throws, set state to "failed"
+///
+/// ## Parameters
+///
+/// - `element`: Element to upgrade
+/// - `definition`: Definition with constructor and callbacks
+///
+/// ## Errors
+///
+/// - `error.ConstructorThrew`: Constructor threw (element → failed state)
+fn upgradeElement(element: *Element, definition: *const CustomElementDefinition) !void {
+    // 1. Try to run constructor (element still in "undefined" state)
+    if (definition.callbacks.constructor_fn) |constructor| {
+        constructor(element, element.prototype.allocator) catch {
+            // Constructor threw error → set to failed state (undefined → failed)
+            element.setIsFailed();
+            return error.ConstructorThrew;
+        };
+    }
+
+    // 2. Constructor succeeded → set state to custom (undefined → custom)
+    element.setIsCustom(definition);
+
+    // 3. Element is now upgraded!
+    // Subsequent callbacks (connected, etc.) will be enqueued in Phase 3
+}
+
+/// Tree traversal helper (depth-first, next node).
+///
+/// Returns next node in depth-first traversal, or null if done.
+fn treeTraversalNext(current: *Node, root: *Node) ?*Node {
+    // Try first child
+    if (current.first_child) |child| {
+        return child;
+    }
+
+    // Try next sibling
+    var node = current;
+    while (true) {
+        // Reached root, done
+        if (node == root) return null;
+
+        // Try next sibling
+        if (node.next_sibling) |sibling| {
+            return sibling;
+        }
+
+        // Go up to parent
+        node = node.parent_node orelse return null;
+    }
+}
 
 // ============================================================================
 // Errors
@@ -1052,4 +1229,289 @@ test "CustomElementDefinition: hasCallback() checks callback existence" {
     try std.testing.expect(!def.hasCallback(.disconnected));
     try std.testing.expect(!def.hasCallback(.adopted));
     try std.testing.expect(!def.hasCallback(.attribute_changed));
+}
+
+// ============================================================================
+// Phase 2: Element State Machine Tests
+// ============================================================================
+
+test "Element: custom element state defaults to uncustomized" {
+    const allocator = std.testing.allocator;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.prototype.release();
+
+    try std.testing.expectEqual(CustomElementState.uncustomized, elem.getCustomElementState());
+    try std.testing.expect(!elem.isCustomElement());
+}
+
+test "Element: setIsCustom() transitions to custom state" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    try registry.define("x-widget", .{}, .{});
+    const def = registry.get("x-widget").?;
+
+    const elem = try Element.create(allocator, "x-widget");
+    defer elem.prototype.release();
+
+    // Start as undefined
+    elem.setIsUndefined();
+    try std.testing.expectEqual(CustomElementState.undefined, elem.getCustomElementState());
+
+    // Transition to custom
+    elem.setIsCustom(def);
+    try std.testing.expectEqual(CustomElementState.custom, elem.getCustomElementState());
+    try std.testing.expect(elem.isCustomElement());
+    try std.testing.expect(elem.getCustomElementDefinition() == def);
+}
+
+test "Element: setIsFailed() transitions to failed state" {
+    const allocator = std.testing.allocator;
+
+    const elem = try Element.create(allocator, "x-widget");
+    defer elem.prototype.release();
+
+    elem.setIsUndefined();
+    elem.setIsFailed();
+
+    try std.testing.expectEqual(CustomElementState.failed, elem.getCustomElementState());
+    try std.testing.expect(!elem.isCustomElement());
+    try std.testing.expect(elem.getCustomElementDefinition() == null);
+}
+
+test "Element: setIsUncustomized() transitions to uncustomized state" {
+    const allocator = std.testing.allocator;
+
+    const elem = try Element.create(allocator, "div");
+    defer elem.prototype.release();
+
+    elem.setIsUndefined();
+    elem.setIsUncustomized();
+
+    try std.testing.expectEqual(CustomElementState.uncustomized, elem.getCustomElementState());
+    try std.testing.expect(!elem.isCustomElement());
+}
+
+test "CustomElementRegistry: tryToUpgradeElement() skips non-undefined elements" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    try registry.define("x-button", .{}, .{});
+
+    // Element in uncustomized state (default)
+    const elem = try Element.create(allocator, "x-button");
+    defer elem.prototype.release();
+
+    // Should skip (not in undefined state)
+    try registry.tryToUpgradeElement(elem);
+
+    // Still uncustomized
+    try std.testing.expectEqual(CustomElementState.uncustomized, elem.getCustomElementState());
+}
+
+test "CustomElementRegistry: tryToUpgradeElement() upgrades undefined element" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    try registry.define("x-button", .{}, .{});
+
+    const elem = try Element.create(allocator, "x-button");
+    defer elem.prototype.release();
+
+    // Set to undefined (awaiting upgrade)
+    elem.setIsUndefined();
+
+    // Upgrade
+    try registry.tryToUpgradeElement(elem);
+
+    // Now custom
+    try std.testing.expectEqual(CustomElementState.custom, elem.getCustomElementState());
+    try std.testing.expect(elem.isCustomElement());
+}
+
+test "CustomElementRegistry: tryToUpgradeElement() runs constructor" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    var constructor_called = false;
+    const TestCallbacks = struct {
+        var called: *bool = undefined;
+        fn constructor(element: *Element, alloc: Allocator) !void {
+            _ = element;
+            _ = alloc;
+            called.* = true;
+        }
+    };
+    TestCallbacks.called = &constructor_called;
+
+    try registry.define("x-widget", .{
+        .constructor_fn = TestCallbacks.constructor,
+    }, .{});
+
+    const elem = try Element.create(allocator, "x-widget");
+    defer elem.prototype.release();
+
+    elem.setIsUndefined();
+    try registry.tryToUpgradeElement(elem);
+
+    try std.testing.expect(constructor_called);
+    try std.testing.expectEqual(CustomElementState.custom, elem.getCustomElementState());
+}
+
+test "CustomElementRegistry: tryToUpgradeElement() handles constructor error" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    const ErrorCallbacks = struct {
+        fn constructor(element: *Element, alloc: Allocator) !void {
+            _ = element;
+            _ = alloc;
+            return error.TestError;
+        }
+    };
+
+    try registry.define("x-error", .{
+        .constructor_fn = ErrorCallbacks.constructor,
+    }, .{});
+
+    const elem = try Element.create(allocator, "x-error");
+    defer elem.prototype.release();
+
+    elem.setIsUndefined();
+
+    // Constructor error should be propagated
+    try std.testing.expectError(error.ConstructorThrew, registry.tryToUpgradeElement(elem));
+
+    // Element should be in failed state
+    try std.testing.expectEqual(CustomElementState.failed, elem.getCustomElementState());
+    try std.testing.expect(!elem.isCustomElement());
+}
+
+test "CustomElementRegistry: upgrade() upgrades tree of elements" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    try registry.define("x-container", .{}, .{});
+    try registry.define("x-item", .{}, .{});
+
+    // Create tree: container with 2 items
+    const container = try Element.create(allocator, "x-container");
+    _ = try doc.prototype.appendChild(&container.prototype);
+
+    const item1 = try Element.create(allocator, "x-item");
+    _ = try container.prototype.appendChild(&item1.prototype);
+
+    const item2 = try Element.create(allocator, "x-item");
+    _ = try container.prototype.appendChild(&item2.prototype);
+
+    // Set all to undefined
+    container.setIsUndefined();
+    item1.setIsUndefined();
+    item2.setIsUndefined();
+
+    // Upgrade tree
+    try registry.upgrade(&doc.prototype);
+
+    // All should be upgraded
+    try std.testing.expectEqual(CustomElementState.custom, container.getCustomElementState());
+    try std.testing.expectEqual(CustomElementState.custom, item1.getCustomElementState());
+    try std.testing.expectEqual(CustomElementState.custom, item2.getCustomElementState());
+}
+
+test "CustomElementRegistry: define() upgrades existing candidates" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    // Create a root element to hold our test elements
+    const root = try Element.create(allocator, "root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
+    // Create elements BEFORE defining
+    const elem1 = try Element.create(allocator, "x-button");
+    _ = try root.prototype.appendChild(&elem1.prototype);
+
+    const elem2 = try Element.create(allocator, "x-button");
+    _ = try root.prototype.appendChild(&elem2.prototype);
+
+    // Add to upgrade candidates manually (simulating parser behavior)
+    elem1.setIsUndefined();
+    elem2.setIsUndefined();
+
+    var candidates: ArrayList(*Element) = .{};
+    defer candidates.deinit(allocator);
+    try candidates.append(allocator, elem1);
+    try candidates.append(allocator, elem2);
+    try registry.upgrade_candidates.put("x-button", candidates);
+
+    // Now define - should upgrade candidates
+    try registry.define("x-button", .{}, .{});
+
+    // Both should be upgraded
+    try std.testing.expectEqual(CustomElementState.custom, elem1.getCustomElementState());
+    try std.testing.expectEqual(CustomElementState.custom, elem2.getCustomElementState());
+
+    // Candidates list should be cleared
+    try std.testing.expect(!registry.upgrade_candidates.contains("x-button"));
+}
+
+test "CustomElementRegistry: upgrade() skips non-element nodes" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const registry = try CustomElementRegistry.init(allocator, doc);
+    defer registry.deinit();
+
+    try registry.define("x-widget", .{}, .{});
+
+    // Create mixed tree: element + text
+    const elem = try Element.create(allocator, "x-widget");
+    _ = try doc.prototype.appendChild(&elem.prototype);
+
+    const text = try doc.createTextNode("hello");
+    _ = try elem.prototype.appendChild(&text.prototype);
+
+    elem.setIsUndefined();
+
+    // Should not crash on text node
+    try registry.upgrade(&doc.prototype);
+
+    try std.testing.expectEqual(CustomElementState.custom, elem.getCustomElementState());
 }

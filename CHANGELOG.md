@@ -52,8 +52,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - MDN: https://developer.mozilla.org/en-US/docs/Web/API/CustomElementRegistry
   - **Implementation Status**: Phase 1 of 7 complete
     - Phase 1: Registry Foundation ✅ (Week 2)
-    - Phase 2: Element State Machine (Week 3) - Next
+    - Phase 2: Element State Machine ✅ (Week 3)
     - Phase 3-7: Reactions, Callbacks, Advanced Features (Weeks 4-6)
+
+- **Custom Elements - Phase 2: Element State Machine** 🎉 NEW
+  - **CustomElementState** - Element lifecycle state tracking (4-state machine, all browsers)
+    - `.undefined` - Element created but not yet upgraded (awaiting definition)
+    - `.uncustomized` - Regular element (not a custom element)
+    - `.custom` - Fully upgraded custom element (constructor succeeded)
+    - `.failed` - Upgrade failed (constructor threw error, terminal state)
+  - **Element Custom Element Fields** (17 bytes total)
+    - `custom_element_state: CustomElementState` - Current state (1 byte enum)
+    - `custom_element_definition: ?*const CustomElementDefinition` - Link to definition (8 bytes)
+    - `custom_element_reaction_queue: ?*anyopaque` - Placeholder for Phase 3 (8 bytes)
+  - **Element State Transition Methods**
+    - `setIsCustom(definition)` - undefined → custom (upgrade succeeded)
+    - `setIsFailed()` - undefined → failed (constructor threw)
+    - `setIsUndefined()` - uncustomized → undefined (awaiting upgrade)
+    - `setIsUncustomized()` - undefined → uncustomized (not custom element)
+    - `isCustomElement()` - Check if element is in `.custom` state
+    - `getCustomElementDefinition()` - Get definition if custom element
+    - `getCustomElementState()` - Get current state
+  - **Registry Upgrade Operations**
+    - `tryToUpgradeElement(element)` - O(1) single element upgrade attempt
+    - `upgrade(root)` - O(n) depth-first tree walk, upgrade all matching elements
+    - `upgradeCandidates(name)` - Called by `define()` to upgrade existing elements
+    - `upgradeElement(element, definition)` - Run constructor, handle errors
+    - `treeTraversalNext(current, root)` - Depth-first traversal helper
+  - **State Machine** (matches all 3 browsers)
+    - undefined → custom (constructor succeeds)
+    - undefined → failed (constructor throws)
+    - undefined → uncustomized (not a custom element)
+    - [uncustomized/custom/failed are terminal states, never change]
+  - **Constructor Error Handling**
+    - Constructor runs while element is still in `.undefined` state
+    - If constructor succeeds → transition to `.custom`
+    - If constructor throws → transition to `.failed`, return `error.ConstructorThrew`
+  - **Test Coverage**: 11 new comprehensive unit tests (29 total) ✅
+    - State transitions (4 tests): default state, setIsCustom, setIsFailed, setIsUncustomized
+    - Upgrade operations (7 tests): tryToUpgradeElement, upgrade tree, constructor errors, candidate upgrades
+    - All tests pass with zero memory leaks
+  - **Spec References**:
+    - WHATWG DOM: https://dom.spec.whatwg.org/#concept-element-custom-element-state
+    - WHATWG DOM: https://dom.spec.whatwg.org/#concept-upgrade-an-element
+    - MDN: https://developer.mozilla.org/en-US/docs/Web/API/CustomElementRegistry/upgrade
 
 - **AbortSignal.any() - Composite Signal Support** 🎉 ✅ COMPLETE
   - **AbortSignal.any(signals)** - Creates dependent signal that aborts when ANY source signal aborts

@@ -241,6 +241,60 @@ const Attr = @import("attr.zig").Attr;
 const NamedNodeMap = @import("named_node_map.zig").NamedNodeMap;
 const DOMError = @import("validation.zig").DOMError;
 const AttributeArray = @import("attribute_array.zig").AttributeArray;
+const CustomElementDefinition = @import("custom_element_registry.zig").CustomElementDefinition;
+
+// ============================================================================
+// Custom Element State (Phase 2)
+// ============================================================================
+
+/// Custom element state per WHATWG DOM specification.
+///
+/// Tracks the lifecycle state of an element through custom element upgrade process.
+/// Once an element reaches a terminal state (uncustomized, custom, or failed), it
+/// never transitions again.
+///
+/// **Browser Research**: All 3 browsers (Chrome, Firefox, WebKit) use these exact 4 states.
+///
+/// **Spec**: https://dom.spec.whatwg.org/#concept-element-custom-element-state
+///
+/// ## State Transitions
+///
+/// ```
+/// undefined → custom    (upgrade succeeds)
+/// undefined → failed    (upgrade fails, constructor throws)
+/// undefined → uncustomized (not a custom element after all)
+/// uncustomized → [terminal state, never changes]
+/// custom → [terminal state, never changes]
+/// failed → [terminal state, never changes]
+/// ```
+///
+/// ## States
+///
+/// - **undefined**: Element has potential custom element name (contains hyphen),
+///   but no definition exists yet. Awaiting definition to upgrade.
+///
+/// - **uncustomized**: Element is not a custom element. This is the terminal state
+///   for regular elements. Set when element doesn't have a hyphenated name or
+///   is explicitly marked as uncustomized.
+///
+/// - **custom**: Element successfully upgraded to custom element. Constructor ran
+///   without errors. This is a terminal state - element is now fully custom.
+///
+/// - **failed**: Element attempted to upgrade but constructor threw error. This
+///   is a terminal state - element can never be upgraded again.
+pub const CustomElementState = enum(u8) {
+    /// Element has hyphenated name but no definition yet (awaiting upgrade)
+    undefined = 0,
+
+    /// Element is not a custom element (terminal state)
+    uncustomized = 1,
+
+    /// Element successfully upgraded (terminal state)
+    custom = 2,
+
+    /// Constructor threw error during upgrade (terminal state)
+    failed = 3,
+};
 
 /// Bloom filter for fast class name matching in querySelector.
 ///
@@ -437,6 +491,36 @@ pub const Element = struct {
     /// Ensures [SameObject] semantics - repeated calls return same Attr
     attr_cache: ?AttrCache = null,
 
+    // ========================================================================
+    // Custom Elements (Phase 2)
+    // ========================================================================
+
+    /// Custom element state (1 byte)
+    /// Tracks progression through custom element lifecycle:
+    /// - undefined: Has hyphenated name, awaiting definition
+    /// - uncustomized: Not a custom element (terminal state)
+    /// - custom: Successfully upgraded (terminal state)
+    /// - failed: Constructor threw error (terminal state)
+    ///
+    /// **Browser Research**: All 3 browsers (Chrome, Firefox, WebKit) use same 4 states
+    /// **Spec**: https://dom.spec.whatwg.org/#concept-element-custom-element-state
+    custom_element_state: CustomElementState = .uncustomized,
+
+    /// Custom element definition pointer (8 bytes)
+    /// Null for non-custom elements or undefined elements
+    /// Set when element is upgraded or created with definition
+    ///
+    /// **Memory**: Inline storage (Zig adaptation, simpler than browsers' rare data)
+    /// **Spec**: https://dom.spec.whatwg.org/#concept-element-custom-element-definition
+    custom_element_definition: ?*const CustomElementDefinition = null,
+
+    /// Custom element reaction queue pointer (8 bytes)
+    /// Null until first reaction is enqueued (lazy allocation)
+    /// Stores pending lifecycle callbacks
+    ///
+    /// **Phase**: Implemented in Phase 3 (Reaction Queue System)
+    custom_element_reaction_queue: ?*anyopaque = null, // Placeholder for Phase 3
+
     /// Vtable for Element nodes.
     const vtable = NodeVTable{
         .deinit = deinitImpl,
@@ -562,6 +646,11 @@ pub const Element = struct {
         elem.class_bloom = .{};
         elem.attr_cache = null;
 
+        // Initialize custom element fields (Phase 2)
+        elem.custom_element_state = .uncustomized;
+        elem.custom_element_definition = null;
+        elem.custom_element_reaction_queue = null;
+
         return elem;
     }
 
@@ -636,6 +725,11 @@ pub const Element = struct {
         elem.attributes = AttributeMap.init(allocator);
         elem.class_bloom = .{};
         elem.attr_cache = null;
+
+        // Initialize custom element fields (Phase 2)
+        elem.custom_element_state = .uncustomized;
+        elem.custom_element_definition = null;
+        elem.custom_element_reaction_queue = null;
 
         return elem;
     }
@@ -4510,6 +4604,112 @@ pub const Element = struct {
                 }
             }
         }
+    }
+
+    // ========================================================================
+    // Custom Element State Management (Phase 2)
+    // ========================================================================
+
+    /// Transitions element to "custom" state after successful upgrade.
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#concept-element-custom-element-state
+    ///
+    /// ## Invariants
+    ///
+    /// - Can only transition from "undefined" state
+    /// - "custom" is a terminal state (never changes after set)
+    /// - Must provide a valid definition
+    ///
+    /// ## Parameters
+    ///
+    /// - `definition`: Custom element definition (callbacks and metadata)
+    ///
+    /// ## Panics (Debug)
+    ///
+    /// Asserts in debug builds that current state is "undefined"
+    pub fn setIsCustom(self: *Element, definition: *const CustomElementDefinition) void {
+        std.debug.assert(self.custom_element_state == .undefined);
+        self.custom_element_state = .custom;
+        self.custom_element_definition = definition;
+    }
+
+    /// Transitions element to "failed" state after constructor error.
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#concept-element-custom-element-state
+    ///
+    /// ## Invariants
+    ///
+    /// - Can only transition from "undefined" state
+    /// - "failed" is a terminal state (never changes after set)
+    /// - Definition is cleared (element will never be custom)
+    ///
+    /// ## Panics (Debug)
+    ///
+    /// Asserts in debug builds that current state is "undefined"
+    pub fn setIsFailed(self: *Element) void {
+        std.debug.assert(self.custom_element_state == .undefined);
+        self.custom_element_state = .failed;
+        self.custom_element_definition = null;
+    }
+
+    /// Transitions element to "undefined" state (awaiting upgrade).
+    ///
+    /// Used when element is created with hyphenated name but no definition exists yet.
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#concept-element-custom-element-state
+    ///
+    /// ## Invariants
+    ///
+    /// - Can only transition from "uncustomized" state
+    /// - "undefined" can later transition to custom/failed/uncustomized
+    pub fn setIsUndefined(self: *Element) void {
+        self.custom_element_state = .undefined;
+        self.custom_element_definition = null;
+    }
+
+    /// Transitions element to "uncustomized" state (not a custom element).
+    ///
+    /// **Spec**: https://dom.spec.whatwg.org/#concept-element-custom-element-state
+    ///
+    /// ## Invariants
+    ///
+    /// - Can only transition from "undefined" state
+    /// - "uncustomized" is a terminal state (never changes after set)
+    ///
+    /// ## Panics (Debug)
+    ///
+    /// Asserts in debug builds that current state is "undefined"
+    pub fn setIsUncustomized(self: *Element) void {
+        std.debug.assert(self.custom_element_state == .undefined);
+        self.custom_element_state = .uncustomized;
+        self.custom_element_definition = null;
+    }
+
+    /// Checks if element is a custom element (in "custom" state).
+    ///
+    /// ## Returns
+    ///
+    /// `true` if element is in "custom" state, `false` otherwise
+    pub fn isCustomElement(self: *const Element) bool {
+        return self.custom_element_state == .custom;
+    }
+
+    /// Gets the custom element definition for this element.
+    ///
+    /// ## Returns
+    ///
+    /// Definition pointer if element is custom or has definition, `null` otherwise
+    pub fn getCustomElementDefinition(self: *const Element) ?*const CustomElementDefinition {
+        return self.custom_element_definition;
+    }
+
+    /// Gets the custom element state.
+    ///
+    /// ## Returns
+    ///
+    /// Current state (undefined, uncustomized, custom, or failed)
+    pub fn getCustomElementState(self: *const Element) CustomElementState {
+        return self.custom_element_state;
     }
 };
 
