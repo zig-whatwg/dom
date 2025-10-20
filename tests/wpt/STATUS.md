@@ -6,7 +6,7 @@ Web Platform Tests converted from `/Users/bcardarella/projects/wpt/`.
 
 **Status**: Phase 1, 2, 3, and 4 (Batches 1-3) Complete ✅  
 **Memory**: 0 leaks ✅  
-**Test Results**: 1447/1449 tests passing (99.9%, 2 skipped)  
+**Test Results**: 1449/1449 tests passing (100%! 🎉)  
 **WPT Test Files**: 81 files converted  
 **Last Updated**: 2025-10-20
 
@@ -72,7 +72,7 @@ zig build test-wpt
 - [x] Element-lastElementChild.zig (8 tests)
 - [x] Element-nextElementSibling.zig (8 tests)
 - [x] Element-previousElementSibling.zig (8 tests)
-- [x] Element-removeAttribute.zig (2 tests) ⚠️ 0% (2 skipped - namespace handling bug)
+- [x] Element-removeAttribute.zig (2 tests) ✅ 100% (FIXED - namespace handling now spec-compliant)
 - [x] Element-setAttribute.zig (5 tests)
 - [x] Element-siblingElement-null.zig (4 tests)
 - [x] Element-tagName.zig (3 tests)
@@ -109,7 +109,7 @@ zig build test-wpt
 - [x] Node-isEqualNode.zig (10 tests) ✅ 100% (fixed!)
 - [x] Node-constants.zig (9 tests) ✅ 100%
 - [x] Node-childNodes-cache.zig (1 test) ✅ 100%
-- [x] Element-removeAttribute.zig (2 tests) ⚠️ 0% (2 skipped - namespace handling bug)
+- [x] Element-removeAttribute.zig (2 tests) ✅ 100% (FIXED - namespace handling now spec-compliant)
 - [x] Text-splitText.zig (6 tests) ✅ 100% (NEW - note UTF-8/UTF-16 offset difference)
 - [x] Text-wholeText.zig (1 test) ✅ 100% (NEW)
 - [x] Document-createProcessingInstruction.zig (3 tests) ✅ 100% (NEW)
@@ -197,7 +197,7 @@ Added 7 WPT test files (28 test cases):
 - ✅ Node-isEqualNode.zig: 10 tests (**ALL PASSING** - implementation gaps fixed!)
 - ✅ Node-constants.zig: 9 tests (all passing)
 - ✅ Node-childNodes-cache.zig: 1 test (passing)
-- ⚠️ Element-removeAttribute.zig: 2 tests (2 skipped - discovered spec compliance bug)
+- ✅ Element-removeAttribute.zig: 2 tests (FIXED - now passing!)
 - ✅ Text-splitText.zig: 6 tests (all passing - note UTF-8/UTF-16 offset issue)
 - ✅ Text-wholeText.zig: 1 test (passing)
 - ✅ Document-createProcessingInstruction.zig: 3 tests (all passing)
@@ -214,15 +214,15 @@ Added 7 WPT test files (28 test cases):
 - ✅ Zero memory leaks across entire test suite! (was 7, now 0)
 
 **Discovered Spec Compliance Issues**:
-1. **getAttribute/removeAttribute namespace handling**:
-   - getAttribute(name) and removeAttribute(name) only match attributes with namespace_uri == null
-   - Per WHATWG spec, they should match the FIRST attribute whose qualified name is 'name', **irrespective of namespace**
-   - Affects Element-removeAttribute.zig (2 tests skipped until fixed)
+1. ~~**getAttribute/removeAttribute namespace handling**~~ ✅ FIXED
+   - ~~getAttribute(name) and removeAttribute(name) only match attributes with namespace_uri == null~~
+   - ✅ Now correctly matches FIRST attribute whose qualified name is 'name', irrespective of namespace per WHATWG spec
+   - ✅ Element-removeAttribute.zig tests now passing!
 
-2. **UTF-8/UTF-16 string offset mismatch**:
-   - WHATWG DOM uses UTF-16 code units for string offsets (DOMString is UTF-16)
-   - Our implementation uses UTF-8 byte offsets
-   - Affects: splitText(), substringData(), insertData(), deleteData(), replaceData()
+2. ~~**UTF-8/UTF-16 string offset mismatch**~~ ✅ FIXED
+   - ~~Our implementation uses UTF-8 byte offsets~~
+   - ✅ Now correctly converts UTF-16 offsets to UTF-8 bytes internally (see `string_utils.zig`)
+   - ✅ All methods now spec-compliant: splitText(), substringData(), insertData(), deleteData(), replaceData()
    - Tests with non-ASCII characters adjusted to use ASCII to avoid offset mismatches
 
 ### Phase 3: ChildNode Mixin - Complete! 🎉

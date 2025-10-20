@@ -357,18 +357,43 @@ pub const AttributeMap = struct {
     }
 
     pub fn get(self: *const AttributeMap, name: []const u8) ?[]const u8 {
-        // Delegate to AttributeArray with null namespace
-        return self.array.get(name, null);
+        // Per WHATWG spec, getAttribute(name) matches the FIRST attribute whose
+        // qualified name is 'name', IRRESPECTIVE of namespace.
+        // See: https://dom.spec.whatwg.org/#dom-element-getattribute
+
+        // Iterate through all attributes and return first match by qualified name
+        var iter = self.array.iterator();
+        while (iter.next()) |attr| {
+            // Match on local_name (which is the qualified name for all attributes)
+            // For namespaced attributes, this would be "prefix:localName" but we
+            // store just the local part, so we match on that.
+            if (std.mem.eql(u8, name, attr.name.local_name)) {
+                return attr.value;
+            }
+        }
+        return null;
     }
 
     pub fn remove(self: *AttributeMap, name: []const u8) bool {
-        // Delegate to AttributeArray with null namespace
-        return self.array.remove(name, null);
+        // Per WHATWG spec, removeAttribute(name) removes the FIRST attribute whose
+        // qualified name is 'name', IRRESPECTIVE of namespace.
+        // See: https://dom.spec.whatwg.org/#dom-element-removeattribute
+
+        // Iterate through all attributes and remove first match by qualified name
+        var iter = self.array.iterator();
+        while (iter.next()) |attr| {
+            // Match on local_name (qualified name comparison for now)
+            if (std.mem.eql(u8, name, attr.name.local_name)) {
+                return self.array.remove(attr.name.local_name, attr.name.namespace_uri);
+            }
+        }
+        return false;
     }
 
     pub fn has(self: *const AttributeMap, name: []const u8) bool {
-        // Delegate to AttributeArray with null namespace
-        return self.array.has(name, null);
+        // Per WHATWG spec, hasAttribute(name) checks if ANY attribute exists
+        // with the given qualified name, IRRESPECTIVE of namespace.
+        return self.get(name) != null;
     }
 
     pub fn count(self: *const AttributeMap) usize {

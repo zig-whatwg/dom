@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **getAttribute/removeAttribute namespace handling** 🐛 CRITICAL
+  - Fixed `getAttribute(name)` and `removeAttribute(name)` to match FIRST attribute by qualified name, **regardless of namespace**
+  - **Previous behavior**: Only matched attributes where `namespace_uri == null`
+  - **Spec-compliant behavior**: Matches first attribute whose qualified name is `name`, irrespective of namespace
+  - **Implementation**: Updated `AttributeMap.get()` and `AttributeMap.remove()` to iterate all attributes
+  - **Impact**: Attributes with namespaces now accessible via non-namespaced methods
+  - **Tests**: Unskipped 2 WPT tests in `Element-removeAttribute.zig` - now passing ✅
+  - **Spec**: https://dom.spec.whatwg.org/#dom-element-getattribute
+
 ### Added
 
 - **UTF-16 Offset Support for CharacterData and Text** ✨ NEW

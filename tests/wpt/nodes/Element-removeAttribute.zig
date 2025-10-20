@@ -14,7 +14,6 @@ const Element = dom.Element;
 // See: https://dom.spec.whatwg.org/#dom-element-removeattribute
 
 test "removeAttribute should remove the first attribute, irrespective of namespace, when the first attribute is not in a namespace" {
-    if (true) return error.SkipZigTest; // Skip until getAttribute/removeAttribute handle namespaces correctly
     const allocator = std.testing.allocator;
     const doc = try Document.init(allocator);
     defer doc.release();
@@ -42,7 +41,6 @@ test "removeAttribute should remove the first attribute, irrespective of namespa
 }
 
 test "removeAttribute should remove the first attribute, irrespective of namespace, when the first attribute is in a namespace" {
-    if (true) return error.SkipZigTest; // Skip until getAttribute/removeAttribute handle namespaces correctly
     const allocator = std.testing.allocator;
     const doc = try Document.init(allocator);
     defer doc.release();
