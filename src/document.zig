@@ -971,7 +971,8 @@ pub const Document = struct {
         node_filter: ?@import("node_filter.zig").NodeFilter,
     ) !*@import("node_iterator.zig").NodeIterator {
         const NodeIterator = @import("node_iterator.zig").NodeIterator;
-        return NodeIterator.init(self.prototype.allocator, root, what_to_show, node_filter);
+        // Use arena allocator so iterator is automatically freed with document
+        return NodeIterator.init(self.node_arena.allocator(), root, what_to_show, node_filter);
     }
 
     /// Creates a new TreeWalker for navigating the document tree.
@@ -1005,7 +1006,8 @@ pub const Document = struct {
         node_filter: ?@import("node_filter.zig").NodeFilter,
     ) !*@import("tree_walker.zig").TreeWalker {
         const TreeWalker = @import("tree_walker.zig").TreeWalker;
-        return TreeWalker.init(self.prototype.allocator, root, what_to_show, node_filter);
+        // Use arena allocator so walker is automatically freed with document
+        return TreeWalker.init(self.node_arena.allocator(), root, what_to_show, node_filter);
     }
 
     /// Creates a new Attr node with the specified name.

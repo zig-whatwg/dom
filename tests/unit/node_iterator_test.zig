@@ -23,8 +23,11 @@ test "NodeIterator basic forward iteration" {
     _ = try root.prototype.appendChild(&text1.prototype);
     _ = try root.prototype.appendChild(&elem2.prototype);
 
+    // Append root to document so it gets cleaned up
+    _ = try doc.prototype.appendChild(&root.prototype);
+
     const iterator = try doc.createNodeIterator(&root.prototype, NodeFilter.SHOW_ALL, null);
-    defer iterator.deinit();
+    // No need to deinit - arena allocated, freed with document
 
     // Should return root, then children in order
     try std.testing.expectEqual(&root.prototype, iterator.nextNode().?);
@@ -44,9 +47,10 @@ test "NodeIterator backward iteration" {
     const child2 = try doc.createElement("child2");
     _ = try root.prototype.appendChild(&child1.prototype);
     _ = try root.prototype.appendChild(&child2.prototype);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const iterator = try doc.createNodeIterator(&root.prototype, NodeFilter.SHOW_ALL, null);
-    defer iterator.deinit();
+    // No need to deinit - arena allocated, freed with document
 
     // Move to end
     while (iterator.nextNode()) |_| {}
@@ -70,10 +74,11 @@ test "NodeIterator filter by node type" {
     _ = try root.prototype.appendChild(&elem1.prototype);
     _ = try root.prototype.appendChild(&text1.prototype);
     _ = try root.prototype.appendChild(&elem2.prototype);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     // Only show elements
     const iterator = try doc.createNodeIterator(&root.prototype, NodeFilter.SHOW_ELEMENT, null);
-    defer iterator.deinit();
+    // No need to deinit - arena allocated, freed with document
 
     // Should skip text node
     try std.testing.expectEqual(&root.prototype, iterator.nextNode().?);
@@ -88,8 +93,10 @@ test "NodeIterator detach does nothing" {
     defer doc.release();
 
     const root = try doc.createElement("root");
+    _ = try doc.prototype.appendChild(&root.prototype);
+
     const iterator = try doc.createNodeIterator(&root.prototype, NodeFilter.SHOW_ALL, null);
-    defer iterator.deinit();
+    // No need to deinit - arena allocated, freed with document
 
     iterator.detach(); // Should be no-op
     try std.testing.expectEqual(&root.prototype, iterator.nextNode().?);

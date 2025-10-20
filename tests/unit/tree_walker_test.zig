@@ -16,9 +16,10 @@ test "TreeWalker firstChild navigation" {
     const child2 = try doc.createElement("child2");
     _ = try root.prototype.appendChild(&child1.prototype);
     _ = try root.prototype.appendChild(&child2.prototype);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const walker = try doc.createTreeWalker(&root.prototype, NodeFilter.SHOW_ALL, null);
-    defer walker.deinit();
+    // No need to deinit - arena allocated, freed with document
 
     try std.testing.expectEqual(&root.prototype, walker.current_node);
     try std.testing.expectEqual(&child1.prototype, walker.firstChild().?);
@@ -35,9 +36,10 @@ test "TreeWalker nextSibling navigation" {
     const child2 = try doc.createElement("child2");
     _ = try root.prototype.appendChild(&child1.prototype);
     _ = try root.prototype.appendChild(&child2.prototype);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const walker = try doc.createTreeWalker(&root.prototype, NodeFilter.SHOW_ALL, null);
-    defer walker.deinit();
+    // No need to deinit - arena allocated, freed with document
 
     _ = walker.firstChild();
     try std.testing.expectEqual(&child2.prototype, walker.nextSibling().?);
@@ -51,9 +53,10 @@ test "TreeWalker parentNode navigation" {
     const root = try doc.createElement("root");
     const child = try doc.createElement("child");
     _ = try root.prototype.appendChild(&child.prototype);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const walker = try doc.createTreeWalker(&root.prototype, NodeFilter.SHOW_ALL, null);
-    defer walker.deinit();
+    // No need to deinit - arena allocated, freed with document
 
     _ = walker.firstChild();
     try std.testing.expectEqual(&root.prototype, walker.parentNode().?);
@@ -69,9 +72,10 @@ test "TreeWalker nextNode traversal" {
     const child2 = try doc.createElement("child2");
     _ = try root.prototype.appendChild(&child1.prototype);
     _ = try root.prototype.appendChild(&child2.prototype);
+    _ = try doc.prototype.appendChild(&root.prototype);
 
     const walker = try doc.createTreeWalker(&root.prototype, NodeFilter.SHOW_ALL, null);
-    defer walker.deinit();
+    // No need to deinit - arena allocated, freed with document
 
     try std.testing.expectEqual(&child1.prototype, walker.nextNode().?);
     try std.testing.expectEqual(&child2.prototype, walker.nextNode().?);
