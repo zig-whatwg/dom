@@ -48,6 +48,7 @@ typedef struct DOMNodeIterator DOMNodeIterator;
 typedef struct DOMHTMLCollection DOMHTMLCollection;
 typedef struct DOMAbortController DOMAbortController;
 typedef struct DOMAbortSignal DOMAbortSignal;
+typedef struct DOMStaticRange DOMStaticRange;
 
 /* ============================================================================
  * Constants
@@ -2192,6 +2193,129 @@ void dom_abortsignal_acquire(DOMAbortSignal* signal);
  *   dom_abortsignal_release(signal);
  */
 void dom_abortsignal_release(DOMAbortSignal* signal);
+
+// ============================================================================
+// StaticRange
+// ============================================================================
+
+/**
+ * Create a new StaticRange.
+ * 
+ * Creates an immutable range from boundary points. Unlike Range, StaticRange
+ * does NOT track DOM mutations and allows out-of-bounds offsets.
+ * 
+ * @param start_container Start boundary node
+ * @param start_offset Offset within start container (can be out of bounds)
+ * @param end_container End boundary node
+ * @param end_offset Offset within end container (can be out of bounds)
+ * @return StaticRange handle, or NULL if invalid node type (DocumentType/Attr)
+ * 
+ * Example:
+ *   DOMDocument* doc = dom_document_new();
+ *   DOMText* text = dom_document_createtextnode(doc, "Hello, World!");
+ *   
+ *   // Select "Hello" (characters 0-5)
+ *   DOMStaticRange* range = dom_staticrange_new(
+ *       (DOMNode*)text, 0,
+ *       (DOMNode*)text, 5
+ *   );
+ *   
+ *   if (range) {
+ *       printf("Collapsed: %d\n", dom_staticrange_get_collapsed(range));
+ *       dom_staticrange_release(range);
+ *   }
+ *   
+ *   dom_document_release(doc);
+ */
+DOMStaticRange* dom_staticrange_new(
+    DOMNode* start_container,
+    uint32_t start_offset,
+    DOMNode* end_container,
+    uint32_t end_offset
+);
+
+/**
+ * Get the start container node.
+ * 
+ * @param range StaticRange handle
+ * @return Start container node (do NOT release)
+ * 
+ * Example:
+ *   DOMNode* start = dom_staticrange_get_startcontainer(range);
+ *   const char* name = dom_node_get_nodename(start);
+ */
+DOMNode* dom_staticrange_get_startcontainer(DOMStaticRange* range);
+
+/**
+ * Get the start offset.
+ * 
+ * @param range StaticRange handle
+ * @return Offset within start container (may be out of bounds)
+ * 
+ * Example:
+ *   uint32_t offset = dom_staticrange_get_startoffset(range);
+ *   printf("Start: %u\n", offset);
+ */
+uint32_t dom_staticrange_get_startoffset(DOMStaticRange* range);
+
+/**
+ * Get the end container node.
+ * 
+ * @param range StaticRange handle
+ * @return End container node (do NOT release)
+ * 
+ * Example:
+ *   DOMNode* end = dom_staticrange_get_endcontainer(range);
+ *   uint16_t type = dom_node_get_nodetype(end);
+ */
+DOMNode* dom_staticrange_get_endcontainer(DOMStaticRange* range);
+
+/**
+ * Get the end offset.
+ * 
+ * @param range StaticRange handle
+ * @return Offset within end container (may be out of bounds)
+ * 
+ * Example:
+ *   uint32_t offset = dom_staticrange_get_endoffset(range);
+ *   printf("End: %u\n", offset);
+ */
+uint32_t dom_staticrange_get_endoffset(DOMStaticRange* range);
+
+/**
+ * Check if range is collapsed.
+ * 
+ * A range is collapsed if start and end are at the same position.
+ * 
+ * @param range StaticRange handle
+ * @return 1 if collapsed, 0 otherwise
+ * 
+ * Example:
+ *   // Insertion point (collapsed range)
+ *   DOMStaticRange* collapsed = dom_staticrange_new(
+ *       (DOMNode*)text, 5,
+ *       (DOMNode*)text, 5
+ *   );
+ *   
+ *   if (dom_staticrange_get_collapsed(collapsed)) {
+ *       printf("Range is an insertion point\n");
+ *   }
+ */
+uint8_t dom_staticrange_get_collapsed(DOMStaticRange* range);
+
+/**
+ * Release a StaticRange.
+ * 
+ * Frees the range and releases node references.
+ * 
+ * @param range StaticRange handle
+ * 
+ * Example:
+ *   DOMStaticRange* range = dom_staticrange_new(...);
+ *   // ... use range ...
+ *   dom_staticrange_release(range);
+ */
+void dom_staticrange_release(DOMStaticRange* range);
 
 #ifdef __cplusplus
 }

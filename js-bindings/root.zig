@@ -93,6 +93,7 @@ const parentnode = @import("parentnode.zig");
 const shadowroot = @import("shadowroot.zig");
 const abortcontroller = @import("abortcontroller.zig");
 const abortsignal = @import("abortsignal.zig");
+const staticrange = @import("staticrange.zig");
 
 // Force export of all C-ABI functions by referencing them
 // This ensures they are included in the static library
@@ -129,4 +130,5 @@ comptime {
     _ = shadowroot;
     _ = abortcontroller;
     _ = abortsignal;
+    _ = staticrange;
 }
