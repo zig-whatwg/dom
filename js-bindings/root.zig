@@ -53,6 +53,17 @@
 
 // Import all binding modules to force compilation of export functions
 const dom_types = @import("dom_types.zig");
+
+// Re-export opaque types for use in other modules
+pub const DOMNode = dom_types.DOMNode;
+pub const DOMElement = dom_types.DOMElement;
+pub const DOMDocument = dom_types.DOMDocument;
+pub const DOMMutationObserver = dom_types.DOMMutationObserver;
+pub const DOMMutationRecord = dom_types.DOMMutationRecord;
+pub const DOMTreeWalker = dom_types.DOMTreeWalker;
+pub const DOMErrorCode = dom_types.DOMErrorCode;
+pub const zigErrorToDOMError = dom_types.zigErrorToDOMError;
+
 const document = @import("document.zig");
 const node = @import("node.zig");
 const element = @import("element.zig");
@@ -73,6 +84,8 @@ const processinginstruction = @import("processinginstruction.zig");
 const event = @import("event.zig");
 const customevent = @import("customevent.zig");
 const range = @import("range.zig");
+const mutationobserver = @import("mutationobserver.zig");
+const treewalker = @import("treewalker.zig");
 
 // Force export of all C-ABI functions by referencing them
 // This ensures they are included in the static library
@@ -101,4 +114,6 @@ comptime {
     _ = event;
     _ = customevent;
     _ = range;
+    _ = mutationobserver;
+    _ = treewalker;
 }

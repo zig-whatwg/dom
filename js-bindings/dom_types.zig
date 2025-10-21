@@ -107,6 +107,15 @@ pub const DOMCustomEvent = opaque {};
 /// Opaque handle for DOM Range
 pub const DOMRange = opaque {};
 
+/// Opaque handle for DOM MutationObserver
+pub const DOMMutationObserver = opaque {};
+
+/// Opaque handle for DOM MutationRecord
+pub const DOMMutationRecord = opaque {};
+
+/// Opaque handle for DOM TreeWalker
+pub const DOMTreeWalker = opaque {};
+
 // ============================================================================
 // DOM Error Codes
 // ============================================================================

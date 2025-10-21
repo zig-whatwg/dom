@@ -703,9 +703,10 @@ pub const MutationObserver = struct {
         // 5. Add to target's mutation_observers (in rare data)
         const rare = try target.ensureRareData();
         if (rare.mutation_observers == null) {
-            rare.mutation_observers = .{};
+            rare.mutation_observers = std.ArrayList(*anyopaque){};
         }
-        try rare.mutation_observers.?.append(self.allocator, @ptrCast(reg));
+        // Use the target node's allocator (same as rare data's allocator)
+        try rare.mutation_observers.?.append(target.allocator, @ptrCast(reg));
     }
 
     /// Stop observing all nodes.

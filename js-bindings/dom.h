@@ -42,6 +42,7 @@ typedef struct DOMShadowRoot DOMShadowRoot;
 typedef struct DOMEventTarget DOMEventTarget;
 typedef struct DOMEvent DOMEvent;
 typedef struct DOMRange DOMRange;
+typedef struct DOMTreeWalker DOMTreeWalker;
 
 /* ============================================================================
  * Constants
@@ -232,6 +233,27 @@ DOMElement* dom_document_queryselectorall_first(DOMDocument* doc, const char* se
  *   dom_range_release(range);
  */
 DOMRange* dom_document_createrange(DOMDocument* doc);
+
+/**
+ * Create a TreeWalker.
+ * 
+ * @param doc Document
+ * @param root Root node for traversal
+ * @param whatToShow Bitmask of node types to show (use DOM_NODEFILTER_SHOW_* constants)
+ * @param filter Custom node filter (currently must be NULL)
+ * @return TreeWalker
+ * 
+ * Example:
+ *   DOMTreeWalker* walker = dom_document_createtreewalker(
+ *       doc, 
+ *       rootNode, 
+ *       DOM_NODEFILTER_SHOW_ELEMENT,
+ *       NULL
+ *   );
+ *   DOMNode* child = dom_treewalker_firstchild(walker);
+ *   dom_treewalker_release(walker);
+ */
+DOMTreeWalker* dom_document_createtreewalker(DOMDocument* doc, DOMNode* root, uint32_t whatToShow, void* filter);
 
 /* ============================================================================
  * Range Interface
@@ -1117,6 +1139,300 @@ void dom_node_addref(DOMNode* node);
  * @param node Node
  */
 void dom_node_release(DOMNode* node);
+
+// ============================================================================
+// MutationObserver
+// ============================================================================
+
+typedef struct DOMMutationObserver DOMMutationObserver;
+typedef struct DOMMutationRecord DOMMutationRecord;
+
+/**
+ * C callback function type for MutationObserver.
+ * 
+ * Called when mutations are observed.
+ * 
+ * @param records Array of mutation record pointers
+ * @param record_count Number of records in array
+ * @param observer The MutationObserver instance
+ * @param context User-provided context pointer
+ */
+typedef void (*DOMMutationCallback)(
+    DOMMutationRecord** records,
+    uint32_t record_count,
+    DOMMutationObserver* observer,
+    void* context
+);
+
+/**
+ * Options for observing mutations.
+ * 
+ * Corresponds to MutationObserverInit dictionary in WebIDL.
+ * Use 255 for undefined boolean values.
+ */
+typedef struct {
+    uint8_t child_list;              /* 0=false, 1=true */
+    uint8_t attributes;              /* 0=false, 1=true, 255=undefined */
+    uint8_t character_data;          /* 0=false, 1=true, 255=undefined */
+    uint8_t subtree;                 /* 0=false, 1=true */
+    uint8_t attribute_old_value;     /* 0=false, 1=true, 255=undefined */
+    uint8_t character_data_old_value; /* 0=false, 1=true, 255=undefined */
+    const char** attribute_filter;   /* null-terminated array of strings, or NULL */
+} DOMMutationObserverInit;
+
+/**
+ * Create a new MutationObserver.
+ * 
+ * @param callback C function to call when mutations occur
+ * @param context User-provided context pointer (passed to callback)
+ * @return MutationObserver handle, or NULL on failure
+ */
+DOMMutationObserver* dom_mutationobserver_new(DOMMutationCallback callback, void* context);
+
+/**
+ * Observe a target node for mutations.
+ * 
+ * @param observer MutationObserver handle
+ * @param target Node to observe
+ * @param options Options specifying what to observe
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_mutationobserver_observe(
+    DOMMutationObserver* observer,
+    DOMNode* target,
+    const DOMMutationObserverInit* options
+);
+
+/**
+ * Stop observing all targets.
+ * 
+ * @param observer MutationObserver handle
+ */
+void dom_mutationobserver_disconnect(DOMMutationObserver* observer);
+
+/**
+ * Take all pending mutation records.
+ * 
+ * Returns array of records and clears the observer's record queue.
+ * 
+ * @param observer MutationObserver handle
+ * @param out_count Pointer to store number of records
+ * @return Array of record pointers, or NULL if none
+ */
+DOMMutationRecord** dom_mutationobserver_takerecords(
+    DOMMutationObserver* observer,
+    uint32_t* out_count
+);
+
+/**
+ * Release a MutationObserver.
+ * 
+ * @param observer MutationObserver handle
+ */
+void dom_mutationobserver_release(DOMMutationObserver* observer);
+
+// MutationRecord accessors
+
+/**
+ * Get the mutation type.
+ * 
+ * @param record MutationRecord handle
+ * @return "attributes", "characterData", or "childList"
+ */
+const char* dom_mutationrecord_get_type(const DOMMutationRecord* record);
+
+/**
+ * Get the target node that was mutated.
+ * 
+ * @param record MutationRecord handle
+ * @return Target node
+ */
+DOMNode* dom_mutationrecord_get_target(const DOMMutationRecord* record);
+
+/**
+ * Get the nodes added (for childList mutations).
+ * 
+ * @param record MutationRecord handle
+ * @param out_count Pointer to store number of nodes
+ * @return Array of node pointers, or NULL if none
+ */
+DOMNode** dom_mutationrecord_get_addednodes(const DOMMutationRecord* record, uint32_t* out_count);
+
+/**
+ * Get the nodes removed (for childList mutations).
+ * 
+ * @param record MutationRecord handle
+ * @param out_count Pointer to store number of nodes
+ * @return Array of node pointers, or NULL if none
+ */
+DOMNode** dom_mutationrecord_get_removednodes(const DOMMutationRecord* record, uint32_t* out_count);
+
+/**
+ * Get the previous sibling (for childList mutations).
+ * 
+ * @param record MutationRecord handle
+ * @return Previous sibling node, or NULL if none
+ */
+DOMNode* dom_mutationrecord_get_previoussibling(const DOMMutationRecord* record);
+
+/**
+ * Get the next sibling (for childList mutations).
+ * 
+ * @param record MutationRecord handle
+ * @return Next sibling node, or NULL if none
+ */
+DOMNode* dom_mutationrecord_get_nextsibling(const DOMMutationRecord* record);
+
+/**
+ * Get the attribute name (for attributes mutations).
+ * 
+ * @param record MutationRecord handle
+ * @return Attribute name, or NULL if not an attribute mutation
+ */
+const char* dom_mutationrecord_get_attributename(const DOMMutationRecord* record);
+
+/**
+ * Get the attribute namespace (for attributes mutations).
+ * 
+ * @param record MutationRecord handle
+ * @return Attribute namespace, or NULL if none
+ */
+const char* dom_mutationrecord_get_attributenamespace(const DOMMutationRecord* record);
+
+/**
+ * Get the old value (for attributes or characterData mutations with oldValue option).
+ * 
+ * @param record MutationRecord handle
+ * @return Old value, or NULL if not captured
+ */
+const char* dom_mutationrecord_get_oldvalue(const DOMMutationRecord* record);
+
+/**
+ * Release a MutationRecord.
+ * 
+ * @param record MutationRecord handle
+ */
+void dom_mutationrecord_release(DOMMutationRecord* record);
+
+// ============================================================================
+// TreeWalker & NodeFilter Constants
+// ============================================================================
+
+typedef struct DOMTreeWalker DOMTreeWalker;
+
+// NodeFilter.SHOW_* constants
+#define DOM_NODEFILTER_SHOW_ALL                  0xFFFFFFFF
+#define DOM_NODEFILTER_SHOW_ELEMENT              0x1
+#define DOM_NODEFILTER_SHOW_ATTRIBUTE            0x2
+#define DOM_NODEFILTER_SHOW_TEXT                 0x4
+#define DOM_NODEFILTER_SHOW_CDATA_SECTION        0x8
+#define DOM_NODEFILTER_SHOW_ENTITY_REFERENCE     0x10
+#define DOM_NODEFILTER_SHOW_ENTITY               0x20
+#define DOM_NODEFILTER_SHOW_PROCESSING_INSTRUCTION 0x40
+#define DOM_NODEFILTER_SHOW_COMMENT              0x80
+#define DOM_NODEFILTER_SHOW_DOCUMENT             0x100
+#define DOM_NODEFILTER_SHOW_DOCUMENT_TYPE        0x200
+#define DOM_NODEFILTER_SHOW_DOCUMENT_FRAGMENT    0x400
+#define DOM_NODEFILTER_SHOW_NOTATION             0x800
+
+// TreeWalker properties
+
+/**
+ * Get the root node of the tree walker.
+ * 
+ * @param walker TreeWalker handle
+ * @return Root node (never NULL)
+ */
+DOMNode* dom_treewalker_get_root(const DOMTreeWalker* walker);
+
+/**
+ * Get the whatToShow bitmask.
+ * 
+ * @param walker TreeWalker handle
+ * @return Bitmask of node types to show
+ */
+uint32_t dom_treewalker_get_whattoshow(const DOMTreeWalker* walker);
+
+/**
+ * Get the current node.
+ * 
+ * @param walker TreeWalker handle
+ * @return Current node (never NULL)
+ */
+DOMNode* dom_treewalker_get_currentnode(const DOMTreeWalker* walker);
+
+/**
+ * Set the current node.
+ * 
+ * @param walker TreeWalker handle
+ * @param node New current node
+ */
+void dom_treewalker_set_currentnode(DOMTreeWalker* walker, DOMNode* node);
+
+// TreeWalker navigation methods
+
+/**
+ * Navigate to parent node.
+ * 
+ * @param walker TreeWalker handle
+ * @return Parent node, or NULL if none
+ */
+DOMNode* dom_treewalker_parentnode(DOMTreeWalker* walker);
+
+/**
+ * Navigate to first child.
+ * 
+ * @param walker TreeWalker handle
+ * @return First child node, or NULL if none
+ */
+DOMNode* dom_treewalker_firstchild(DOMTreeWalker* walker);
+
+/**
+ * Navigate to last child.
+ * 
+ * @param walker TreeWalker handle
+ * @return Last child node, or NULL if none
+ */
+DOMNode* dom_treewalker_lastchild(DOMTreeWalker* walker);
+
+/**
+ * Navigate to previous sibling.
+ * 
+ * @param walker TreeWalker handle
+ * @return Previous sibling node, or NULL if none
+ */
+DOMNode* dom_treewalker_previoussibling(DOMTreeWalker* walker);
+
+/**
+ * Navigate to next sibling.
+ * 
+ * @param walker TreeWalker handle
+ * @return Next sibling node, or NULL if none
+ */
+DOMNode* dom_treewalker_nextsibling(DOMTreeWalker* walker);
+
+/**
+ * Navigate to previous node in tree order.
+ * 
+ * @param walker TreeWalker handle
+ * @return Previous node, or NULL if none
+ */
+DOMNode* dom_treewalker_previousnode(DOMTreeWalker* walker);
+
+/**
+ * Navigate to next node in tree order.
+ * 
+ * @param walker TreeWalker handle
+ * @return Next node, or NULL if none
+ */
+DOMNode* dom_treewalker_nextnode(DOMTreeWalker* walker);
+
+/**
+ * Release a TreeWalker.
+ * 
+ * @param walker TreeWalker handle
+ */
+void dom_treewalker_release(DOMTreeWalker* walker);
 
 #ifdef __cplusplus
 }
