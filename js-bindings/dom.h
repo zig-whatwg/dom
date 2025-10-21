@@ -44,6 +44,7 @@ typedef struct DOMEvent DOMEvent;
 typedef struct DOMRange DOMRange;
 typedef struct DOMTreeWalker DOMTreeWalker;
 typedef struct DOMNodeIterator DOMNodeIterator;
+typedef struct DOMHTMLCollection DOMHTMLCollection;
 
 /* ============================================================================
  * Constants
@@ -149,6 +150,46 @@ void dom_document_addref(DOMDocument* doc);
  * @param doc Document
  */
 void dom_document_release(DOMDocument* doc);
+
+/**
+ * Get document compat mode.
+ * 
+ * @param doc Document
+ * @return "CSS1Compat" (standards mode) - this implementation always uses standards mode
+ */
+const char* dom_document_get_compatmode(DOMDocument* doc);
+
+/**
+ * Get document character encoding.
+ * 
+ * @param doc Document
+ * @return "UTF-8" - this implementation always uses UTF-8
+ */
+const char* dom_document_get_characterset(DOMDocument* doc);
+
+/**
+ * Get document character set (legacy alias).
+ * 
+ * @param doc Document
+ * @return "UTF-8" - same as characterSet
+ */
+const char* dom_document_get_charset(DOMDocument* doc);
+
+/**
+ * Get document input encoding (legacy alias).
+ * 
+ * @param doc Document
+ * @return "UTF-8" - same as characterSet
+ */
+const char* dom_document_get_inputencoding(DOMDocument* doc);
+
+/**
+ * Get document content type.
+ * 
+ * @param doc Document
+ * @return "application/xml" - generic DOM returns XML content type
+ */
+const char* dom_document_get_contenttype(DOMDocument* doc);
 
 /**
  * Create an element.
@@ -261,6 +302,64 @@ DOMElement* dom_document_queryselector(DOMDocument* doc, const char* selectors);
  * @return First matching element or NULL
  */
 DOMElement* dom_document_queryselectorall_first(DOMDocument* doc, const char* selectors);
+
+/**
+ * Get all elements with the specified tag name.
+ * 
+ * Returns a live HTMLCollection of elements with the given tag name.
+ * The collection automatically updates as the DOM changes.
+ * 
+ * @param doc Document
+ * @param qualifiedName Tag name to search for (use "*" for all elements)
+ * @return Live HTMLCollection (must be released with dom_htmlcollection_release)
+ * 
+ * Example:
+ *   DOMHTMLCollection* divs = dom_document_getelementsbytagname(doc, "div");
+ *   uint32_t count = dom_htmlcollection_get_length(divs);
+ *   for (uint32_t i = 0; i < count; i++) {
+ *       DOMElement* elem = dom_htmlcollection_item(divs, i);
+ *       // Process element
+ *   }
+ *   dom_htmlcollection_release(divs);
+ */
+DOMHTMLCollection* dom_document_getelementsbytagname(DOMDocument* doc, const char* qualifiedName);
+
+/**
+ * Get all elements with the specified namespace and local name.
+ * 
+ * Returns a live HTMLCollection of elements matching both namespace and local name.
+ * Use "*" for either parameter to match any namespace or any local name.
+ * 
+ * @param doc Document
+ * @param namespace Namespace URI (NULL for no namespace, "*" for any)
+ * @param localName Local name (use "*" for any local name)
+ * @return Live HTMLCollection (must be released with dom_htmlcollection_release)
+ * 
+ * Example:
+ *   // Find all SVG circles
+ *   DOMHTMLCollection* circles = dom_document_getelementsbytagnamens(
+ *       doc, "http://www.w3.org/2000/svg", "circle");
+ *   dom_htmlcollection_release(circles);
+ */
+DOMHTMLCollection* dom_document_getelementsbytagnamens(DOMDocument* doc, const char* ns, const char* localName);
+
+/**
+ * Get all elements with the specified class name(s).
+ * 
+ * Returns a live HTMLCollection of elements that have all the specified classes.
+ * Multiple class names should be space-separated.
+ * 
+ * @param doc Document
+ * @param classNames Space-separated list of class names
+ * @return Live HTMLCollection (must be released with dom_htmlcollection_release)
+ * 
+ * Example:
+ *   // Find elements with both "button" and "primary" classes
+ *   DOMHTMLCollection* buttons = dom_document_getelementsbyclassname(doc, "button primary");
+ *   uint32_t count = dom_htmlcollection_get_length(buttons);
+ *   dom_htmlcollection_release(buttons);
+ */
+DOMHTMLCollection* dom_document_getelementsbyclassname(DOMDocument* doc, const char* classNames);
 
 /**
  * Create a new Range.
@@ -1675,6 +1774,86 @@ int32_t dom_parentnode_append(DOMNode* parent, DOMNode** nodes, uint32_t count);
  * @return 0 on success, error code on failure
  */
 int32_t dom_parentnode_replacechildren(DOMNode* parent, DOMNode** nodes, uint32_t count);
+
+// ============================================================================
+// HTMLCollection
+// ============================================================================
+
+/**
+ * Get the length of an HTMLCollection.
+ * 
+ * Returns the number of elements in the collection. This is a live count that
+ * reflects the current state of the DOM (elements only, no text/comment nodes).
+ * 
+ * @param collection HTMLCollection handle
+ * @return Number of elements in the collection
+ * 
+ * Example:
+ *   DOMHTMLCollection* children = dom_element_get_children(parent);
+ *   uint32_t count = dom_htmlcollection_get_length(children);
+ *   printf("Parent has %u element children\n", count);
+ *   dom_htmlcollection_release(children);
+ */
+uint32_t dom_htmlcollection_get_length(DOMHTMLCollection* collection);
+
+/**
+ * Get an element at a specific index in the collection.
+ * 
+ * Returns the element at the specified index, or NULL if the index is out of bounds.
+ * This is a live view - the returned element reflects the current DOM state.
+ * 
+ * @param collection HTMLCollection handle
+ * @param index Zero-based index
+ * @return Element at index or NULL if out of bounds
+ * 
+ * Example:
+ *   DOMHTMLCollection* children = dom_element_get_children(parent);
+ *   uint32_t count = dom_htmlcollection_get_length(children);
+ *   for (uint32_t i = 0; i < count; i++) {
+ *       DOMElement* child = dom_htmlcollection_item(children, i);
+ *       if (child != NULL) {
+ *           const char* tag = dom_element_get_tagname(child);
+ *           printf("Child %u: %s\n", i, tag);
+ *       }
+ *   }
+ *   dom_htmlcollection_release(children);
+ */
+DOMElement* dom_htmlcollection_item(DOMHTMLCollection* collection, uint32_t index);
+
+/**
+ * Get an element by its id or name attribute.
+ * 
+ * Returns the first element in the collection with the specified id or name attribute.
+ * This provides named access to collection items.
+ * 
+ * @param collection HTMLCollection handle
+ * @param name Value to match against id or name attributes
+ * @return First element with matching id or name, or NULL if not found
+ * 
+ * Example:
+ *   DOMHTMLCollection* children = dom_element_get_children(parent);
+ *   DOMElement* item = dom_htmlcollection_nameditem(children, "myElement");
+ *   if (item != NULL) {
+ *       printf("Found element with id or name 'myElement'\n");
+ *   }
+ *   dom_htmlcollection_release(children);
+ */
+DOMElement* dom_htmlcollection_nameditem(DOMHTMLCollection* collection, const char* name);
+
+/**
+ * Release an HTMLCollection.
+ * 
+ * Call this when done with an HTMLCollection returned from the API.
+ * Note: Releasing the collection does NOT release the elements themselves.
+ * 
+ * @param collection HTMLCollection handle to release
+ * 
+ * Example:
+ *   DOMHTMLCollection* children = dom_element_get_children(parent);
+ *   // ... use children ...
+ *   dom_htmlcollection_release(children);
+ */
+void dom_htmlcollection_release(DOMHTMLCollection* collection);
 
 #ifdef __cplusplus
 }

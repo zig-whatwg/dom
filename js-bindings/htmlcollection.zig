@@ -202,7 +202,7 @@ pub export fn dom_htmlcollection_nameditem(collection: *DOMHTMLCollection, name:
 /// HTMLCollection doesn't own the elements it references. Releasing the collection
 /// does NOT release the elements themselves - they are owned by their parent.
 pub export fn dom_htmlcollection_release(collection: *DOMHTMLCollection) void {
-    const allocator = std.heap.page_allocator;
+    const allocator = std.heap.c_allocator;
     const html_collection: *HTMLCollection = @ptrCast(@alignCast(collection));
     allocator.destroy(html_collection);
 }

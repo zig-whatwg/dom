@@ -39,6 +39,7 @@ const Element = dom.Element;
 const Node = dom.Node;
 const Text = dom.Text;
 const Comment = dom.Comment;
+const HTMLCollection = dom.HTMLCollection;
 const Range = dom.Range;
 
 /// Get implementation attribute
@@ -93,49 +94,105 @@ export fn dom_document_get_documenturi(handle: *DOMDocument) [*:0]const u8 {
     return "";
 }
 
-/// Get compatMode attribute
+/// Get compatMode attribute.
 ///
-/// WebIDL: `readonly attribute DOMString compatMode;`
-export fn dom_document_get_compatmode(handle: *DOMDocument) [*:0]const u8 {
-    _ = handle;
-    // TODO: Implement getter
-    return "";
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute DOMString compatMode;
+/// ```
+///
+/// ## Returns
+/// "CSS1Compat" for standards mode (this implementation always returns standards mode)
+///
+/// ## Spec References
+/// - https://dom.spec.whatwg.org/#dom-document-compatmode
+/// - https://developer.mozilla.org/en-US/docs/Web/API/Document/compatMode
+///
+/// ## Note
+/// This generic DOM library always returns "CSS1Compat" (standards mode).
+/// Quirks mode is HTML-specific.
+pub export fn dom_document_get_compatmode(handle: *DOMDocument) [*:0]const u8 {
+    const doc: *const Document = @ptrCast(@alignCast(handle));
+    const mode = doc.getCompatMode();
+    return zigStringToCString(mode);
 }
 
-/// Get characterSet attribute
+/// Get characterSet attribute.
 ///
-/// WebIDL: `readonly attribute DOMString characterSet;`
-export fn dom_document_get_characterset(handle: *DOMDocument) [*:0]const u8 {
-    _ = handle;
-    // TODO: Implement getter
-    return "";
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute DOMString characterSet;
+/// ```
+///
+/// ## Returns
+/// "UTF-8" (this implementation always uses UTF-8)
+///
+/// ## Spec References
+/// - https://dom.spec.whatwg.org/#dom-document-characterset
+/// - https://developer.mozilla.org/en-US/docs/Web/API/Document/characterSet
+pub export fn dom_document_get_characterset(handle: *DOMDocument) [*:0]const u8 {
+    const doc: *const Document = @ptrCast(@alignCast(handle));
+    const charset = doc.getCharacterSet();
+    return zigStringToCString(charset);
 }
 
-/// Get charset attribute
+/// Get charset attribute (legacy alias of characterSet).
 ///
-/// WebIDL: `readonly attribute DOMString charset;`
-export fn dom_document_get_charset(handle: *DOMDocument) [*:0]const u8 {
-    _ = handle;
-    // TODO: Implement getter
-    return "";
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute DOMString charset;
+/// ```
+///
+/// ## Returns
+/// "UTF-8" (same as characterSet)
+///
+/// ## Note
+/// This is a legacy alias. Use characterSet instead.
+pub export fn dom_document_get_charset(handle: *DOMDocument) [*:0]const u8 {
+    const doc: *const Document = @ptrCast(@alignCast(handle));
+    const charset = doc.getCharset();
+    return zigStringToCString(charset);
 }
 
-/// Get inputEncoding attribute
+/// Get inputEncoding attribute (legacy alias of characterSet).
 ///
-/// WebIDL: `readonly attribute DOMString inputEncoding;`
-export fn dom_document_get_inputencoding(handle: *DOMDocument) [*:0]const u8 {
-    _ = handle;
-    // TODO: Implement getter
-    return "";
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute DOMString inputEncoding;
+/// ```
+///
+/// ## Returns
+/// "UTF-8" (same as characterSet)
+///
+/// ## Note
+/// This is a legacy alias. Use characterSet instead.
+pub export fn dom_document_get_inputencoding(handle: *DOMDocument) [*:0]const u8 {
+    const doc: *const Document = @ptrCast(@alignCast(handle));
+    const encoding = doc.getInputEncoding();
+    return zigStringToCString(encoding);
 }
 
-/// Get contentType attribute
+/// Get contentType attribute.
 ///
-/// WebIDL: `readonly attribute DOMString contentType;`
-export fn dom_document_get_contenttype(handle: *DOMDocument) [*:0]const u8 {
-    _ = handle;
-    // TODO: Implement getter
-    return "";
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute DOMString contentType;
+/// ```
+///
+/// ## Returns
+/// "application/xml" (this generic DOM implementation)
+///
+/// ## Spec References
+/// - https://dom.spec.whatwg.org/#dom-document-contenttype
+/// - https://developer.mozilla.org/en-US/docs/Web/API/Document/contentType
+///
+/// ## Note
+/// This generic DOM library returns "application/xml".
+/// HTML documents would return "text/html".
+pub export fn dom_document_get_contenttype(handle: *DOMDocument) [*:0]const u8 {
+    const doc: *const Document = @ptrCast(@alignCast(handle));
+    const content_type = doc.getContentType();
+    return zigStringToCString(content_type);
 }
 
 /// Get doctype attribute
@@ -181,35 +238,141 @@ pub export fn dom_document_get_documentelement(handle: *DOMDocument) ?*DOMElemen
     return null;
 }
 
-/// getElementsByTagName method
+/// Get elements by tag name.
 ///
-/// WebIDL: `HTMLCollection getElementsByTagName(DOMString qualifiedName);`
-export fn dom_document_getelementsbytagname(handle: *DOMDocument, qualifiedName: [*:0]const u8) *DOMHTMLCollection {
-    _ = handle;
-    _ = qualifiedName;
-    // TODO: Implement method
-    @panic("TODO: Non-nullable pointer return");
+/// ## WebIDL
+/// ```webidl
+/// HTMLCollection getElementsByTagName(DOMString qualifiedName);
+/// ```
+///
+/// ## Parameters
+/// - `handle`: Document handle
+/// - `qualifiedName`: Tag name to search for (case-insensitive for HTML, case-sensitive for XML)
+///
+/// ## Returns
+/// Live HTMLCollection of matching elements (caller must release)
+///
+/// ## Spec References
+/// - Algorithm: https://dom.spec.whatwg.org/#dom-document-getelementsbytagname
+/// - WebIDL: dom.idl:292
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Document/getElementsByTagName
+///
+/// ## Note
+/// The returned collection is live - it automatically updates when DOM changes.
+/// Special value "*" matches all elements.
+///
+/// ## Example
+/// ```c
+/// DOMHTMLCollection* divs = dom_document_getelementsbytagname(doc, "div");
+/// uint32_t count = dom_htmlcollection_get_length(divs);
+/// for (uint32_t i = 0; i < count; i++) {
+///     DOMElement* elem = dom_htmlcollection_item(divs, i);
+///     // Process element
+/// }
+/// dom_htmlcollection_release(divs);
+/// ```
+pub export fn dom_document_getelementsbytagname(handle: *DOMDocument, qualifiedName: [*:0]const u8) *DOMHTMLCollection {
+    const doc: *Document = @ptrCast(@alignCast(handle));
+    const tag_name = cStringToZigString(qualifiedName);
+
+    // getElementsByTagName returns a value type, need to allocate
+    const collection = doc.getElementsByTagName(tag_name);
+    const collection_ptr = std.heap.c_allocator.create(HTMLCollection) catch {
+        @panic("Failed to allocate HTMLCollection");
+    };
+    collection_ptr.* = collection;
+
+    return @ptrCast(collection_ptr);
 }
 
-/// getElementsByTagNameNS method
+/// Get elements by namespace and local name.
 ///
-/// WebIDL: `HTMLCollection getElementsByTagNameNS(DOMString namespace, DOMString localName);`
-export fn dom_document_getelementsbytagnamens(handle: *DOMDocument, namespace: ?[*:0]const u8, localName: [*:0]const u8) *DOMHTMLCollection {
-    _ = handle;
-    _ = namespace;
-    _ = localName;
-    // TODO: Implement method
-    @panic("TODO: Non-nullable pointer return");
+/// ## WebIDL
+/// ```webidl
+/// HTMLCollection getElementsByTagNameNS(DOMString? namespace, DOMString localName);
+/// ```
+///
+/// ## Parameters
+/// - `handle`: Document handle
+/// - `namespace`: Namespace URI (NULL for no namespace, "*" for any namespace)
+/// - `localName`: Local name to search for ("*" matches all local names)
+///
+/// ## Returns
+/// Live HTMLCollection of matching elements (caller must release)
+///
+/// ## Spec References
+/// - Algorithm: https://dom.spec.whatwg.org/#dom-document-getelementsbytagnamens
+/// - WebIDL: dom.idl:293
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Document/getElementsByTagNameNS
+///
+/// ## Note
+/// The returned collection is live - it automatically updates when DOM changes.
+/// Use "*" for namespace to match any namespace.
+///
+/// ## Example
+/// ```c
+/// // Find SVG circles
+/// DOMHTMLCollection* circles = dom_document_getelementsbytagnamens(
+///     doc, "http://www.w3.org/2000/svg", "circle");
+/// dom_htmlcollection_release(circles);
+/// ```
+pub export fn dom_document_getelementsbytagnamens(handle: *DOMDocument, namespace: ?[*:0]const u8, localName: [*:0]const u8) *DOMHTMLCollection {
+    const doc: *Document = @ptrCast(@alignCast(handle));
+    const ns = cStringToZigStringOptional(namespace);
+    const local_name = cStringToZigString(localName);
+
+    // getElementsByTagNameNS returns a value type, need to allocate
+    const collection = doc.getElementsByTagNameNS(ns, local_name);
+    const collection_ptr = std.heap.c_allocator.create(HTMLCollection) catch {
+        @panic("Failed to allocate HTMLCollection");
+    };
+    collection_ptr.* = collection;
+
+    return @ptrCast(collection_ptr);
 }
 
-/// getElementsByClassName method
+/// Get elements by class name(s).
 ///
-/// WebIDL: `HTMLCollection getElementsByClassName(DOMString classNames);`
-export fn dom_document_getelementsbyclassname(handle: *DOMDocument, classNames: [*:0]const u8) *DOMHTMLCollection {
-    _ = handle;
-    _ = classNames;
-    // TODO: Implement method
-    @panic("TODO: Non-nullable pointer return");
+/// ## WebIDL
+/// ```webidl
+/// HTMLCollection getElementsByClassName(DOMString classNames);
+/// ```
+///
+/// ## Parameters
+/// - `handle`: Document handle
+/// - `classNames`: Space-separated list of class names
+///
+/// ## Returns
+/// Live HTMLCollection of matching elements (caller must release)
+///
+/// ## Spec References
+/// - Algorithm: https://dom.spec.whatwg.org/#dom-document-getelementsbyclassname
+/// - WebIDL: dom.idl:294
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Document/getElementsByClassName
+///
+/// ## Note
+/// The returned collection is live - it automatically updates when DOM changes.
+/// Elements must have ALL specified classes to match.
+///
+/// ## Example
+/// ```c
+/// // Find elements with both "button" and "primary" classes
+/// DOMHTMLCollection* buttons = dom_document_getelementsbyclassname(doc, "button primary");
+/// uint32_t count = dom_htmlcollection_get_length(buttons);
+/// dom_htmlcollection_release(buttons);
+/// ```
+pub export fn dom_document_getelementsbyclassname(handle: *DOMDocument, classNames: [*:0]const u8) *DOMHTMLCollection {
+    const doc: *Document = @ptrCast(@alignCast(handle));
+    const class_names = cStringToZigString(classNames);
+
+    // getElementsByClassName returns a value type, need to allocate
+    const collection = doc.getElementsByClassName(class_names);
+    const collection_ptr = std.heap.c_allocator.create(HTMLCollection) catch {
+        @panic("Failed to allocate HTMLCollection");
+    };
+    collection_ptr.* = collection;
+
+    return @ptrCast(collection_ptr);
 }
 
 // SKIPPED: createElement() - Contains complex types not supported in C-ABI v1

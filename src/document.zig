@@ -2426,10 +2426,17 @@ pub const Document = struct {
     /// This returns a live collection backed by Document's internal tag_map.
     /// Changes to the DOM automatically reflect in the collection.
     pub fn getElementsByTagName(self: *Document, tag_name: []const u8) HTMLCollection {
+        // IMPORTANT: Intern the tag name to match createElement's interned strings
+        // This ensures the tag_map key matches what addNodeToDocumentMaps uses
+        const interned_tag = self.string_pool.intern(tag_name) catch {
+            // If allocation fails, return empty collection
+            return HTMLCollection.initDocumentTagged(null);
+        };
+
         // IMPORTANT: Ensure the tag exists in tag_map (even if empty) so HTMLCollection
         // gets a stable pointer. This makes the collection truly "live" - it will
         // reflect additions/removals even if called before any elements exist.
-        const result = self.tag_map.getOrPut(tag_name) catch {
+        const result = self.tag_map.getOrPut(interned_tag) catch {
             // If allocation fails, return empty collection
             return HTMLCollection.initDocumentTagged(null);
         };
