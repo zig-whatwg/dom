@@ -88,6 +88,7 @@ const range = @import("range.zig");
 const mutationobserver = @import("mutationobserver.zig");
 const treewalker = @import("treewalker.zig");
 const nodeiterator = @import("nodeiterator.zig");
+const childnode = @import("childnode.zig");
 
 // Force export of all C-ABI functions by referencing them
 // This ensures they are included in the static library
@@ -119,4 +120,5 @@ comptime {
     _ = mutationobserver;
     _ = treewalker;
     _ = nodeiterator;
+    _ = childnode;
 }

@@ -1526,6 +1526,47 @@ void dom_nodeiterator_detach(DOMNodeIterator* iterator);
  */
 void dom_nodeiterator_release(DOMNodeIterator* iterator);
 
+// ============================================================================
+// ChildNode Mixin
+// ============================================================================
+
+/**
+ * Insert nodes before this node.
+ * 
+ * @param child Node to insert before
+ * @param nodes Array of nodes to insert
+ * @param count Number of nodes in array
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_childnode_before(DOMNode* child, DOMNode** nodes, uint32_t count);
+
+/**
+ * Insert nodes after this node.
+ * 
+ * @param child Node to insert after
+ * @param nodes Array of nodes to insert
+ * @param count Number of nodes in array
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_childnode_after(DOMNode* child, DOMNode** nodes, uint32_t count);
+
+/**
+ * Replace this node with other nodes.
+ * 
+ * @param child Node to replace
+ * @param nodes Array of replacement nodes
+ * @param count Number of nodes in array
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_childnode_replacewith(DOMNode* child, DOMNode** nodes, uint32_t count);
+
+/**
+ * Remove this node from its parent.
+ * 
+ * @param child Node to remove
+ */
+void dom_childnode_remove(DOMNode* child);
+
 #ifdef __cplusplus
 }
 #endif
