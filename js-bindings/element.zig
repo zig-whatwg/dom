@@ -196,9 +196,9 @@ pub export fn dom_element_get_attributes(handle: *DOMElement) *DOMNamedNodeMap {
 ///
 /// WebIDL: `readonly attribute ShadowRoot? shadowRoot;`
 pub export fn dom_element_get_shadowroot(handle: *DOMElement) ?*DOMShadowRoot {
-    _ = handle;
-    // TODO: Implement getter
-    return null;
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const shadow = element.shadowRoot() orelse return null;
+    return @ptrCast(shadow);
 }
 
 /// Get customElementRegistry attribute
@@ -914,6 +914,66 @@ pub export fn dom_element_get_previouselementsibling(handle: *DOMElement) ?*DOME
     const element: *const Element = @ptrCast(@alignCast(handle));
     const prev = element.previousElementSibling() orelse return null;
     return @ptrCast(prev);
+}
+
+// ============================================================================
+// Shadow DOM
+// ============================================================================
+
+/// Attach a shadow root to the element.
+///
+/// Creates a new shadow root attached to this element for Shadow DOM encapsulation.
+/// Returns error if element already has a shadow root.
+///
+/// ## WebIDL
+/// ```webidl
+/// ShadowRoot attachShadow(ShadowRootInit init);
+/// ```
+///
+/// ## Parameters
+/// - `handle`: Element handle
+/// - `mode`: 0 for open (shadowRoot accessible), 1 for closed (hidden)
+/// - `delegates_focus`: Whether to delegate focus to first focusable element
+///
+/// ## Returns
+/// ShadowRoot handle or NULL on error
+///
+/// ## Example
+/// ```c
+/// // Open mode - shadowRoot is accessible
+/// DOMShadowRoot* shadow = dom_element_attachshadow(elem, 0, false);
+/// if (shadow != NULL) {
+///     DOMElement* content = dom_document_createelement(doc, "content");
+///     dom_node_appendchild((DOMNode*)shadow, (DOMNode*)content);
+/// }
+///
+/// // Closed mode - shadowRoot hidden
+/// DOMShadowRoot* closed = dom_element_attachshadow(elem2, 1, false);
+/// ```
+///
+/// ## Spec References
+/// - Element.attachShadow(): https://dom.spec.whatwg.org/#dom-element-attachshadow
+/// - WebIDL: dom.idl:381
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Element/attachShadow
+///
+/// ## Note
+/// - Can only attach one shadow root per element
+/// - Returns NULL if already has shadow root
+/// - Mode 0 = open, 1 = closed
+/// - ShadowRoot inherits from DocumentFragment (use dom_node_* functions)
+pub export fn dom_element_attachshadow(handle: *DOMElement, mode: c_int, delegates_focus: bool) ?*DOMShadowRoot {
+    const element: *Element = @ptrCast(@alignCast(handle));
+
+    // ShadowRootInit is inferred from the struct literal
+    const shadow = element.attachShadow(.{
+        .mode = if (mode == 0) .open else .closed,
+        .delegates_focus = delegates_focus,
+        .slot_assignment = .named,
+        .clonable = false,
+        .serializable = false,
+    }) catch return null;
+
+    return @ptrCast(shadow);
 }
 
 // ============================================================================

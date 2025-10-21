@@ -22,6 +22,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /* ============================================================================
  * Opaque Types
@@ -1854,6 +1855,158 @@ DOMElement* dom_htmlcollection_nameditem(DOMHTMLCollection* collection, const ch
  *   dom_htmlcollection_release(children);
  */
 void dom_htmlcollection_release(DOMHTMLCollection* collection);
+
+// ============================================================================
+// Shadow DOM
+// ============================================================================
+
+/**
+ * Shadow root mode constants.
+ * 
+ * Mode controls JavaScript access to the shadow root:
+ * - DOM_SHADOWROOT_MODE_OPEN (0): Element.shadowRoot returns the shadow root
+ * - DOM_SHADOWROOT_MODE_CLOSED (1): Element.shadowRoot returns NULL
+ */
+#define DOM_SHADOWROOT_MODE_OPEN 0
+#define DOM_SHADOWROOT_MODE_CLOSED 1
+
+/**
+ * Slot assignment mode constants.
+ * 
+ * - DOM_SLOTASSIGNMENT_NAMED (0): Automatic slot assignment (default)
+ * - DOM_SLOTASSIGNMENT_MANUAL (1): Manual slot assignment via HTMLSlotElement.assign()
+ */
+#define DOM_SLOTASSIGNMENT_NAMED 0
+#define DOM_SLOTASSIGNMENT_MANUAL 1
+
+/**
+ * Attach a shadow root to an element.
+ * 
+ * Creates a new shadow root for Shadow DOM encapsulation. Each element can only
+ * have one shadow root - subsequent calls return NULL.
+ * 
+ * @param element Element to attach shadow root to
+ * @param mode Shadow mode (DOM_SHADOWROOT_MODE_OPEN or DOM_SHADOWROOT_MODE_CLOSED)
+ * @param delegates_focus Whether to delegate focus to first focusable element
+ * @return Shadow root handle or NULL if already has shadow root
+ * 
+ * Example:
+ *   // Open mode - shadowRoot is accessible
+ *   DOMShadowRoot* shadow = dom_element_attachshadow(elem, DOM_SHADOWROOT_MODE_OPEN, false);
+ *   if (shadow != NULL) {
+ *       // Add content to shadow tree
+ *       DOMElement* content = dom_document_createelement(doc, "content");
+ *       dom_node_appendchild((DOMNode*)shadow, (DOMNode*)content);
+ *   }
+ * 
+ *   // Closed mode - shadowRoot hidden from JavaScript
+ *   DOMShadowRoot* closed = dom_element_attachshadow(elem2, DOM_SHADOWROOT_MODE_CLOSED, false);
+ */
+DOMShadowRoot* dom_element_attachshadow(DOMElement* element, int mode, bool delegates_focus);
+
+/**
+ * Get the element's shadow root (if mode is open).
+ * 
+ * Returns the shadow root if attached and mode is open, NULL otherwise.
+ * This enforces the open/closed mode distinction per the Shadow DOM spec.
+ * 
+ * @param element Element handle
+ * @return Shadow root if mode is open, NULL if closed or no shadow root
+ * 
+ * Example:
+ *   // Open mode - shadowRoot is accessible
+ *   DOMShadowRoot* shadow = dom_element_attachshadow(elem, DOM_SHADOWROOT_MODE_OPEN, false);
+ *   DOMShadowRoot* check = dom_element_get_shadowroot(elem);
+ *   // check == shadow
+ * 
+ *   // Closed mode - shadowRoot is NULL
+ *   dom_element_attachshadow(elem2, DOM_SHADOWROOT_MODE_CLOSED, false);
+ *   DOMShadowRoot* closed = dom_element_get_shadowroot(elem2);
+ *   // closed == NULL
+ */
+DOMShadowRoot* dom_element_get_shadowroot(DOMElement* element);
+
+/**
+ * Get the shadow root mode.
+ * 
+ * Returns whether the shadow root is open or closed.
+ * 
+ * @param shadow Shadow root handle
+ * @return DOM_SHADOWROOT_MODE_OPEN (0) or DOM_SHADOWROOT_MODE_CLOSED (1)
+ * 
+ * Example:
+ *   int mode = dom_shadowroot_get_mode(shadow);
+ *   if (mode == DOM_SHADOWROOT_MODE_OPEN) {
+ *       printf("Shadow root is accessible\n");
+ *   }
+ */
+int dom_shadowroot_get_mode(DOMShadowRoot* shadow);
+
+/**
+ * Get the delegatesFocus flag.
+ * 
+ * Returns whether focus is delegated to the first focusable element in the shadow tree.
+ * 
+ * @param shadow Shadow root handle
+ * @return true if focus is delegated, false otherwise
+ * 
+ * Example:
+ *   if (dom_shadowroot_get_delegatesfocus(shadow)) {
+ *       printf("Focus is delegated\n");
+ *   }
+ */
+bool dom_shadowroot_get_delegatesfocus(DOMShadowRoot* shadow);
+
+/**
+ * Get the slot assignment mode.
+ * 
+ * Returns the slot assignment mode for this shadow root.
+ * 
+ * @param shadow Shadow root handle
+ * @return DOM_SLOTASSIGNMENT_NAMED (0) or DOM_SLOTASSIGNMENT_MANUAL (1)
+ * 
+ * Example:
+ *   int mode = dom_shadowroot_get_slotassignment(shadow);
+ *   if (mode == DOM_SLOTASSIGNMENT_NAMED) {
+ *       printf("Automatic slot assignment\n");
+ *   }
+ */
+int dom_shadowroot_get_slotassignment(DOMShadowRoot* shadow);
+
+/**
+ * Get the clonable flag.
+ * 
+ * Returns whether the shadow root can be cloned with cloneNode().
+ * 
+ * @param shadow Shadow root handle
+ * @return true if clonable, false otherwise
+ */
+bool dom_shadowroot_get_clonable(DOMShadowRoot* shadow);
+
+/**
+ * Get the serializable flag.
+ * 
+ * Returns whether the shadow root is included in innerHTML serialization.
+ * 
+ * @param shadow Shadow root handle
+ * @return true if serializable, false otherwise
+ */
+bool dom_shadowroot_get_serializable(DOMShadowRoot* shadow);
+
+/**
+ * Get the host element.
+ * 
+ * Returns the element that hosts this shadow root.
+ * 
+ * @param shadow Shadow root handle
+ * @return Host element (never NULL)
+ * 
+ * Example:
+ *   DOMShadowRoot* shadow = dom_element_attachshadow(elem, DOM_SHADOWROOT_MODE_OPEN, false);
+ *   DOMElement* host = dom_shadowroot_get_host(shadow);
+ *   // host == elem
+ */
+DOMElement* dom_shadowroot_get_host(DOMShadowRoot* shadow);
 
 #ifdef __cplusplus
 }
