@@ -1567,6 +1567,40 @@ int32_t dom_childnode_replacewith(DOMNode* child, DOMNode** nodes, uint32_t coun
  */
 void dom_childnode_remove(DOMNode* child);
 
+// ============================================================================
+// ParentNode Mixin
+// ============================================================================
+
+/**
+ * Prepend nodes at the beginning of this node's children.
+ * 
+ * @param parent Node to prepend to (must be Element, Document, or DocumentFragment)
+ * @param nodes Array of nodes to prepend
+ * @param count Number of nodes in array
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_parentnode_prepend(DOMNode* parent, DOMNode** nodes, uint32_t count);
+
+/**
+ * Append nodes at the end of this node's children.
+ * 
+ * @param parent Node to append to (must be Element, Document, or DocumentFragment)
+ * @param nodes Array of nodes to append
+ * @param count Number of nodes in array
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_parentnode_append(DOMNode* parent, DOMNode** nodes, uint32_t count);
+
+/**
+ * Replace all children with new nodes.
+ * 
+ * @param parent Node whose children to replace (must be Element, Document, or DocumentFragment)
+ * @param nodes Array of replacement nodes
+ * @param count Number of nodes in array
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_parentnode_replacechildren(DOMNode* parent, DOMNode** nodes, uint32_t count);
+
 #ifdef __cplusplus
 }
 #endif
