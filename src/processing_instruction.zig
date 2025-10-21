@@ -232,6 +232,8 @@ const Text = text_mod.Text;
 const node_mod = @import("node.zig");
 const Node = node_mod.Node;
 const NodeVTable = node_mod.NodeVTable;
+const Event = @import("event.zig").Event;
+const EventCallback = @import("event_target.zig").EventCallback;
 
 /// ProcessingInstruction node representing processing instructions in XML documents.
 ///
@@ -259,6 +261,59 @@ pub const ProcessingInstruction = struct {
         .clone_node = cloneNodeImpl,
         .adopting_steps = adoptingStepsImpl,
     };
+
+    // ================================================================
+    // Convenience Methods - Text/Node/EventTarget API Delegation (3 levels)
+    // ================================================================
+    // ProcessingInstruction → Text → Node → EventTarget
+
+    // Text methods (via .prototype)
+    pub inline fn getData(self: *const ProcessingInstruction) []const u8 {
+        return self.prototype.data;
+    }
+    pub inline fn setData(self: *ProcessingInstruction, data: []const u8) !void {
+        return try self.prototype.setData(data);
+    }
+    pub inline fn appendData(self: *ProcessingInstruction, data: []const u8) !void {
+        return try self.prototype.appendData(data);
+    }
+
+    // Node methods (via .prototype.prototype)
+    pub inline fn parentNode(self: *const ProcessingInstruction) ?*Node {
+        return self.prototype.prototype.parent_node;
+    }
+    pub inline fn nextSibling(self: *const ProcessingInstruction) ?*Node {
+        return self.prototype.prototype.next_sibling;
+    }
+    pub inline fn previousSibling(self: *const ProcessingInstruction) ?*Node {
+        return self.prototype.prototype.previous_sibling;
+    }
+    pub inline fn isConnected(self: *const ProcessingInstruction) bool {
+        return self.prototype.prototype.isConnected();
+    }
+    pub inline fn cloneNode(self: *const ProcessingInstruction, deep: bool) !*Node {
+        return try self.prototype.prototype.cloneNode(deep);
+    }
+
+    // EventTarget methods (via .prototype.prototype.prototype)
+    pub inline fn addEventListener(
+        self: *ProcessingInstruction,
+        event_type: []const u8,
+        callback: EventCallback,
+        context: *anyopaque,
+        capture: bool,
+        once: bool,
+        passive: bool,
+        signal: ?*anyopaque,
+    ) !void {
+        return try self.prototype.prototype.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
+    }
+    pub inline fn removeEventListener(self: *ProcessingInstruction, event_type: []const u8, callback: EventCallback, capture: bool) void {
+        self.prototype.prototype.prototype.removeEventListener(event_type, callback, capture);
+    }
+    pub inline fn dispatchEvent(self: *ProcessingInstruction, event: *Event) !bool {
+        return try self.prototype.prototype.prototype.dispatchEvent(event);
+    }
 
     /// Creates a new ProcessingInstruction node with the specified target and data.
     ///
@@ -400,12 +455,3 @@ pub const ProcessingInstruction = struct {
 // -----------------------------------------------------------------------------
 
 const testing = std.testing;
-
-
-
-
-
-
-
-
-

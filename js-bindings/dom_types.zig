@@ -116,6 +116,9 @@ pub const DOMMutationRecord = opaque {};
 /// Opaque handle for DOM TreeWalker
 pub const DOMTreeWalker = opaque {};
 
+/// Opaque handle for DOM NodeIterator
+pub const DOMNodeIterator = opaque {};
+
 // ============================================================================
 // DOM Error Codes
 // ============================================================================

@@ -222,6 +222,7 @@
 
 const std = @import("std");
 const Event = @import("event.zig").Event;
+const EventInit = @import("event.zig").EventInit;
 
 /// CustomEvent extends Event with a detail property for custom data.
 ///
@@ -299,6 +300,31 @@ pub const CustomEvent = struct {
             .event = Event.init(event_type, options.event_options),
             .detail = options.detail,
         };
+    }
+
+    // ================================================================
+    // Convenience Methods - Event API Delegation
+    // ================================================================
+    // CustomEvent embeds Event directly, so delegate through .event
+
+    /// Convenience: custom_event.stopPropagation() instead of custom_event.event.stopPropagation()
+    pub inline fn stopPropagation(self: *CustomEvent) void {
+        self.event.stopPropagation();
+    }
+
+    /// Convenience: custom_event.stopImmediatePropagation() instead of custom_event.event.stopImmediatePropagation()
+    pub inline fn stopImmediatePropagation(self: *CustomEvent) void {
+        self.event.stopImmediatePropagation();
+    }
+
+    /// Convenience: custom_event.preventDefault() instead of custom_event.event.preventDefault()
+    pub inline fn preventDefault(self: *CustomEvent) void {
+        self.event.preventDefault();
+    }
+
+    /// Convenience: custom_event.defaultPrevented() instead of custom_event.event.defaultPrevented()
+    pub inline fn defaultPrevented(self: *const CustomEvent) bool {
+        return self.event.defaultPrevented();
     }
 
     /// Returns the detail with type-safe casting.
@@ -384,7 +410,7 @@ pub const CustomEvent = struct {
 /// - WebIDL: dom.idl:58-60
 pub const CustomEventInit = struct {
     /// Base event options (bubbles, cancelable, composed)
-    event_options: Event.EventInit = .{},
+    event_options: EventInit = .{},
 
     /// Custom data to attach to the event.
     ///

@@ -288,6 +288,8 @@ const node_mod = @import("node.zig");
 const Node = node_mod.Node;
 const NodeType = node_mod.NodeType;
 const NodeVTable = node_mod.NodeVTable;
+const Event = @import("event.zig").Event;
+const EventCallback = @import("event_target.zig").EventCallback;
 
 /// Text node representing character data in the DOM.
 ///
@@ -315,6 +317,81 @@ pub const Text = struct {
         .clone_node = cloneNodeImpl,
         .adopting_steps = adoptingStepsImpl,
     };
+
+    // ================================================================
+    // Convenience Methods - Node API Delegation
+    // ================================================================
+
+    /// Convenience: text.parentNode instead of text.prototype.parent_node
+    pub inline fn parentNode(self: *const Text) ?*Node {
+        return self.prototype.parent_node;
+    }
+
+    /// Convenience: text.nextSibling instead of text.prototype.next_sibling
+    pub inline fn nextSibling(self: *const Text) ?*Node {
+        return self.prototype.next_sibling;
+    }
+
+    /// Convenience: text.previousSibling instead of text.prototype.previous_sibling
+    pub inline fn previousSibling(self: *const Text) ?*Node {
+        return self.prototype.previous_sibling;
+    }
+
+    /// Convenience: text.nodeName() instead of text.prototype.nodeName()
+    pub inline fn nodeName(self: *const Text) []const u8 {
+        return self.prototype.nodeName();
+    }
+
+    /// Convenience: text.cloneNode(deep) instead of text.prototype.cloneNode(deep)
+    pub inline fn cloneNode(self: *const Text, deep: bool) !*Node {
+        return try self.prototype.cloneNode(deep);
+    }
+
+    /// Convenience: text.isConnected() instead of text.prototype.isConnected()
+    pub inline fn isConnected(self: *const Text) bool {
+        return self.prototype.isConnected();
+    }
+
+    // ================================================================
+    // Convenience Methods - EventTarget API Delegation
+    // ================================================================
+
+    /// Convenience: text.addEventListener(...) instead of text.prototype.prototype.addEventListener(...)
+    pub inline fn addEventListener(
+        self: *Text,
+        event_type: []const u8,
+        callback: EventCallback,
+        context: *anyopaque,
+        capture: bool,
+        once: bool,
+        passive: bool,
+        signal: ?*anyopaque,
+    ) !void {
+        return try self.prototype.prototype.addEventListener(
+            event_type,
+            callback,
+            context,
+            capture,
+            once,
+            passive,
+            signal,
+        );
+    }
+
+    /// Convenience: text.removeEventListener(...) instead of text.prototype.prototype.removeEventListener(...)
+    pub inline fn removeEventListener(
+        self: *Text,
+        event_type: []const u8,
+        callback: EventCallback,
+        capture: bool,
+    ) void {
+        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+    }
+
+    /// Convenience: text.dispatchEvent(event) instead of text.prototype.prototype.dispatchEvent(event)
+    pub inline fn dispatchEvent(self: *Text, event: *Event) !bool {
+        return try self.prototype.prototype.dispatchEvent(event);
+    }
 
     /// Creates a new Text node with the specified content.
     ///

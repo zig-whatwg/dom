@@ -199,6 +199,7 @@ pub const NamedNodeMap = @import("named_node_map.zig").NamedNodeMap;
 pub const qualified_name = @import("qualified_name.zig");
 
 pub const Event = @import("event.zig").Event;
+pub const EventInit = @import("event.zig").EventInit;
 pub const CustomEvent = @import("custom_event.zig").CustomEvent;
 pub const CustomEventInit = @import("custom_event.zig").CustomEventInit;
 pub const ShadowRoot = @import("shadow_root.zig").ShadowRoot;

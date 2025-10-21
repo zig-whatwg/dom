@@ -216,6 +216,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Node = @import("node.zig").Node;
 const NodeVTable = @import("node.zig").NodeVTable;
+const Event = @import("event.zig").Event;
+const EventCallback = @import("event_target.zig").EventCallback;
 
 /// DocumentType represents a document's DTD (Document Type Declaration).
 ///
@@ -261,6 +263,20 @@ pub const DocumentType = struct {
         .clone_node = cloneNodeImpl,
         .adopting_steps = adoptingStepsImpl,
     };
+
+    // Convenience Methods - Node & EventTarget API Delegation
+    pub inline fn parentNode(self: *const DocumentType) ?*Node {
+        return self.prototype.parent_node;
+    }
+    pub inline fn isConnected(self: *const DocumentType) bool {
+        return self.prototype.isConnected();
+    }
+    pub inline fn addEventListener(self: *DocumentType, event_type: []const u8, callback: EventCallback, context: *anyopaque, capture: bool, once: bool, passive: bool, signal: ?*anyopaque) !void {
+        return try self.prototype.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
+    }
+    pub inline fn dispatchEvent(self: *DocumentType, event: *Event) !bool {
+        return try self.prototype.prototype.dispatchEvent(event);
+    }
 
     /// Creates a new DocumentType node.
     ///

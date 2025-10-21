@@ -43,6 +43,7 @@ typedef struct DOMEventTarget DOMEventTarget;
 typedef struct DOMEvent DOMEvent;
 typedef struct DOMRange DOMRange;
 typedef struct DOMTreeWalker DOMTreeWalker;
+typedef struct DOMNodeIterator DOMNodeIterator;
 
 /* ============================================================================
  * Constants
@@ -254,6 +255,31 @@ DOMRange* dom_document_createrange(DOMDocument* doc);
  *   dom_treewalker_release(walker);
  */
 DOMTreeWalker* dom_document_createtreewalker(DOMDocument* doc, DOMNode* root, uint32_t whatToShow, void* filter);
+
+/**
+ * Create a NodeIterator.
+ * 
+ * @param doc Document
+ * @param root Root node for iteration
+ * @param whatToShow Bitmask of node types to show (use DOM_NODEFILTER_SHOW_* constants)
+ * @param filter Custom node filter (currently must be NULL)
+ * @return NodeIterator
+ * 
+ * Example:
+ *   DOMNodeIterator* iterator = dom_document_createnodeiterator(
+ *       doc,
+ *       rootNode,
+ *       DOM_NODEFILTER_SHOW_ELEMENT,
+ *       NULL
+ *   );
+ *   DOMNode* node = dom_nodeiterator_nextnode(iterator);
+ *   while (node != NULL) {
+ *       // Process node
+ *       node = dom_nodeiterator_nextnode(iterator);
+ *   }
+ *   dom_nodeiterator_release(iterator);
+ */
+DOMNodeIterator* dom_document_createnodeiterator(DOMDocument* doc, DOMNode* root, uint32_t whatToShow, void* filter);
 
 /* ============================================================================
  * Range Interface
@@ -1433,6 +1459,72 @@ DOMNode* dom_treewalker_nextnode(DOMTreeWalker* walker);
  * @param walker TreeWalker handle
  */
 void dom_treewalker_release(DOMTreeWalker* walker);
+
+// ============================================================================
+// NodeIterator
+// ============================================================================
+
+/**
+ * Get the root node of the iterator.
+ * 
+ * @param iterator NodeIterator handle
+ * @return Root node (never NULL)
+ */
+DOMNode* dom_nodeiterator_get_root(const DOMNodeIterator* iterator);
+
+/**
+ * Get the reference node.
+ * 
+ * @param iterator NodeIterator handle
+ * @return Reference node (current position)
+ */
+DOMNode* dom_nodeiterator_get_referencenode(const DOMNodeIterator* iterator);
+
+/**
+ * Get whether pointer is before reference node.
+ * 
+ * @param iterator NodeIterator handle
+ * @return 1 if before reference node, 0 if after
+ */
+uint8_t dom_nodeiterator_get_pointerbeforereferencenode(const DOMNodeIterator* iterator);
+
+/**
+ * Get the whatToShow bitmask.
+ * 
+ * @param iterator NodeIterator handle
+ * @return Bitmask of node types to show
+ */
+uint32_t dom_nodeiterator_get_whattoshow(const DOMNodeIterator* iterator);
+
+/**
+ * Navigate to next node.
+ * 
+ * @param iterator NodeIterator handle
+ * @return Next node, or NULL if at end
+ */
+DOMNode* dom_nodeiterator_nextnode(DOMNodeIterator* iterator);
+
+/**
+ * Navigate to previous node.
+ * 
+ * @param iterator NodeIterator handle
+ * @return Previous node, or NULL if at beginning
+ */
+DOMNode* dom_nodeiterator_previousnode(DOMNodeIterator* iterator);
+
+/**
+ * Detach the iterator (no-op per spec).
+ * 
+ * @param iterator NodeIterator handle
+ */
+void dom_nodeiterator_detach(DOMNodeIterator* iterator);
+
+/**
+ * Release a NodeIterator.
+ * 
+ * @param iterator NodeIterator handle
+ */
+void dom_nodeiterator_release(DOMNodeIterator* iterator);
 
 #ifdef __cplusplus
 }

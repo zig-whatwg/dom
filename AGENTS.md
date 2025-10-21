@@ -354,6 +354,82 @@ Before implementing ANY new feature, research how Chrome (Blink), Firefox (Gecko
 
 **Example**: See `summaries/plans/namespaced_attributes_design.md` for complete 70-page design following this skill.
 
+### 9. **webidl_implementation** - WebIDL Implementation Guide ⭐ NEW
+
+**Automatically loaded when:**
+- Implementing new DOM interfaces from WebIDL
+- Adding delegation methods to existing interfaces
+- Understanding inheritance and prototype patterns
+- Using code generation tools
+- Working with overrides and custom implementations
+
+**Core Principle:**
+Use WebIDL specifications and code generation tools to implement spec-compliant DOM interfaces with proper inheritance through prototype chains.
+
+**Provides:**
+- Complete WebIDL to Zig implementation workflow
+- Prototype chain delegation patterns
+- Code generation tool usage (`analyze` and `codegen`)
+- Override system documentation
+- Type mapping reference (WebIDL → Zig)
+- Convenience wrapper patterns
+- Custom implementation guidelines
+- Testing delegation and inheritance
+- Examples for all patterns
+
+**Tools**:
+- `zig build analyze -- InterfaceName` - Detect delegation patterns
+- `zig build codegen -- InterfaceName` - Generate delegation code
+- `tools/codegen/overrides.json` - Override registry
+
+**Key Patterns**:
+1. **Prototype chain** - Default inheritance (self.prototype.method)
+2. **Convenience wrappers** - Ergonomic access for common methods
+3. **Custom overrides** - Different implementation than ancestor
+
+**Critical Rule:** Always check WebIDL first, use code generator for boilerplate, track custom implementations in overrides.json
+
+**Location:** `skills/webidl_implementation/`
+
+### 10. **delegation_debugging** - Debugging Delegated Methods ⭐ NEW
+
+**Automatically loaded when:**
+- Fixing bugs in methods that delegate to ancestors
+- Determining whether bugs belong in ancestor or need override
+- Deciding if delegation should be replaced with custom implementation
+- Investigating failures in prototype chain methods
+
+**Core Principle:**
+When debugging delegated methods, systematically determine whether the bug is in the ancestor implementation (fix there to benefit all interfaces) or requires interface-specific behavior (create override and track in registry).
+
+**Provides:**
+- Complete debugging workflow (reproduce → trace → test → decide)
+- Root cause analysis framework
+- Decision tree for fix location (ancestor vs override)
+- Override creation process with registry tracking
+- Testing strategy for overrides
+- Multiple real-world examples
+- Common bug patterns and solutions
+
+**Workflow**:
+1. **Reproduce** - Create minimal failing test
+2. **Trace** - Follow delegation chain to implementation
+3. **Test ancestor** - Does bug exist at ancestor level?
+4. **Test other interfaces** - Do they all fail?
+5. **Check spec** - Interface-specific notes?
+6. **Decide** - Fix ancestor OR create override
+7. **Track** - Add override to overrides.json
+
+**Key Questions**:
+- Does the bug affect all inheriting interfaces? → Fix ancestor
+- Does spec indicate interface-specific behavior? → Override
+- Does method need interface-specific state? → Override
+- Is it just a type conversion? → Optional override for ergonomics
+
+**Critical Rule:** Always test the ancestor directly before creating an override. Fix at the highest level possible to benefit all interfaces.
+
+**Location:** `skills/delegation_debugging/`
+
 ---
 
 ## Golden Rules

@@ -1,0 +1,25 @@
+{
+  "comment": "Registry of manually overridden generated methods",
+  "description": "When you override a generated method with a custom implementation, add it here to prevent regeneration",
+  "usage": "Run 'zig build analyze -- InterfaceName' to automatically detect overrides",
+  "format": {
+    "interface_name": {
+      "method_name": {
+        "reason": "Why this method is overridden",
+        "file": "Source file with custom implementation",
+        "lines": "start-end",
+        "detected": "YYYY-MM-DD"
+      }
+    }
+  },
+  "overrides": {
+    "Node": {
+      "dispatchEvent": {
+        "reason": "Full DOM event propagation with capture/target/bubble phases (44 lines). EventTarget has simplified version (target-only). Node's version handles tree traversal for capture and bubble propagation.",
+        "file": "src/node.zig",
+        "lines": "2586-2656",
+        "detected": "2025-10-21"
+      }
+    }
+  }
+}

@@ -11,6 +11,7 @@ const Document = dom.Document;
 const DocumentFragment = dom.DocumentFragment;
 const StringPool = dom.StringPool;
 const SelectorCache = dom.SelectorCache;
+const Event = dom.Event;
 
 test "StringPool - string deduplication" {
     const allocator = std.testing.allocator;
@@ -1541,4 +1542,56 @@ test "Document common namespaces are interned on init" {
     try std.testing.expectEqualStrings("http://www.w3.org/1998/Math/MathML", doc.mathml_namespace);
     try std.testing.expectEqualStrings("http://www.w3.org/XML/1998/namespace", doc.xml_namespace);
     try std.testing.expectEqualStrings("http://www.w3.org/2000/xmlns/", doc.xmlns_namespace);
+}
+
+test "Document convenience methods - Node API delegation" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+
+    // NEW API: doc.appendChild() instead of doc.prototype.appendChild()
+    _ = try doc.appendChild(&elem.prototype);
+
+    // NEW API: doc.hasChildNodes() instead of doc.prototype.hasChildNodes()
+    try std.testing.expect(doc.hasChildNodes());
+
+    // NEW API: doc.firstChild() instead of doc.prototype.first_child
+    const child = doc.firstChild().?;
+    try std.testing.expectEqual(&elem.prototype, child);
+
+    // NEW API: doc.lastChild() instead of doc.prototype.last_child
+    const last = doc.lastChild().?;
+    try std.testing.expectEqual(&elem.prototype, last);
+}
+
+test "Document convenience methods - EventTarget API delegation" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    var called = false;
+    const callback = struct {
+        fn handle(event: *Event, ctx: *anyopaque) void {
+            _ = event;
+            const flag = @as(*bool, @ptrCast(@alignCast(ctx)));
+            flag.* = true;
+        }
+    }.handle;
+
+    // NEW API: doc.addEventListener() instead of doc.prototype.prototype.addEventListener()
+    try doc.addEventListener("test", callback, &called, false, false, false, null);
+
+    var event = Event.init("test", .{});
+
+    // NEW API: doc.dispatchEvent() instead of doc.prototype.prototype.dispatchEvent()
+    _ = try doc.dispatchEvent(&event);
+
+    try std.testing.expect(called);
+
+    // NEW API: doc.removeEventListener() instead of doc.prototype.prototype.removeEventListener()
+    doc.removeEventListener("test", callback, false);
 }

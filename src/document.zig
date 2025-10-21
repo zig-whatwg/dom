@@ -257,6 +257,9 @@ const SelectorList = @import("selector/parser.zig").SelectorList;
 const FastPathType = @import("fast_path.zig").FastPathType;
 const HTMLCollection = @import("html_collection.zig").HTMLCollection;
 const CEReactionsStack = @import("custom_element_registry.zig").CEReactionsStack;
+const Event = @import("event.zig").Event;
+const EventTarget = @import("event_target.zig").EventTarget;
+const EventCallback = @import("event_target.zig").EventCallback;
 
 /// String interning pool for per-document string deduplication.
 ///
@@ -278,26 +281,35 @@ pub const StringPool = struct {
     }
 
     pub fn deinit(self: *StringPool) void {
-        // Free all interned strings
+        // Free all interned strings (including null terminator)
         var it = self.strings.iterator();
         while (it.next()) |entry| {
-            self.allocator.free(entry.value_ptr.*);
+            const str = entry.value_ptr.*;
+            // dupeZ allocates len+1 bytes but returns slice of len
+            // We must free the full allocation including the null terminator
+            const ptr: [*]const u8 = str.ptr;
+            self.allocator.free(ptr[0 .. str.len + 1]);
         }
         self.strings.deinit();
     }
 
-    /// Interns a string, returning a pointer to the canonical copy.
+    /// Interns a string, returning a pointer to the canonical null-terminated copy.
     ///
     /// If the string has already been interned, returns the existing copy.
-    /// Otherwise, duplicates the string and stores it in the pool.
+    /// Otherwise, duplicates the string with null-termination and stores it in the pool.
+    ///
+    /// Strings are stored null-terminated to support C-ABI bindings (JavaScript engines).
+    /// The returned slice does NOT include the null terminator in its length, but the
+    /// underlying memory is guaranteed to have a null terminator at [len].
     ///
     /// ## Returns
-    /// Pointer to interned string (valid until document destroyed)
+    /// Pointer to interned string (valid until document destroyed).
+    /// Can be safely cast to `[*:0]const u8` via `.ptr` for C interop.
     pub fn intern(self: *StringPool, str: []const u8) ![]const u8 {
         const result = try self.strings.getOrPut(str);
         if (!result.found_existing) {
-            // New string, duplicate and store
-            result.value_ptr.* = try self.allocator.dupe(u8, str);
+            // New string, duplicate with null terminator for C-ABI compatibility
+            result.value_ptr.* = try self.allocator.dupeZ(u8, str);
         }
         return result.value_ptr.*;
     }
@@ -557,6 +569,11 @@ pub const Document = struct {
     /// Manages nested [CEReactions] scopes for lifecycle callbacks
     ce_reactions_stack: CEReactionsStack,
 
+    /// DOMImplementation instance for this document.
+    /// Per WebIDL [SameObject], must return the same object every time.
+    /// Initialized to undefined, set in initWithVTableAndFactories()
+    implementation: @import("dom_implementation.zig").DOMImplementation,
+
     /// Vtable for Document nodes.
     const vtable = NodeVTable{
         .deinit = deinitImpl,
@@ -566,6 +583,87 @@ pub const Document = struct {
         .clone_node = cloneNodeImpl,
         .adopting_steps = adoptingStepsImpl,
     };
+
+    // ================================================================
+    // Convenience Methods - Node API Delegation
+    // ================================================================
+    // Provides commonly-used Node methods directly on Document for ergonomics.
+    // Less common methods can be accessed via doc.prototype.*
+
+    /// Convenience: doc.appendChild(child) instead of doc.prototype.appendChild(child)
+    pub inline fn appendChild(self: *Document, child: anytype) !*Node {
+        return try self.prototype.appendChild(child);
+    }
+
+    /// Convenience: doc.insertBefore(node, child) instead of doc.prototype.insertBefore(node, child)
+    pub inline fn insertBefore(self: *Document, node: anytype, child: ?*Node) !*Node {
+        return try self.prototype.insertBefore(node, child);
+    }
+
+    /// Convenience: doc.removeChild(child) instead of doc.prototype.removeChild(child)
+    pub inline fn removeChild(self: *Document, child: *Node) !*Node {
+        return try self.prototype.removeChild(child);
+    }
+
+    /// Convenience: doc.hasChildNodes() instead of doc.prototype.hasChildNodes()
+    pub inline fn hasChildNodes(self: *const Document) bool {
+        return self.prototype.hasChildNodes();
+    }
+
+    /// Convenience: doc.firstChild instead of doc.prototype.first_child
+    pub inline fn firstChild(self: *const Document) ?*Node {
+        return self.prototype.first_child;
+    }
+
+    /// Convenience: doc.lastChild instead of doc.prototype.last_child
+    pub inline fn lastChild(self: *const Document) ?*Node {
+        return self.prototype.last_child;
+    }
+
+    // ================================================================
+    // Convenience Methods - EventTarget API Delegation
+    // ================================================================
+
+    /// Convenience: doc.addEventListener(...) instead of doc.prototype.prototype.addEventListener(...)
+    pub inline fn addEventListener(
+        self: *Document,
+        event_type: []const u8,
+        callback: EventCallback,
+        context: *anyopaque,
+        capture: bool,
+        once: bool,
+        passive: bool,
+        signal: ?*anyopaque,
+    ) !void {
+        return try self.prototype.prototype.addEventListener(
+            event_type,
+            callback,
+            context,
+            capture,
+            once,
+            passive,
+            signal,
+        );
+    }
+
+    /// Convenience: doc.removeEventListener(...) instead of doc.prototype.prototype.removeEventListener(...)
+    pub inline fn removeEventListener(
+        self: *Document,
+        event_type: []const u8,
+        callback: EventCallback,
+        capture: bool,
+    ) void {
+        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+    }
+
+    /// Convenience: doc.dispatchEvent(event) instead of doc.prototype.prototype.dispatchEvent(event)
+    pub inline fn dispatchEvent(self: *Document, event: *Event) !bool {
+        return try self.prototype.prototype.dispatchEvent(event);
+    }
+
+    // ================================================================
+    // Document Lifecycle
+    // ================================================================
 
     /// Creates a new Document.
     ///
@@ -703,6 +801,10 @@ pub const Document = struct {
 
         // Initialize custom element reactions stack (Phase 3)
         doc.ce_reactions_stack = CEReactionsStack.init(allocator);
+
+        // Initialize DOMImplementation (must be after doc is fully initialized)
+        // [SameObject] requires we return the same instance every time
+        doc.implementation = .{ .document = doc };
 
         return doc;
     }
@@ -1292,9 +1394,7 @@ pub const Document = struct {
     /// const elem = try doc.createElement("button");
     /// _ = try elem.prototype.dispatchEvent(event);
     /// ```
-    pub fn createEvent(self: *Document, interface: []const u8) !*@import("event.zig").Event {
-        const Event = @import("event.zig").Event;
-
+    pub fn createEvent(self: *Document, interface: []const u8) !*Event {
         // For simplicity, we only support "Event" interface
         // Full implementation would support "CustomEvent", "UIEvent", "MouseEvent", etc.
         if (std.mem.eql(u8, interface, "Event") or
@@ -2123,29 +2223,37 @@ pub const Document = struct {
     /// Return the document's DOMImplementation object.
     ///
     /// ## Returns
-    /// A DOMImplementation instance (zero-sized stateless factory).
+    /// Returns the DOMImplementation object for this document.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [SameObject] readonly attribute DOMImplementation implementation;
+    /// ```
     ///
     /// ## Spec References
     /// - Property: https://dom.spec.whatwg.org/#dom-document-implementation
     /// - WebIDL: dom.idl:274
     ///
     /// ## Note
-    /// The [SameObject] annotation means this should return the same object
-    /// on every call. Since DOMImplementation is zero-sized and stateless,
-    /// we can return a new instance each time (functionally equivalent).
+    /// Per [SameObject] extended attribute, this returns a pointer to the same
+    /// DOMImplementation instance stored in the document. The instance is
+    /// initialized in init() and remains valid for the document's lifetime.
     ///
     /// ## Example
     /// ```zig
     /// const doc = try Document.init(allocator);
     /// defer doc.release();
     ///
-    /// const impl = doc.getImplementation();
-    /// const doctype = try impl.createDocumentType(allocator, "html", "", "");
+    /// const impl1 = doc.getImplementation();
+    /// const impl2 = doc.getImplementation();
+    /// try std.testing.expect(impl1 == impl2); // Same pointer!
+    ///
+    /// const doctype = try impl1.createDocumentType("html", "", "");
     /// defer doctype.prototype.release();
     /// ```
-    pub fn getImplementation(self: *Document) @import("dom_implementation.zig").DOMImplementation {
-        // Cast away const - DOMImplementation needs mutable access for string interning
-        return .{ .document = @constCast(self) };
+    pub fn getImplementation(self: *Document) *@import("dom_implementation.zig").DOMImplementation {
+        // Return pointer to stored instance per [SameObject]
+        return &self.implementation;
     }
 
     // ========================================================================

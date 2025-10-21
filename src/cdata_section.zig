@@ -230,6 +230,8 @@ const Text = text_mod.Text;
 const node_mod = @import("node.zig");
 const Node = node_mod.Node;
 const NodeVTable = node_mod.NodeVTable;
+const Event = @import("event.zig").Event;
+const EventCallback = @import("event_target.zig").EventCallback;
 
 /// CDATASection node representing CDATA sections in XML documents.
 ///
@@ -253,6 +255,59 @@ pub const CDATASection = struct {
         .clone_node = cloneNodeImpl,
         .adopting_steps = adoptingStepsImpl,
     };
+
+    // ================================================================
+    // Convenience Methods - Text/Node/EventTarget API Delegation (3 levels)
+    // ================================================================
+    // CDATASection → Text → Node → EventTarget
+
+    // Text methods (via .prototype)
+    pub inline fn getData(self: *const CDATASection) []const u8 {
+        return self.prototype.data;
+    }
+    pub inline fn setData(self: *CDATASection, data: []const u8) !void {
+        return try self.prototype.setData(data);
+    }
+    pub inline fn appendData(self: *CDATASection, data: []const u8) !void {
+        return try self.prototype.appendData(data);
+    }
+
+    // Node methods (via .prototype.prototype)
+    pub inline fn parentNode(self: *const CDATASection) ?*Node {
+        return self.prototype.prototype.parent_node;
+    }
+    pub inline fn nextSibling(self: *const CDATASection) ?*Node {
+        return self.prototype.prototype.next_sibling;
+    }
+    pub inline fn previousSibling(self: *const CDATASection) ?*Node {
+        return self.prototype.prototype.previous_sibling;
+    }
+    pub inline fn isConnected(self: *const CDATASection) bool {
+        return self.prototype.prototype.isConnected();
+    }
+    pub inline fn cloneNode(self: *const CDATASection, deep: bool) !*Node {
+        return try self.prototype.prototype.cloneNode(deep);
+    }
+
+    // EventTarget methods (via .prototype.prototype.prototype)
+    pub inline fn addEventListener(
+        self: *CDATASection,
+        event_type: []const u8,
+        callback: EventCallback,
+        context: *anyopaque,
+        capture: bool,
+        once: bool,
+        passive: bool,
+        signal: ?*anyopaque,
+    ) !void {
+        return try self.prototype.prototype.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
+    }
+    pub inline fn removeEventListener(self: *CDATASection, event_type: []const u8, callback: EventCallback, capture: bool) void {
+        self.prototype.prototype.prototype.removeEventListener(event_type, callback, capture);
+    }
+    pub inline fn dispatchEvent(self: *CDATASection, event: *Event) !bool {
+        return try self.prototype.prototype.prototype.dispatchEvent(event);
+    }
 
     /// Creates a new CDATASection node with the specified content.
     ///
@@ -459,12 +514,3 @@ pub const CDATASection = struct {
 // -----------------------------------------------------------------------------
 
 const testing = std.testing;
-
-
-
-
-
-
-
-
-

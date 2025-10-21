@@ -461,18 +461,30 @@ pub const DOMTokenList = struct {
         defer allocator.free(new_value);
 
         // Intern the new value via the document's string pool
+        // WORKAROUND: Check if value already exists to avoid StringHashMap.getOrPut() bug
         if (self.element.prototype.owner_document) |owner| {
             if (owner.node_type == .document) {
                 const Document = @import("document.zig").Document;
                 const doc: *Document = @fieldParentPtr("prototype", owner);
-                const interned = try doc.string_pool.intern(new_value);
+
+                // Check if already interned by comparing values
+                const interned = blk: {
+                    var it = doc.string_pool.strings.iterator();
+                    while (it.next()) |entry| {
+                        if (std.mem.eql(u8, entry.value_ptr.*, new_value)) {
+                            break :blk entry.value_ptr.*;
+                        }
+                    }
+                    // Not found, intern it
+                    break :blk try doc.string_pool.intern(new_value);
+                };
+
                 try self.element.setAttribute(self.attribute_name, interned);
                 return;
             }
         }
 
         // Fallback: If no owner document, duplicate the string
-        // (this shouldn't happen in normal use, but provides safety)
         const duped = try allocator.dupe(u8, new_value);
         try self.element.setAttribute(self.attribute_name, duped);
     }
@@ -545,11 +557,24 @@ pub const DOMTokenList = struct {
             defer allocator.free(new_value);
 
             // Intern the new value via the document's string pool
+            // WORKAROUND: Check if value already exists to avoid StringHashMap.getOrPut() bug
             if (self.element.prototype.owner_document) |owner| {
                 if (owner.node_type == .document) {
                     const Document = @import("document.zig").Document;
                     const doc: *Document = @fieldParentPtr("prototype", owner);
-                    const interned = try doc.string_pool.intern(new_value);
+
+                    // Check if already interned by comparing values
+                    const interned = blk: {
+                        var it = doc.string_pool.strings.iterator();
+                        while (it.next()) |entry| {
+                            if (std.mem.eql(u8, entry.value_ptr.*, new_value)) {
+                                break :blk entry.value_ptr.*;
+                            }
+                        }
+                        // Not found, intern it
+                        break :blk try doc.string_pool.intern(new_value);
+                    };
+
                     try self.element.setAttribute(self.attribute_name, interned);
                     return;
                 }
@@ -722,11 +747,24 @@ pub const DOMTokenList = struct {
         defer allocator.free(new_value);
 
         // Intern the new value via the document's string pool
+        // WORKAROUND: Check if value already exists to avoid StringHashMap.getOrPut() bug
         if (self.element.prototype.owner_document) |owner| {
             if (owner.node_type == .document) {
                 const Document = @import("document.zig").Document;
                 const doc: *Document = @fieldParentPtr("prototype", owner);
-                const interned = try doc.string_pool.intern(new_value);
+
+                // Check if already interned by comparing values
+                const interned = blk: {
+                    var it = doc.string_pool.strings.iterator();
+                    while (it.next()) |entry| {
+                        if (std.mem.eql(u8, entry.value_ptr.*, new_value)) {
+                            break :blk entry.value_ptr.*;
+                        }
+                    }
+                    // Not found, intern it
+                    break :blk try doc.string_pool.intern(new_value);
+                };
+
                 try self.element.setAttribute(self.attribute_name, interned);
                 return true;
             }

@@ -264,6 +264,8 @@ const DOMError = @import("validation.zig").DOMError;
 
 // Forward declaration for Element
 const Element = @import("element.zig").Element;
+const Event = @import("event.zig").Event;
+const EventCallback = @import("event_target.zig").EventCallback;
 
 /// Attr node representing an attribute of an Element in the DOM.
 ///
@@ -311,6 +313,79 @@ pub const Attr = struct {
         .clone_node = cloneNodeImpl,
         .adopting_steps = adoptingStepsImpl,
     };
+
+    // ================================================================
+    // Convenience Methods - Node API Delegation
+    // ================================================================
+    // Attr embeds Node directly (not prototype), so delegate through .node
+
+    /// Convenience: attr.release() instead of attr.node.release()
+    pub inline fn release(self: *Attr) void {
+        self.node.release();
+    }
+
+    /// Convenience: attr.acquire() instead of attr.node.acquire()
+    pub inline fn acquire(self: *Attr) void {
+        self.node.acquire();
+    }
+
+    /// Convenience: attr.ownerDocument() instead of attr.node.owner_document
+    pub inline fn ownerDocument(self: *const Attr) ?*@import("document.zig").Document {
+        return self.node.getOwnerDocument();
+    }
+
+    /// Convenience: attr.nodeName() instead of attr.node.nodeName()
+    pub inline fn nodeName(self: *const Attr) []const u8 {
+        return self.node.nodeName();
+    }
+
+    /// Convenience: attr.nodeValue() instead of attr.node.nodeValue()
+    pub inline fn nodeValue(self: *const Attr) ?[]const u8 {
+        return self.node.nodeValue();
+    }
+
+    /// Convenience: attr.cloneNode(deep) instead of attr.node.cloneNode(deep)
+    pub inline fn cloneNode(self: *const Attr, deep: bool) !*Node {
+        return try self.node.cloneNode(deep);
+    }
+
+    // ================================================================
+    // Convenience Methods - EventTarget API Delegation
+    // ================================================================
+    // Attr → Node → EventTarget (2 levels through .node)
+
+    /// Convenience: attr.addEventListener(...) instead of attr.node.prototype.addEventListener(...)
+    pub inline fn addEventListener(
+        self: *Attr,
+        event_type: []const u8,
+        callback: EventCallback,
+        context: *anyopaque,
+        capture: bool,
+        once: bool,
+        passive: bool,
+        signal: ?*anyopaque,
+    ) !void {
+        return try self.node.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
+    }
+
+    /// Convenience: attr.removeEventListener(...) instead of attr.node.prototype.removeEventListener(...)
+    pub inline fn removeEventListener(
+        self: *Attr,
+        event_type: []const u8,
+        callback: EventCallback,
+        capture: bool,
+    ) void {
+        self.node.prototype.removeEventListener(event_type, callback, capture);
+    }
+
+    /// Convenience: attr.dispatchEvent(event) instead of attr.node.prototype.dispatchEvent(event)
+    pub inline fn dispatchEvent(self: *Attr, event: *Event) !bool {
+        return try self.node.prototype.dispatchEvent(event);
+    }
+
+    // ================================================================
+    // Attr Lifecycle
+    // ================================================================
 
     /// Creates a new Attr node with the specified name.
     ///
@@ -554,4 +629,3 @@ pub const Attr = struct {
         // owner_element is managed by Element methods
     }
 };
-

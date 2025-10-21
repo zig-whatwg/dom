@@ -10,6 +10,7 @@ const Document = dom.Document;
 const DocumentFragment = dom.DocumentFragment;
 const BloomFilter = dom.BloomFilter;
 const AttributeMap = dom.AttributeMap;
+const Event = dom.Event;
 
 test "BloomFilter - basic operations" {
     var bloom = BloomFilter{};
@@ -2190,4 +2191,40 @@ test "moveBefore - state preservation (connectedness)" {
     // Document should still be owner
     try std.testing.expectEqual(@as(?*Node, &doc.prototype), child1.prototype.owner_document);
     try std.testing.expectEqual(@as(?*Node, &doc.prototype), child2.prototype.owner_document);
+}
+
+test "Element delegation - clean WHATWG-compliant API" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const parent = try doc.createElement("div");
+    const child = try doc.createElement("span");
+    const text = try doc.createTextNode("Hello");
+
+    // NEW API: Clean, WHATWG-compliant (no .prototype needed)
+    _ = try parent.appendChild(&child.prototype);
+    _ = try child.appendChild(&text.prototype);
+
+    // All delegation methods work
+    try std.testing.expect(parent.hasChildNodes());
+    try std.testing.expect(child.hasChildNodes());
+    try std.testing.expectEqual(&child.prototype, parent.firstChild().?);
+    try std.testing.expectEqual(&text.prototype, child.firstChild().?);
+
+    // EventTarget delegation works too
+    var called = false;
+    const callback = struct {
+        fn handle(event: *Event, ctx: *anyopaque) void {
+            _ = event;
+            const flag = @as(*bool, @ptrCast(@alignCast(ctx)));
+            flag.* = true;
+        }
+    }.handle;
+
+    try parent.addEventListener("test", callback, &called, false, false, false, null);
+    var event = Event.init("test", .{});
+    _ = try parent.dispatchEvent(&event);
+    try std.testing.expect(called);
 }

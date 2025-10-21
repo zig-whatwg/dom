@@ -1,0 +1,212 @@
+================================================================================
+WebIDL to Zig Delegation Code Generator - Concrete Example
+================================================================================
+
+PROBLEM:
+--------
+Element needs to expose ~45 methods from Node + EventTarget ancestors.
+Current approach: Manually write 45 inline delegation methods.
+Result: Massive code duplication, maintenance nightmare.
+
+SOLUTION:
+---------
+Auto-generate ALL delegation methods from WebIDL specification.
+
+INPUT: skills/whatwg_compliance/dom.idl
+----------------------------------------
+
+interface EventTarget {
+  undefined addEventListener(DOMString type, EventListener callback);
+  undefined removeEventListener(DOMString type, EventListener callback);
+  boolean dispatchEvent(Event event);
+};
+
+interface Node : EventTarget {
+  Node appendChild(Node node);
+  Node removeChild(Node child);
+  Node insertBefore(Node node, Node? child);
+  boolean hasChildNodes();
+  DOMString? lookupPrefix(DOMString? namespace);
+  // ... 35 more methods
+};
+
+interface Element : Node {
+  DOMString? getAttribute(DOMString name);
+  undefined setAttribute(DOMString name, DOMString value);
+  // ... 28 more Element-specific methods
+};
+
+OUTPUT: Generated Zig code for Element
+---------------------------------------
+
+// src/element.zig (partially generated)
+pub const Element = struct {
+    prototype: Node,
+    tag_name: []const u8,
+    attributes: AttributeMap,
+    
+    // ========================================================================
+    // HAND-WRITTEN: Element-specific methods
+    // ========================================================================
+    
+    pub fn getAttribute(self: *Element, name: []const u8) ?[]const u8 {
+        return self.attributes.get(name);
+    }
+    
+    pub fn setAttribute(self: *Element, name: []const u8, value: []const u8) !void {
+        try self.attributes.set(name, value);
+    }
+    
+    // ... more Element methods
+    
+    // ========================================================================
+    // GENERATED CODE - DO NOT EDIT
+    // Generated from: dom.idl
+    // Timestamp: 2025-10-20T15:30:00Z
+    // ========================================================================
+    
+    // Node methods delegation (40 methods)
+    // --------------------------------------------------------------------
+    
+    /// GENERATED: Node.appendChild
+    /// WebIDL: Node appendChild(Node node);
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
+    pub inline fn appendChild(self: *Element, node: anytype) !*Node {
+        return try self.prototype.appendChild(node);
+    }
+    
+    /// GENERATED: Node.removeChild
+    /// WebIDL: Node removeChild(Node child);
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-removechild
+    pub inline fn removeChild(self: *Element, child: *Node) !*Node {
+        return try self.prototype.removeChild(child);
+    }
+    
+    /// GENERATED: Node.insertBefore
+    pub inline fn insertBefore(self: *Element, node: anytype, child: ?*Node) !*Node {
+        return try self.prototype.insertBefore(node, child);
+    }
+    
+    /// GENERATED: Node.replaceChild
+    pub inline fn replaceChild(self: *Element, node: anytype, child: *Node) !*Node {
+        return try self.prototype.replaceChild(node, child);
+    }
+    
+    /// GENERATED: Node.hasChildNodes
+    pub inline fn hasChildNodes(self: *Element) bool {
+        return self.prototype.hasChildNodes();
+    }
+    
+    /// GENERATED: Node.lookupPrefix
+    pub inline fn lookupPrefix(self: *Element, namespace: ?[]const u8) ?[]const u8 {
+        return self.prototype.lookupPrefix(namespace);
+    }
+    
+    /// GENERATED: Node.lookupNamespaceURI
+    pub inline fn lookupNamespaceURI(self: *Element, prefix: ?[]const u8) ?[]const u8 {
+        return self.prototype.lookupNamespaceURI(prefix);
+    }
+    
+    /// GENERATED: Node.isDefaultNamespace
+    pub inline fn isDefaultNamespace(self: *Element, namespace: ?[]const u8) bool {
+        return self.prototype.isDefaultNamespace(namespace);
+    }
+    
+    /// GENERATED: Node.compareDocumentPosition
+    pub inline fn compareDocumentPosition(self: *Element, other: *const Node) u16 {
+        return self.prototype.compareDocumentPosition(other);
+    }
+    
+    /// GENERATED: Node.contains
+    pub inline fn contains(self: *Element, other: ?*const Node) bool {
+        return self.prototype.contains(other);
+    }
+    
+    /// GENERATED: Node.isConnected
+    pub inline fn isConnected(self: *Element) bool {
+        return self.prototype.isConnected();
+    }
+    
+    // ... 30 more generated Node methods
+    
+    // EventTarget methods delegation (5 methods)
+    // --------------------------------------------------------------------
+    
+    /// GENERATED: EventTarget.addEventListener
+    pub inline fn addEventListener(
+        self: *Element,
+        event_type: []const u8,
+        callback: EventCallback,
+        context: *anyopaque,
+        capture: bool,
+        once: bool,
+        passive: bool,
+        signal: ?*anyopaque,
+    ) !void {
+        return try self.prototype.prototype.addEventListener(
+            event_type, callback, context, capture, once, passive, signal
+        );
+    }
+    
+    /// GENERATED: EventTarget.removeEventListener
+    pub inline fn removeEventListener(
+        self: *Element,
+        event_type: []const u8,
+        callback: EventCallback,
+        capture: bool,
+    ) void {
+        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+    }
+    
+    /// GENERATED: EventTarget.dispatchEvent
+    pub inline fn dispatchEvent(self: *Element, event: *Event) !bool {
+        return try self.prototype.prototype.dispatchEvent(event);
+    }
+    
+    // ========================================================================
+    // END GENERATED CODE
+    // ========================================================================
+};
+
+GENERATOR TOOL: tools/generate_delegation.zig
+----------------------------------------------
+
+Usage:
+  $ zig build codegen              # Regenerate all delegation code
+  $ zig build codegen-element      # Regenerate only Element
+  $ zig build                      # Normal build (uses generated code)
+
+The tool would:
+1. Parse dom.idl using WebIDL parser
+2. Extract inheritance chains (Element : Node : EventTarget)
+3. For each interface, generate delegation for ALL ancestor methods
+4. Output to src/element.zig (or src/generated/element_methods.zig)
+5. Include spec URLs, WebIDL signatures in comments
+
+BENEFITS:
+---------
+✅ 100% WHATWG compliance - ALL methods accessible on derived types
+✅ Zero manual duplication - fully automated
+✅ Maintainable - regenerate when spec changes
+✅ Zero runtime overhead - all `inline` delegation
+✅ Consistent - no human error
+✅ Scales perfectly - HTMLButtonElement gets 75+ methods automatically
+✅ Documentation included - spec URLs, WebIDL signatures auto-generated
+
+IMPLEMENTATION:
+---------------
+Phase 1: WebIDL Parser (use existing library like webidl2)
+Phase 2: Zig Code Generator (template-based generation)
+Phase 3: Build integration (add `zig build codegen` step)
+Phase 4: Generate for all interfaces
+Phase 5: Verify tests pass
+
+Estimated effort: 1-2 weeks
+
+ALTERNATIVE APPROACHES:
+-----------------------
+1. Use webidl2 (JavaScript) to parse, Node.js script to generate Zig
+2. Use Python WebIDL parser + Jinja2 templates for generation
+3. Write pure Zig parser + generator (more work, but no dependencies)
+
+================================================================================

@@ -263,6 +263,8 @@ const node_mod = @import("node.zig");
 const Node = node_mod.Node;
 const NodeType = node_mod.NodeType;
 const NodeVTable = node_mod.NodeVTable;
+const Event = @import("event.zig").Event;
+const EventCallback = @import("event_target.zig").EventCallback;
 
 /// Comment node representing HTML/XML comments in the DOM.
 ///
@@ -290,6 +292,72 @@ pub const Comment = struct {
         .clone_node = cloneNodeImpl,
         .adopting_steps = adoptingStepsImpl,
     };
+
+    // ================================================================
+    // Convenience Methods - Node API Delegation
+    // ================================================================
+
+    pub inline fn parentNode(self: *const Comment) ?*Node {
+        return self.prototype.parent_node;
+    }
+
+    pub inline fn nextSibling(self: *const Comment) ?*Node {
+        return self.prototype.next_sibling;
+    }
+
+    pub inline fn previousSibling(self: *const Comment) ?*Node {
+        return self.prototype.previous_sibling;
+    }
+
+    pub inline fn nodeName(self: *const Comment) []const u8 {
+        return self.prototype.nodeName();
+    }
+
+    pub inline fn cloneNode(self: *const Comment, deep: bool) !*Node {
+        return try self.prototype.cloneNode(deep);
+    }
+
+    pub inline fn isConnected(self: *const Comment) bool {
+        return self.prototype.isConnected();
+    }
+
+    // ================================================================
+    // Convenience Methods - EventTarget API Delegation
+    // ================================================================
+
+    pub inline fn addEventListener(
+        self: *Comment,
+        event_type: []const u8,
+        callback: EventCallback,
+        context: *anyopaque,
+        capture: bool,
+        once: bool,
+        passive: bool,
+        signal: ?*anyopaque,
+    ) !void {
+        return try self.prototype.prototype.addEventListener(
+            event_type,
+            callback,
+            context,
+            capture,
+            once,
+            passive,
+            signal,
+        );
+    }
+
+    pub inline fn removeEventListener(
+        self: *Comment,
+        event_type: []const u8,
+        callback: EventCallback,
+        capture: bool,
+    ) void {
+        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+    }
+
+    pub inline fn dispatchEvent(self: *Comment, event: *Event) !bool {
+        return try self.prototype.prototype.dispatchEvent(event);
+    }
 
     /// Creates a new Comment node with the specified content.
     ///

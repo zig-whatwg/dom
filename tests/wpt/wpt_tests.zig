@@ -13,6 +13,7 @@ test {
     _ = @import("nodes/Node-childNodes-cache.zig");
     _ = @import("nodes/Node-childNodes-cache-2.zig");
     _ = @import("nodes/Node-cloneNode.zig");
+    _ = @import("nodes/Node-cloneNode-deep.zig");
     _ = @import("nodes/Node-compareDocumentPosition.zig");
     _ = @import("nodes/Node-constants.zig");
     _ = @import("nodes/Node-contains.zig");
@@ -82,14 +83,19 @@ test {
     _ = @import("nodes/Element-hasAttributes.zig");
     _ = @import("nodes/Element-id.zig");
     _ = @import("nodes/Element-id-property.zig");
+    _ = @import("nodes/Element-insertAdjacentElement.zig");
+    _ = @import("nodes/Element-insertAdjacentText.zig");
     _ = @import("nodes/Element-lastElementChild.zig");
     _ = @import("nodes/Element-localName.zig");
     _ = @import("nodes/Element-localName-basic.zig");
+    _ = @import("nodes/Element-localName-namespace.zig");
     _ = @import("nodes/Element-matches.zig");
     _ = @import("nodes/Element-namespaceURI.zig");
     _ = @import("nodes/Element-nextElementSibling.zig");
     _ = @import("nodes/Element-prefix.zig");
     _ = @import("nodes/Element-previousElementSibling.zig");
+    _ = @import("nodes/Element-querySelector.zig");
+    _ = @import("nodes/Element-querySelectorAll.zig");
     _ = @import("nodes/Element-removeAttribute.zig");
     _ = @import("nodes/Element-removeAttribute-variations.zig");
     _ = @import("nodes/Element-setAttribute.zig");
@@ -118,11 +124,13 @@ test {
 
 // Document tests
 test {
+    _ = @import("nodes/Document-adoptNode.zig");
     _ = @import("nodes/Document-createComment.zig");
     _ = @import("nodes/Document-createComment-basic.zig");
     _ = @import("nodes/Document-createDocumentFragment-basic.zig");
     _ = @import("nodes/Document-createElement.zig");
     _ = @import("nodes/Document-createElement-basic.zig");
+    _ = @import("nodes/Document-createElementNS.zig");
     _ = @import("nodes/Document-createProcessingInstruction.zig");
     _ = @import("nodes/Document-createProcessingInstruction-basic.zig");
     _ = @import("nodes/Document-createTextNode.zig");
@@ -133,7 +141,10 @@ test {
     _ = @import("nodes/Document-getElementById.zig");
     _ = @import("nodes/Document-getElementsByClassName.zig");
     _ = @import("nodes/Document-getElementsByTagName.zig");
+    _ = @import("nodes/Document-implementation.zig");
     _ = @import("nodes/Document-importNode.zig");
+    _ = @import("nodes/Document-querySelector.zig");
+    _ = @import("nodes/Document-querySelectorAll.zig");
     _ = @import("nodes/Document-URL.zig");
 }
 
@@ -158,19 +169,24 @@ test {
     _ = @import("nodes/Comment-constructor.zig");
     _ = @import("nodes/Comment-data.zig");
     _ = @import("nodes/Comment-data-property.zig");
+    _ = @import("nodes/Comment-nodeName.zig");
+    _ = @import("nodes/Comment-textContent.zig");
 }
 
 // Text tests
 test {
     _ = @import("nodes/Text-constructor.zig");
     _ = @import("nodes/Text-data.zig");
+    _ = @import("nodes/Text-nodeName.zig");
     _ = @import("nodes/Text-splitText.zig");
+    _ = @import("nodes/Text-textContent.zig");
     _ = @import("nodes/Text-wholeText.zig");
     _ = @import("nodes/Text-wholeText-simple.zig");
 }
 
 // ProcessingInstruction tests
 test {
+    _ = @import("nodes/ProcessingInstruction-data.zig");
     _ = @import("nodes/ProcessingInstruction-nodeName.zig");
     _ = @import("nodes/ProcessingInstruction-target.zig");
 }
@@ -178,6 +194,12 @@ test {
 // DOMTokenList tests
 test {
     _ = @import("nodes/DOMTokenList-classList.zig");
+}
+
+// DOMImplementation tests
+test {
+    _ = @import("nodes/DOMImplementation-createDocument.zig");
+    _ = @import("nodes/DOMImplementation-createDocumentType.zig");
 }
 
 // TreeWalker tests

@@ -61,6 +61,7 @@ pub const DOMDocument = dom_types.DOMDocument;
 pub const DOMMutationObserver = dom_types.DOMMutationObserver;
 pub const DOMMutationRecord = dom_types.DOMMutationRecord;
 pub const DOMTreeWalker = dom_types.DOMTreeWalker;
+pub const DOMNodeIterator = dom_types.DOMNodeIterator;
 pub const DOMErrorCode = dom_types.DOMErrorCode;
 pub const zigErrorToDOMError = dom_types.zigErrorToDOMError;
 
@@ -86,6 +87,7 @@ const customevent = @import("customevent.zig");
 const range = @import("range.zig");
 const mutationobserver = @import("mutationobserver.zig");
 const treewalker = @import("treewalker.zig");
+const nodeiterator = @import("nodeiterator.zig");
 
 // Force export of all C-ABI functions by referencing them
 // This ensures they are included in the static library
@@ -116,4 +118,5 @@ comptime {
     _ = range;
     _ = mutationobserver;
     _ = treewalker;
+    _ = nodeiterator;
 }

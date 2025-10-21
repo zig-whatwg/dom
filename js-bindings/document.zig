@@ -450,12 +450,17 @@ pub export fn dom_document_createrange(handle: *DOMDocument) *DOMRange {
 ///
 /// WebIDL: `NodeIterator createNodeIterator(Node root, unsigned long whatToShow, NodeFilter filter);`
 export fn dom_document_createnodeiterator(handle: *DOMDocument, root: *DOMNode, whatToShow: u32, filter: ?*DOMNodeFilter) *DOMNodeIterator {
-    _ = handle;
-    _ = root;
-    _ = whatToShow;
+    const doc: *Document = @ptrCast(@alignCast(handle));
+    const root_node: *dom.Node = @ptrCast(@alignCast(root));
+
+    // Note: filter parameter ignored for now (NodeFilter C-ABI not yet implemented)
     _ = filter;
-    // TODO: Implement method
-    @panic("TODO: Non-nullable pointer return");
+
+    const iterator = doc.createNodeIterator(root_node, whatToShow, null) catch {
+        @panic("NodeIterator creation failed");
+    };
+
+    return @ptrCast(iterator);
 }
 
 /// createTreeWalker method

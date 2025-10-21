@@ -244,6 +244,8 @@ const AttributeArray = @import("attribute_array.zig").AttributeArray;
 const CustomElementDefinition = @import("custom_element_registry.zig").CustomElementDefinition;
 const CustomElementReactionQueue = @import("custom_element_registry.zig").CustomElementReactionQueue;
 const CEReactionsStack = @import("custom_element_registry.zig").CEReactionsStack;
+const Event = @import("event.zig").Event;
+const EventCallback = @import("event_target.zig").EventCallback;
 
 // ============================================================================
 // Custom Element State (Phase 2)
@@ -557,6 +559,137 @@ pub const Element = struct {
         .clone_node = cloneNodeImpl,
         .adopting_steps = adoptingStepsImpl,
     };
+
+    // ================================================================
+    // Convenience Methods - Node API Delegation
+    // ================================================================
+    // Provides commonly-used Node methods directly on Element for ergonomics.
+    // Less common methods can be accessed via elem.prototype.*
+
+    /// Convenience: elem.appendChild(child) instead of elem.prototype.appendChild(child)
+    pub inline fn appendChild(self: *Element, child: anytype) !*Node {
+        return try self.prototype.appendChild(child);
+    }
+
+    /// Convenience: elem.insertBefore(node, child) instead of elem.prototype.insertBefore(node, child)
+    pub inline fn insertBefore(self: *Element, node: anytype, child: ?*Node) !*Node {
+        return try self.prototype.insertBefore(node, child);
+    }
+
+    /// Convenience: elem.removeChild(child) instead of elem.prototype.removeChild(child)
+    pub inline fn removeChild(self: *Element, child: *Node) !*Node {
+        return try self.prototype.removeChild(child);
+    }
+
+    /// Convenience: elem.replaceChild(node, child) instead of elem.prototype.replaceChild(node, child)
+    pub inline fn replaceChild(self: *Element, node: anytype, child: *Node) !*Node {
+        return try self.prototype.replaceChild(node, child);
+    }
+
+    /// Convenience: elem.hasChildNodes() instead of elem.prototype.hasChildNodes()
+    pub inline fn hasChildNodes(self: *const Element) bool {
+        return self.prototype.hasChildNodes();
+    }
+
+    /// Convenience: elem.firstChild instead of elem.prototype.first_child
+    pub inline fn firstChild(self: *const Element) ?*Node {
+        return self.prototype.first_child;
+    }
+
+    /// Convenience: elem.lastChild instead of elem.prototype.last_child
+    pub inline fn lastChild(self: *const Element) ?*Node {
+        return self.prototype.last_child;
+    }
+
+    /// Convenience: elem.parentNode instead of elem.prototype.parent_node
+    pub inline fn parentNode(self: *const Element) ?*Node {
+        return self.prototype.parent_node;
+    }
+
+    /// Convenience: elem.nextSibling instead of elem.prototype.next_sibling
+    pub inline fn nextSibling(self: *const Element) ?*Node {
+        return self.prototype.next_sibling;
+    }
+
+    /// Convenience: elem.previousSibling instead of elem.prototype.previous_sibling
+    pub inline fn previousSibling(self: *const Element) ?*Node {
+        return self.prototype.previous_sibling;
+    }
+
+    /// Convenience: elem.nodeName() instead of elem.prototype.nodeName()
+    pub inline fn nodeName(self: *const Element) []const u8 {
+        return self.prototype.nodeName();
+    }
+
+    /// Convenience: elem.textContent(allocator) instead of elem.prototype.textContent(allocator)
+    pub inline fn textContent(self: *const Element, allocator: Allocator) !?[]u8 {
+        return try self.prototype.textContent(allocator);
+    }
+
+    /// Convenience: elem.setTextContent(value) instead of elem.prototype.setTextContent(value)
+    pub inline fn setTextContent(self: *Element, value: ?[]const u8) !void {
+        return try self.prototype.setTextContent(value);
+    }
+
+    /// Convenience: elem.cloneNode(deep) instead of elem.prototype.cloneNode(deep)
+    pub inline fn cloneNode(self: *const Element, deep: bool) !*Node {
+        return try self.prototype.cloneNode(deep);
+    }
+
+    /// Convenience: elem.contains(other) instead of elem.prototype.contains(other)
+    pub inline fn contains(self: *const Element, other: ?*const Node) bool {
+        return self.prototype.contains(other);
+    }
+
+    /// Convenience: elem.isConnected() instead of elem.prototype.isConnected()
+    pub inline fn isConnected(self: *const Element) bool {
+        return self.prototype.isConnected();
+    }
+
+    // ================================================================
+    // Convenience Methods - EventTarget API Delegation
+    // ================================================================
+
+    /// Convenience: elem.addEventListener(...) instead of elem.prototype.prototype.addEventListener(...)
+    pub inline fn addEventListener(
+        self: *Element,
+        event_type: []const u8,
+        callback: EventCallback,
+        context: *anyopaque,
+        capture: bool,
+        once: bool,
+        passive: bool,
+        signal: ?*anyopaque,
+    ) !void {
+        return try self.prototype.prototype.addEventListener(
+            event_type,
+            callback,
+            context,
+            capture,
+            once,
+            passive,
+            signal,
+        );
+    }
+
+    /// Convenience: elem.removeEventListener(...) instead of elem.prototype.prototype.removeEventListener(...)
+    pub inline fn removeEventListener(
+        self: *Element,
+        event_type: []const u8,
+        callback: EventCallback,
+        capture: bool,
+    ) void {
+        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+    }
+
+    /// Convenience: elem.dispatchEvent(event) instead of elem.prototype.prototype.dispatchEvent(event)
+    pub inline fn dispatchEvent(self: *Element, event: *Event) !bool {
+        return try self.prototype.prototype.dispatchEvent(event);
+    }
+
+    // ================================================================
+    // Element Lifecycle
+    // ================================================================
 
     /// Creates a new Element with the specified tag name.
     ///
@@ -2777,6 +2910,11 @@ pub const Element = struct {
     /// // Returns: Element or null
     /// ```
     pub fn querySelector(self: *Element, allocator: Allocator, selectors: []const u8) !?*Element {
+        // Empty selector is invalid per WHATWG spec
+        if (selectors.len == 0) {
+            return error.InvalidSelector;
+        }
+
         // Try to get parsed selector from cache if we have an owner document
         const parsed_selector = blk: {
             if (self.prototype.owner_document) |owner| {
@@ -2916,6 +3054,11 @@ pub const Element = struct {
     /// Returns a static list (snapshot), not a live NodeList.
     /// Caller owns returned slice and must free it.
     pub fn querySelectorAll(self: *Element, allocator: Allocator, selectors: []const u8) ![]const *Element {
+        // Empty selector is invalid per WHATWG spec
+        if (selectors.len == 0) {
+            return error.InvalidSelector;
+        }
+
         // Try to get parsed selector from cache if we have an owner document
         const parsed_selector = blk: {
             if (self.prototype.owner_document) |owner| {

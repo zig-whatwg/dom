@@ -351,7 +351,6 @@ const NodeRareData = @import("rare_data.zig").NodeRareData;
 const Event = @import("event.zig").Event;
 const EventTarget = @import("event_target.zig").EventTarget;
 const EventTargetVTable = @import("event_target.zig").EventTargetVTable;
-const EventTargetMixin = @import("event_target.zig").EventTargetMixin;
 const custom_elements = @import("custom_element_registry.zig");
 
 /// Node types per WHATWG DOM specification.
@@ -2279,33 +2278,20 @@ pub const Node = struct {
 
     /// Adds an event listener to the node.
     ///
-    /// Implements WHATWG EventTarget.addEventListener() interface.
-    /// Internally delegates to RareData for storage.
+    /// Delegates to EventTarget.addEventListener() through prototype chain.
     ///
     /// ## Parameters
-    /// - `event_type`: Event type (e.g., "click", "input", "change")
-    /// - `callback`: Event callback function
-    /// - `context`: User context (passed to callback)
-    /// - `capture`: Capture phase (true) or bubble phase (false)
-    /// - `once`: Remove after first invocation
+    /// - `event_type`: Event type to listen for (e.g., "click", "change")
+    /// - `callback`: Function pointer to invoke when event fires
+    /// - `context`: User data passed to callback
+    /// - `capture`: Listen during capture phase (true) or bubble phase (false)
+    /// - `once`: Automatically remove listener after first invocation
     /// - `passive`: Passive listener (won't call preventDefault)
+    /// - `signal`: Optional AbortSignal to auto-remove listener
     ///
     /// ## Errors
     /// - `error.OutOfMemory`: Failed to allocate storage
-    ///
-    /// ## Example
-    /// ```zig
-    /// const callback = struct {
-    ///     fn handle(ctx: *anyopaque) void {
-    ///         const data: *MyData = @ptrCast(@alignCast(ctx));
-    ///         // Handle event
-    ///     }
-    /// }.handle;
-    ///
-    /// var my_data = MyData{};
-    /// try node.addEventListener("click", callback, @ptrCast(&my_data), false, false, false, null);
-    /// ```
-    pub fn addEventListener(
+    pub inline fn addEventListener(
         self: *Node,
         event_type: []const u8,
         callback: @import("event_target.zig").EventCallback,
@@ -2315,57 +2301,50 @@ pub const Node = struct {
         passive: bool,
         signal: ?*anyopaque,
     ) !void {
-        const Mixin = EventTargetMixin(Node);
-        return Mixin.addEventListener(self, event_type, callback, context, capture, once, passive, signal);
+        return self.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
     }
 
     /// Removes an event listener from the node.
     ///
-    /// Implements WHATWG EventTarget.removeEventListener() interface.
-    /// Per WebIDL spec, this returns void (not bool).
-    /// Matches by event type, callback pointer, and capture phase.
+    /// Delegates to EventTarget.removeEventListener() through prototype chain.
     ///
     /// ## Parameters
     /// - `event_type`: Event type to remove listener for
     /// - `callback`: Callback function pointer to match
     /// - `capture`: Capture phase to match
-    ///
-    /// ## Example
-    /// ```zig
-    /// node.removeEventListener("click", callback, false);
-    /// ```
-    pub fn removeEventListener(
+    pub inline fn removeEventListener(
         self: *Node,
         event_type: []const u8,
         callback: @import("event_target.zig").EventCallback,
         capture: bool,
     ) void {
-        const Mixin = EventTargetMixin(Node);
-        return Mixin.removeEventListener(self, event_type, callback, capture);
+        return self.prototype.removeEventListener(event_type, callback, capture);
     }
 
     /// Checks if node has event listeners for the specified type.
+    ///
+    /// Delegates to EventTarget.hasEventListeners() through prototype chain.
     ///
     /// ## Parameters
     /// - `event_type`: Event type to check
     ///
     /// ## Returns
     /// true if node has listeners for this event type, false otherwise
-    pub fn hasEventListeners(self: *const Node, event_type: []const u8) bool {
-        const Mixin = EventTargetMixin(Node);
-        return Mixin.hasEventListeners(self, event_type);
+    pub inline fn hasEventListeners(self: *const Node, event_type: []const u8) bool {
+        return self.prototype.hasEventListeners(event_type);
     }
 
     /// Returns all event listeners for a specific event type.
+    ///
+    /// Delegates to EventTarget.getEventListeners() through prototype chain.
     ///
     /// ## Parameters
     /// - `event_type`: Event type to query
     ///
     /// ## Returns
     /// Slice of listeners (empty if none registered)
-    pub fn getEventListeners(self: *const Node, event_type: []const u8) []const @import("event_target.zig").EventListener {
-        const Mixin = EventTargetMixin(Node);
-        return Mixin.getEventListeners(self, event_type);
+    pub inline fn getEventListeners(self: *const Node, event_type: []const u8) []const @import("event_target.zig").EventListener {
+        return self.prototype.getEventListeners(event_type);
     }
 
     /// Dispatches an event to this node.
@@ -3354,4 +3333,243 @@ pub fn queueMutationRecord(
         is_target = false;
         current_node = observe_node.parent_node;
     }
+}
+
+// ============================================================================
+// Node Composition Mixin
+// ============================================================================
+
+/// Mixin that provides Node methods to types containing a Node.
+///
+/// This mixin automatically includes EventTarget methods via `usingnamespace EventTargetMixin`,
+/// providing the complete inheritance chain: Self → Node → EventTarget.
+///
+/// ## Supported Composition Patterns
+///
+/// 1. **Direct Node**: `Self == Node`
+///    - Returns self directly
+///    - Node can use this mixin but doesn't need to (has methods directly)
+///
+/// 2. **One level**: `Self.prototype == Node` (e.g., Document, Element, Text)
+///    - Returns &self.prototype
+///    - This is the most common pattern
+///
+/// ## Usage
+///
+/// ```zig
+/// pub const Document = struct {
+///     prototype: Node,
+///     // ... Document fields ...
+///
+///     pub usingnamespace NodeMixin(Document);
+/// };
+///
+/// // Now you can call Node methods:
+/// doc.appendChild(child);           // Instead of: doc.prototype.appendChild(child)
+/// doc.hasChildNodes();               // Instead of: doc.prototype.hasChildNodes()
+///
+/// // And EventTarget methods:
+/// doc.addEventListener(...);         // Instead of: doc.prototype.prototype.addEventListener(...)
+/// ```
+///
+/// ## Spec References
+///
+/// - **WHATWG DOM §4.4**: https://dom.spec.whatwg.org/#interface-node
+/// - **WebIDL**: See skills/whatwg_compliance/dom.idl for complete interface
+pub fn NodeMixin(comptime Self: type) type {
+    return struct {
+        /// Get Node pointer from Self (compile-time resolved)
+        inline fn getNode(self: *Self) *Node {
+            if (Self == Node) {
+                return self;
+            }
+            return &self.prototype;
+        }
+
+        /// Get const Node pointer from Self (compile-time resolved)
+        inline fn getNodeConst(self: *const Self) *const Node {
+            if (Self == Node) return self;
+            return &self.prototype;
+        }
+
+        /// Get EventTarget pointer from Self (compile-time resolved)
+        inline fn getEventTarget(self: *Self) *EventTarget {
+            if (Self == Node) {
+                return &self.prototype;
+            }
+            return &self.prototype.prototype;
+        }
+
+        /// Get const EventTarget pointer from Self (compile-time resolved)
+        inline fn getEventTargetConst(self: *const Self) *const EventTarget {
+            if (Self == Node) {
+                return &self.prototype;
+            }
+            return &self.prototype.prototype;
+        }
+
+        // ================================================================
+        // EventTarget Methods (forwarded through composition chain)
+        // ================================================================
+
+        /// EventTarget.addEventListener()
+        pub inline fn addEventListener(
+            self: *Self,
+            event_type: []const u8,
+            callback: @import("event_target.zig").EventCallback,
+            context: *anyopaque,
+            capture: bool,
+            once: bool,
+            passive: bool,
+            signal: ?*anyopaque,
+        ) !void {
+            return try getEventTarget(self).addEventListener(
+                event_type,
+                callback,
+                context,
+                capture,
+                once,
+                passive,
+                signal,
+            );
+        }
+
+        /// EventTarget.removeEventListener()
+        pub inline fn removeEventListener(
+            self: *Self,
+            event_type: []const u8,
+            callback: @import("event_target.zig").EventCallback,
+            capture: bool,
+        ) void {
+            getEventTarget(self).removeEventListener(event_type, callback, capture);
+        }
+
+        /// EventTarget.dispatchEvent()
+        pub inline fn dispatchEvent(self: *Self, event: *@import("event.zig").Event) !bool {
+            return try getEventTarget(self).dispatchEvent(event);
+        }
+
+        /// EventTarget.hasEventListeners()
+        pub inline fn hasEventListeners(self: *const Self, event_type: []const u8) bool {
+            return getEventTargetConst(self).hasEventListeners(event_type);
+        }
+
+        /// EventTarget.getEventListeners()
+        pub inline fn getEventListeners(self: *const Self, event_type: []const u8) []const @import("event_target.zig").EventListener {
+            return getEventTargetConst(self).getEventListeners(event_type);
+        }
+
+        // ================================================================
+        // Node Tree Manipulation Methods
+        // ================================================================
+
+        /// Node.appendChild(node)
+        pub inline fn appendChild(self: *Self, child: anytype) !*Node {
+            return try getNode(self).appendChild(child);
+        }
+
+        /// Node.insertBefore(node, child)
+        pub inline fn insertBefore(self: *Self, node: anytype, child: ?*Node) !*Node {
+            return try getNode(self).insertBefore(node, child);
+        }
+
+        /// Node.removeChild(child)
+        pub inline fn removeChild(self: *Self, child: *Node) !*Node {
+            return try getNode(self).removeChild(child);
+        }
+
+        /// Node.replaceChild(node, child)
+        pub inline fn replaceChild(self: *Self, node: anytype, child: *Node) !*Node {
+            return try getNode(self).replaceChild(node, child);
+        }
+
+        // ================================================================
+        // Node Properties and Queries
+        // ================================================================
+
+        /// Node.childNodes()
+        pub inline fn childNodes(self: *Self) @import("node_list.zig").NodeList {
+            return getNode(self).childNodes();
+        }
+
+        /// Node.hasChildNodes()
+        pub inline fn hasChildNodes(self: *const Self) bool {
+            return getNodeConst(self).hasChildNodes();
+        }
+
+        /// Node.parentNode
+        pub inline fn parentNode(self: *const Self) ?*Node {
+            return getNodeConst(self).parent_node;
+        }
+
+        /// Node.firstChild
+        pub inline fn firstChild(self: *const Self) ?*Node {
+            return getNodeConst(self).first_child;
+        }
+
+        /// Node.lastChild
+        pub inline fn lastChild(self: *const Self) ?*Node {
+            return getNodeConst(self).last_child;
+        }
+
+        /// Node.previousSibling
+        pub inline fn previousSibling(self: *const Self) ?*Node {
+            return getNodeConst(self).previous_sibling;
+        }
+
+        /// Node.nextSibling
+        pub inline fn nextSibling(self: *const Self) ?*Node {
+            return getNodeConst(self).next_sibling;
+        }
+
+        /// Node.nodeName
+        pub inline fn nodeName(self: *const Self) []const u8 {
+            return getNodeConst(self).nodeName();
+        }
+
+        /// Node.nodeValue
+        pub inline fn nodeValue(self: *const Self) ?[]const u8 {
+            return getNodeConst(self).nodeValue();
+        }
+
+        /// Node.setNodeValue(value)
+        pub inline fn setNodeValue(self: *Self, value: []const u8) !void {
+            return try getNode(self).setNodeValue(value);
+        }
+
+        /// Node.textContent
+        pub inline fn textContent(self: *const Self, allocator: Allocator) !?[]u8 {
+            return try getNodeConst(self).textContent(allocator);
+        }
+
+        /// Node.setTextContent(value)
+        pub inline fn setTextContent(self: *Self, value: ?[]const u8) !void {
+            return try getNode(self).setTextContent(value);
+        }
+
+        /// Node.cloneNode(deep)
+        pub inline fn cloneNode(self: *const Self, deep: bool) !*Node {
+            return try getNodeConst(self).cloneNode(deep);
+        }
+
+        /// Node.contains(other)
+        pub inline fn contains(self: *const Self, other: ?*const Node) bool {
+            return getNodeConst(self).contains(other);
+        }
+
+        /// Node.getRootNode(composed)
+        pub inline fn getRootNode(self: *const Self, composed: bool) *Node {
+            return getNodeConst(self).getRootNode(composed);
+        }
+
+        /// Node.isConnected()
+        pub inline fn isConnected(self: *const Self) bool {
+            return getNodeConst(self).isConnected();
+        }
+
+        /// Node.ownerDocument
+        pub inline fn ownerDocument(self: *const Self) ?*@import("document.zig").Document {
+            return getNodeConst(self).getOwnerDocument();
+        }
+    };
 }

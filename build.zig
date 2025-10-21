@@ -227,4 +227,143 @@ pub fn build(b: *std.Build) void {
     });
     stress_visualize.step.dependOn(&stress_run.step);
     stress_step.dependOn(&stress_visualize.step);
+
+    // WebIDL parser module (standalone, reusable)
+    const webidl_parser_mod = b.addModule("webidl-parser", .{
+        .root_source_file = b.path("tools/webidl-parser/root.zig"),
+        .target = target,
+    });
+
+    // Code generator executable
+    const codegen_exe = b.addExecutable(.{
+        .name = "codegen",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/codegen/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "webidl-parser", .module = webidl_parser_mod },
+            },
+        }),
+    });
+
+    b.installArtifact(codegen_exe);
+
+    const codegen_step = b.step("codegen", "Run code generator (usage: zig build codegen -- InterfaceName)");
+    const codegen_run = b.addRunArtifact(codegen_exe);
+
+    // Set working directory to project root so relative paths work
+    codegen_run.setCwd(b.path("."));
+
+    // Allow passing interface name as argument
+    if (b.args) |args| {
+        codegen_run.addArgs(args);
+    }
+
+    codegen_step.dependOn(&codegen_run.step);
+
+    // Code analyzer executable
+    const analyze_exe = b.addExecutable(.{
+        .name = "analyze",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/codegen/analyze.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    b.installArtifact(analyze_exe);
+
+    const analyze_step = b.step("analyze", "Analyze source file for delegation patterns (usage: zig build analyze -- InterfaceName)");
+    const analyze_run = b.addRunArtifact(analyze_exe);
+
+    // Set working directory to project root
+    analyze_run.setCwd(b.path("."));
+
+    // Allow passing interface name as argument
+    if (b.args) |args| {
+        analyze_run.addArgs(args);
+    }
+
+    analyze_step.dependOn(&analyze_run.step);
+
+    // JS Bindings generator executable
+    const js_bindings_exe = b.addExecutable(.{
+        .name = "js-bindings-gen",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/codegen/js_bindings_main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "webidl-parser", .module = webidl_parser_mod },
+            },
+        }),
+    });
+
+    b.installArtifact(js_bindings_exe);
+
+    const js_bindings_step = b.step("js-bindings-gen", "Generate JS bindings (usage: zig build js-bindings-gen -- InterfaceName)");
+    const js_bindings_run = b.addRunArtifact(js_bindings_exe);
+
+    // Set working directory to project root
+    js_bindings_run.setCwd(b.path("."));
+
+    // Allow passing interface name as argument
+    if (b.args) |args| {
+        js_bindings_run.addArgs(args);
+    }
+
+    js_bindings_step.dependOn(&js_bindings_run.step);
+
+    // JS Bindings test generator (for testing with custom IDL files)
+    const js_bindings_test_exe = b.addExecutable(.{
+        .name = "js-bindings-test",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/codegen/js_bindings_test_main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "webidl-parser", .module = webidl_parser_mod },
+            },
+        }),
+    });
+
+    b.installArtifact(js_bindings_test_exe);
+
+    // JS Bindings integration tests
+    const js_integration_test = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("js-bindings/integration_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "dom", .module = mod },
+            },
+        }),
+    });
+
+    const run_js_integration = b.addRunArtifact(js_integration_test);
+    const js_test_step = b.step("test-js-bindings", "Run JavaScript bindings integration tests");
+    js_test_step.dependOn(&run_js_integration.step);
+
+    // JS Bindings static library (Zig 0.15 API)
+    const js_bindings_lib = b.addLibrary(.{
+        .name = "dom",
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("js-bindings/root.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "dom", .module = mod },
+            },
+        }),
+    });
+
+    // Install the library
+    b.installArtifact(js_bindings_lib);
+
+    // Build step for library
+    const lib_step = b.step("lib-js-bindings", "Build JavaScript bindings as static library");
+    lib_step.dependOn(&b.addInstallArtifact(js_bindings_lib, .{}).step);
 }

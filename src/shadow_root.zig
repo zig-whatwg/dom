@@ -344,6 +344,8 @@ const NodeType = node_mod.NodeType;
 const NodeVTable = node_mod.NodeVTable;
 const DocumentFragment = @import("document_fragment.zig").DocumentFragment;
 const Element = @import("element.zig").Element;
+const Event = @import("event.zig").Event;
+const EventCallback = @import("event_target.zig").EventCallback;
 
 /// Shadow root mode (open or closed).
 ///
@@ -484,6 +486,55 @@ pub const ShadowRoot = struct {
         .clone_node = cloneNodeImpl,
         .adopting_steps = adoptingStepsImpl,
     };
+
+    // ================================================================
+    // Convenience Methods - Node API Delegation
+    // ================================================================
+
+    pub inline fn appendChild(self: *ShadowRoot, child: anytype) !*Node {
+        return try self.prototype.appendChild(child);
+    }
+    pub inline fn insertBefore(self: *ShadowRoot, node: anytype, child: ?*Node) !*Node {
+        return try self.prototype.insertBefore(node, child);
+    }
+    pub inline fn removeChild(self: *ShadowRoot, child: *Node) !*Node {
+        return try self.prototype.removeChild(child);
+    }
+    pub inline fn hasChildNodes(self: *const ShadowRoot) bool {
+        return self.prototype.hasChildNodes();
+    }
+    pub inline fn firstChild(self: *const ShadowRoot) ?*Node {
+        return self.prototype.first_child;
+    }
+    pub inline fn lastChild(self: *const ShadowRoot) ?*Node {
+        return self.prototype.last_child;
+    }
+    pub inline fn isConnected(self: *const ShadowRoot) bool {
+        return self.prototype.isConnected();
+    }
+
+    // ================================================================
+    // Convenience Methods - EventTarget API Delegation
+    // ================================================================
+
+    pub inline fn addEventListener(
+        self: *ShadowRoot,
+        event_type: []const u8,
+        callback: EventCallback,
+        context: *anyopaque,
+        capture: bool,
+        once: bool,
+        passive: bool,
+        signal: ?*anyopaque,
+    ) !void {
+        return try self.prototype.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
+    }
+    pub inline fn removeEventListener(self: *ShadowRoot, event_type: []const u8, callback: EventCallback, capture: bool) void {
+        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+    }
+    pub inline fn dispatchEvent(self: *ShadowRoot, event: *Event) !bool {
+        return try self.prototype.prototype.dispatchEvent(event);
+    }
 
     /// Creates a new ShadowRoot node.
     ///

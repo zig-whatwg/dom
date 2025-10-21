@@ -232,6 +232,12 @@ pub const DOMImplementation = struct {
     /// Used for string interning and allocator access
     document: *Document,
 
+    /// Compares two DOMImplementation instances for equality.
+    /// Two implementations are equal if they refer to the same document.
+    pub fn eql(self: DOMImplementation, other: DOMImplementation) bool {
+        return self.document == other.document;
+    }
+
     /// Creates a new DocumentType node.
     ///
     /// ## WebIDL

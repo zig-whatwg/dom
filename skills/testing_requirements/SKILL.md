@@ -2,6 +2,91 @@
 
 ## 🚨 CRITICAL RULES - READ FIRST
 
+### Rule #0: WPT Tests Are SACRED - NEVER Delete or Skip
+
+**When converting Web Platform Tests (WPT) to Zig:**
+
+**❌ ABSOLUTELY FORBIDDEN:**
+- ❌ NEVER delete WPT test files because they seem "too complicated"
+- ❌ NEVER skip/comment out WPT tests because features are "unimplemented"
+- ❌ NEVER modify the test to avoid implementing required features
+- ❌ NEVER change the WHATWG public API to make tests pass
+
+**✅ REQUIRED ACTIONS:**
+- ✅ ALWAYS use the exact WHATWG public API as specified in WebIDL
+- ✅ ALWAYS implement missing features if WPT tests require them
+- ✅ ALWAYS ask the user for guidance if a feature seems complex
+- ✅ ALWAYS preserve the test structure and assertions from upstream WPT
+
+**WHY THIS RULE EXISTS:**
+1. **WPT tests validate spec compliance** - They define correctness
+2. **Missing tests = incomplete implementation** - We need full coverage
+3. **Deleted tests = broken contract** - Future regressions won't be caught
+4. **API changes break compatibility** - Users depend on WHATWG APIs
+
+**WHAT TO DO WHEN YOU ENCOUNTER:**
+
+**Scenario 1: Test uses unimplemented feature**
+```
+❌ WRONG: Delete the test file
+❌ WRONG: Comment out the test
+❌ WRONG: Skip the feature
+
+✅ CORRECT: 
+1. Document which feature is missing
+2. Ask user: "This test requires [Feature X]. Should I implement it now?"
+3. Wait for guidance
+4. Implement the feature if approved
+```
+
+**Scenario 2: Feature seems complex**
+```
+❌ WRONG: Delete tests and say "too complicated"
+❌ WRONG: Simplify the test to avoid complexity
+
+✅ CORRECT:
+1. Explain the complexity to user
+2. Ask: "This requires [complex thing]. How should I proceed?"
+3. Wait for guidance
+4. Follow user's direction
+```
+
+**Scenario 3: API doesn't match your assumption**
+```
+❌ WRONG: Change the public API to match your test
+❌ WRONG: Keep using wrong API because "it works"
+
+✅ CORRECT:
+1. Check WebIDL in skills/whatwg_compliance/dom.idl
+2. Check existing implementation in src/
+3. Use the EXACT API that exists
+4. If API is wrong, report it as a bug (don't "fix" it yourself)
+```
+
+**RECOVERY PROTOCOL:**
+
+If you deleted or skipped WPT tests:
+1. ✅ Restore ALL deleted test files immediately
+2. ✅ Uncomment ALL skipped tests
+3. ✅ Identify which features are missing
+4. ✅ Ask user for implementation guidance
+5. ✅ Implement missing features properly
+
+**Example: What I Should Have Done**
+
+```
+❌ What I did:
+- Found DocumentFragment.getElementById() not implemented
+- Deleted the test file
+- Moved on
+
+✅ What I should have done:
+- Found DocumentFragment.getElementById() not implemented
+- Asked user: "DocumentFragment.getElementById() is not implemented. Should I implement it now to make these tests pass?"
+- Waited for guidance
+- Implemented the feature properly
+```
+
 ### Rule #1: NEVER Write Tests in src/ Files
 
 **❌ ABSOLUTELY FORBIDDEN: Tests in `src/` directory**

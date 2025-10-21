@@ -770,9 +770,23 @@ pub const EventListener = struct {
     signal: ?*anyopaque = null, // Will be *AbortSignal once that type exists
 };
 
-/// Mixin to add EventTarget functionality to any type T.
+/// Composition-aware EventTarget mixin.
 ///
-/// Implements WHATWG DOM EventTarget interface per §2.7-§2.9.
+/// Provides EventTarget methods to types that contain EventTarget through composition.
+/// Automatically navigates the prototype chain to find the EventTarget instance.
+///
+/// ## Supported Composition Patterns
+///
+/// 1. **Direct EventTarget**: `Self == EventTarget`
+///    - Type IS EventTarget (returns self)
+///
+/// 2. **One level deep**: `Self.prototype == EventTarget` (e.g., Node)
+///    - Type contains EventTarget as `.prototype` field
+///    - Returns &self.prototype
+///
+/// 3. **Two levels deep**: `Self.prototype.prototype == EventTarget` (e.g., Document, Element)
+///    - Type's prototype contains EventTarget as `.prototype` field
+///    - Returns &self.prototype.prototype
 ///
 /// ## WebIDL
 /// ```webidl
@@ -788,34 +802,25 @@ pub const EventListener = struct {
 /// };
 /// ```
 ///
-/// ## Requirements
-/// Type T must have:
-/// - `rare_data: ?*RareDataType` field
-/// - `ensureRareData(self: *T) !*RareDataType` method
-/// - RareDataType must implement:
-///   - `addEventListener(EventListener) !void`
-///   - `removeEventListener([]const u8, EventCallback, bool) bool`
-///   - `hasEventListeners([]const u8) bool`
-///   - `getEventListeners([]const u8) []const EventListener`
-///
-/// ## Comptime Validation
-/// The mixin validates requirements at compile time, providing clear error
-/// messages if type T doesn't meet the interface contract.
-///
 /// ## Usage
 /// ```zig
+/// // For Node (1 level deep)
 /// pub const Node = struct {
-///     rare_data: ?*NodeRareData,
-///     pub usingnamespace EventTargetMixin(@This());
-///
-///     pub fn ensureRareData(self: *Node) !*NodeRareData {
-///         if (self.rare_data == null) {
-///             self.rare_data = try self.allocator.create(NodeRareData);
-///             self.rare_data.?.* = NodeRareData.init(self.allocator);
-///         }
-///         return self.rare_data.?;
-///     }
+///     prototype: EventTarget,
+///     // ...
+///     pub usingnamespace EventTargetMixin(Node);
 /// };
+///
+/// // For Document (2 levels deep)
+/// pub const Document = struct {
+///     prototype: Node,
+///     // ...
+///     pub usingnamespace EventTargetMixin(Document);
+/// };
+///
+/// // Now call methods directly:
+/// node.addEventListener(...);     // Instead of: node.prototype.addEventListener(...)
+/// doc.addEventListener(...);      // Instead of: doc.prototype.prototype.addEventListener(...)
 /// ```
 ///
 /// ## Spec References
@@ -824,22 +829,65 @@ pub const EventListener = struct {
 /// - removeEventListener: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
 /// - dispatchEvent: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
 pub fn EventTargetMixin(comptime T: type) type {
-    // Compile-time verification of interface requirements
-    comptime {
-        // Verify rare_data field exists
-        if (!@hasField(T, "rare_data")) {
-            @compileError(@typeName(T) ++ " must have 'rare_data' field for EventTarget mixin. " ++
-                "Add: rare_data: ?*RareDataType");
-        }
-
-        // Verify ensureRareData method exists
-        if (!@hasDecl(T, "ensureRareData")) {
-            @compileError(@typeName(T) ++ " must have 'ensureRareData()' method for EventTarget mixin. " ++
-                "Add: pub fn ensureRareData(self: *" ++ @typeName(T) ++ ") !*RareDataType { ... }");
-        }
-    }
-
     return struct {
+        /// Get EventTarget pointer from Self (compile-time resolved).
+        /// Navigates prototype chain based on type structure.
+        inline fn getEventTarget(self: *T) *EventTarget {
+            // Pattern 1: Self IS EventTarget
+            if (T == EventTarget) {
+                return self;
+            }
+
+            // Pattern 2 & 3: Navigate .prototype chain
+            if (@hasField(T, "prototype")) {
+                const PrototypeType = @TypeOf(@as(T, undefined).prototype);
+
+                // Pattern 2: Self.prototype IS EventTarget (e.g., Node)
+                if (PrototypeType == EventTarget) {
+                    return &self.prototype;
+                }
+
+                // Pattern 3: Self.prototype.prototype IS EventTarget (e.g., Document, Element)
+                if (@hasField(PrototypeType, "prototype")) {
+                    const NestedPrototypeType = @TypeOf(@as(PrototypeType, undefined).prototype);
+                    if (NestedPrototypeType == EventTarget) {
+                        return &self.prototype.prototype;
+                    }
+                }
+            }
+
+            @compileError(@typeName(T) ++ " does not contain EventTarget in composition chain. " ++
+                "Add 'prototype: EventTarget' or ensure prototype chain reaches EventTarget.");
+        }
+
+        /// Get const EventTarget pointer from Self (compile-time resolved).
+        inline fn getEventTargetConst(self: *const T) *const EventTarget {
+            if (T == EventTarget) {
+                return self;
+            }
+
+            if (@hasField(T, "prototype")) {
+                const PrototypeType = @TypeOf(@as(T, undefined).prototype);
+
+                if (PrototypeType == EventTarget) {
+                    return &self.prototype;
+                }
+
+                if (@hasField(PrototypeType, "prototype")) {
+                    const NestedPrototypeType = @TypeOf(@as(PrototypeType, undefined).prototype);
+                    if (NestedPrototypeType == EventTarget) {
+                        return &self.prototype.prototype;
+                    }
+                }
+            }
+
+            @compileError(@typeName(T) ++ " does not contain EventTarget in composition chain");
+        }
+
+        // ================================================================
+        // EventTarget Methods (forwarded to actual EventTarget instance)
+        // ================================================================
+
         /// Registers an event listener.
         ///
         /// Implements WHATWG DOM EventTarget.addEventListener() per §2.7.
@@ -919,16 +967,16 @@ pub fn EventTargetMixin(comptime T: type) type {
                 }
             }
 
-            const rare = try self.ensureRareData();
-            try rare.addEventListener(.{
-                .event_type = event_type,
-                .callback = callback,
-                .context = context,
-                .capture = capture,
-                .once = once,
-                .passive = passive,
-                .signal = signal,
-            });
+            // Forward to actual EventTarget instance
+            try getEventTarget(self).addEventListener(
+                event_type,
+                callback,
+                context,
+                capture,
+                once,
+                passive,
+                signal,
+            );
 
             // Step 6: Register abort algorithm if signal provided
             // Per spec §2.7.3 step 6: "If listener's signal is not null, then add
@@ -1014,9 +1062,8 @@ pub fn EventTargetMixin(comptime T: type) type {
             callback: EventCallback,
             capture: bool,
         ) void {
-            if (self.rare_data) |rare| {
-                _ = rare.removeEventListener(event_type, callback, capture);
-            }
+            // Forward to actual EventTarget instance
+            getEventTarget(self).removeEventListener(event_type, callback, capture);
         }
 
         /// Dispatches an event to this target.
@@ -1069,87 +1116,8 @@ pub fn EventTargetMixin(comptime T: type) type {
         /// - Algorithm: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
         /// - WebIDL: /Users/bcardarella/projects/webref/ed/idl/dom.idl:62
         pub fn dispatchEvent(self: *T, event: *Event) !bool {
-            // Step 1: Validate event state
-            // Per spec §2.7: "If event's dispatch flag is set, or if its
-            // initialized flag is not set, then throw an InvalidStateError DOMException."
-            if (event.dispatch_flag) {
-                return error.InvalidStateError;
-            }
-            if (!event.initialized_flag) {
-                return error.InvalidStateError;
-            }
-
-            // Step 2: Set flags per spec §2.7 step 2
-            // "Initialize event's isTrusted attribute to false."
-            event.is_trusted = false;
-
-            // Step 3: Dispatch (simplified for Phase 1 - no tree traversal)
-            // Set dispatch flag per spec §2.9 step 1
-            event.dispatch_flag = true;
-
-            // Set event target and phase
-            event.target = @ptrCast(self);
-            event.current_target = @ptrCast(self);
-            event.event_phase = .at_target;
-
-            // Step 4: Invoke listeners on target (Phase 1 - no capture/bubble)
-            if (self.rare_data) |rare| {
-                if (rare.hasEventListeners(event.event_type)) {
-                    const listeners = rare.getEventListeners(event.event_type);
-
-                    // Iterate through listeners (spec §2.9 step 6)
-                    // Note: We iterate directly over the slice. Per spec, we should clone
-                    // to handle listeners added/removed during dispatch, but for Phase 1
-                    // we keep it simple.
-                    for (listeners) |listener| {
-                        // Skip if type doesn't match (safety check)
-                        if (!std.mem.eql(u8, listener.event_type, event.event_type)) {
-                            continue;
-                        }
-
-                        // Check stopImmediatePropagation (spec §2.9 inner invoke step 14)
-                        if (event.stop_immediate_propagation_flag) {
-                            break;
-                        }
-
-                        // Handle "once" listeners - remove before invoking
-                        // (spec §2.9 inner invoke step 5)
-                        if (listener.once) {
-                            self.removeEventListener(
-                                listener.event_type,
-                                listener.callback,
-                                listener.capture,
-                            );
-                        }
-
-                        // Set passive listener flag (spec §2.9 inner invoke step 9)
-                        const prev_passive = event.in_passive_listener_flag;
-                        if (listener.passive) {
-                            event.in_passive_listener_flag = true;
-                        }
-
-                        // Invoke callback (spec §2.9 inner invoke step 11)
-                        listener.callback(event, listener.context);
-
-                        // Unset passive listener flag (spec §2.9 inner invoke step 12)
-                        event.in_passive_listener_flag = prev_passive;
-                    }
-                }
-            }
-
-            // Step 5: Cleanup (spec §2.9 steps 7-10)
-            // "Set event's eventPhase attribute to NONE."
-            event.event_phase = .none;
-            // "Set event's currentTarget attribute to null."
-            event.current_target = null;
-            // "Unset event's dispatch flag..."
-            event.dispatch_flag = false;
-            // Note: We don't clear stop_propagation_flag or
-            // stop_immediate_propagation_flag per spec §2.9 step 10
-
-            // Step 6: Return result (spec §2.9 step 13)
-            // "Return false if event's canceled flag is set; otherwise true."
-            return !event.canceled_flag;
+            // Forward to actual EventTarget instance
+            return try getEventTarget(self).dispatchEvent(event);
         }
 
         /// Checks if target has event listeners for the specified type.
@@ -1161,10 +1129,7 @@ pub fn EventTargetMixin(comptime T: type) type {
         /// ## Returns
         /// true if target has listeners for this event type, false otherwise
         pub fn hasEventListeners(self: *const T, event_type: []const u8) bool {
-            if (self.rare_data) |rare| {
-                return rare.hasEventListeners(event_type);
-            }
-            return false;
+            return getEventTargetConst(self).hasEventListeners(event_type);
         }
 
         /// Returns all event listeners for a specific event type.
@@ -1176,10 +1141,7 @@ pub fn EventTargetMixin(comptime T: type) type {
         /// ## Returns
         /// Slice of listeners (empty if none registered)
         pub fn getEventListeners(self: *const T, event_type: []const u8) []const EventListener {
-            if (self.rare_data) |rare| {
-                return rare.getEventListeners(event_type);
-            }
-            return &[_]EventListener{};
+            return getEventTargetConst(self).getEventListeners(event_type);
         }
     };
 }

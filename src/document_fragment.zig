@@ -300,6 +300,8 @@ const node_mod = @import("node.zig");
 const Node = node_mod.Node;
 const NodeType = node_mod.NodeType;
 const NodeVTable = node_mod.NodeVTable;
+const Event = @import("event.zig").Event;
+const EventCallback = @import("event_target.zig").EventCallback;
 
 /// DocumentFragment node - lightweight document container.
 ///
@@ -324,6 +326,49 @@ pub const DocumentFragment = struct {
         .clone_node = cloneNodeImpl,
         .adopting_steps = adoptingStepsImpl,
     };
+
+    // Convenience Methods - Node API Delegation
+    pub inline fn appendChild(self: *DocumentFragment, child: anytype) !*Node {
+        return try self.prototype.appendChild(child);
+    }
+    pub inline fn insertBefore(self: *DocumentFragment, node: anytype, child: ?*Node) !*Node {
+        return try self.prototype.insertBefore(node, child);
+    }
+    pub inline fn removeChild(self: *DocumentFragment, child: *Node) !*Node {
+        return try self.prototype.removeChild(child);
+    }
+    pub inline fn hasChildNodes(self: *const DocumentFragment) bool {
+        return self.prototype.hasChildNodes();
+    }
+    pub inline fn firstChild(self: *const DocumentFragment) ?*Node {
+        return self.prototype.first_child;
+    }
+    pub inline fn lastChild(self: *const DocumentFragment) ?*Node {
+        return self.prototype.last_child;
+    }
+    pub inline fn isConnected(self: *const DocumentFragment) bool {
+        return self.prototype.isConnected();
+    }
+
+    // Convenience Methods - EventTarget API Delegation
+    pub inline fn addEventListener(
+        self: *DocumentFragment,
+        event_type: []const u8,
+        callback: EventCallback,
+        context: *anyopaque,
+        capture: bool,
+        once: bool,
+        passive: bool,
+        signal: ?*anyopaque,
+    ) !void {
+        return try self.prototype.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
+    }
+    pub inline fn removeEventListener(self: *DocumentFragment, event_type: []const u8, callback: EventCallback, capture: bool) void {
+        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+    }
+    pub inline fn dispatchEvent(self: *DocumentFragment, event: *Event) !bool {
+        return try self.prototype.prototype.dispatchEvent(event);
+    }
 
     /// Creates a new DocumentFragment node.
     ///
