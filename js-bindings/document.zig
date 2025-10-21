@@ -36,6 +36,7 @@ pub const DOMNodeFilter = opaque {};
 const dom = @import("dom");
 const Document = dom.Document;
 const Element = dom.Element;
+const Node = dom.Node;
 const Text = dom.Text;
 const Comment = dom.Comment;
 const Range = dom.Range;
@@ -333,18 +334,72 @@ pub export fn dom_document_createprocessinginstruction(handle: *DOMDocument, tar
     return @ptrCast(pi_node);
 }
 
-// SKIPPED: importNode() - Contains complex types not supported in C-ABI v1
-// WebIDL: Node importNode(Node node, (boolean or ImportNodeOptions) options);
-// Reason: Union type '(boolean or ImportNodeOptions)'
-
-/// adoptNode method
+/// Import a node from another document.
 ///
-/// WebIDL: `Node adoptNode(Node node);`
-export fn dom_document_adoptnode(handle: *DOMDocument, node: *DOMNode) *DOMNode {
-    _ = handle;
-    _ = node;
-    // TODO: Implement method
-    @panic("TODO: Non-nullable pointer return");
+/// ## WebIDL
+/// ```webidl
+/// [CEReactions, NewObject] Node importNode(Node node, optional boolean deep = false);
+/// ```
+///
+/// ## Parameters
+/// - `handle`: Document handle
+/// - `node`: Node to import
+/// - `deep`: If non-zero, deep clone; if zero, shallow clone
+///
+/// ## Returns
+/// New node in this document's context (caller must release)
+///
+/// ## Spec References
+/// - Algorithm: https://dom.spec.whatwg.org/#dom-document-importnode
+/// - WebIDL: dom.idl:300
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Document/importNode
+///
+/// ## Note
+/// The original node is not altered. The returned node is a copy owned by this document.
+/// For C-ABI, we simplify the union type `(boolean or ImportNodeOptions)` to just boolean.
+pub export fn dom_document_importnode(handle: *DOMDocument, node: *DOMNode, deep: u8) *DOMNode {
+    const doc: *Document = @ptrCast(@alignCast(handle));
+    const source_node: *Node = @ptrCast(@alignCast(node));
+    const deep_bool = (deep != 0);
+
+    const result = doc.importNode(source_node, deep_bool) catch {
+        @panic("importNode failed - cannot return error via C-ABI");
+    };
+
+    return @ptrCast(result);
+}
+
+/// Adopt a node from another document.
+///
+/// ## WebIDL
+/// ```webidl
+/// [CEReactions] Node adoptNode(Node node);
+/// ```
+///
+/// ## Parameters
+/// - `handle`: Document handle
+/// - `node`: Node to adopt
+///
+/// ## Returns
+/// The adopted node (same pointer, but now owned by this document)
+///
+/// ## Spec References
+/// - Algorithm: https://dom.spec.whatwg.org/#dom-document-adoptnode
+/// - WebIDL: dom.idl:299
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Document/adoptNode
+///
+/// ## Note
+/// Unlike importNode, adoptNode transfers ownership rather than cloning.
+/// The node is removed from its original document and adopted by this document.
+pub export fn dom_document_adoptnode(handle: *DOMDocument, node: *DOMNode) *DOMNode {
+    const doc: *Document = @ptrCast(@alignCast(handle));
+    const adopt_node: *Node = @ptrCast(@alignCast(node));
+
+    const result = doc.adoptNode(adopt_node) catch {
+        @panic("adoptNode failed - cannot return error via C-ABI");
+    };
+
+    return @ptrCast(result);
 }
 
 /// Creates a new Attr node.

@@ -191,6 +191,49 @@ DOMText* dom_document_createtextnode(DOMDocument* doc, const char* data);
 DOMComment* dom_document_createcomment(DOMDocument* doc, const char* data);
 
 /**
+ * Import a node from another document.
+ * 
+ * Creates a copy of a node from another document that can be inserted into this document.
+ * The original node is not altered.
+ * 
+ * @param doc Target document
+ * @param node Node to import
+ * @param deep If non-zero, deep clone (with descendants); if zero, shallow clone
+ * @return New node owned by this document (never NULL)
+ * 
+ * Example:
+ *   DOMDocument* doc1 = dom_document_new();
+ *   DOMDocument* doc2 = dom_document_new();
+ *   DOMElement* elem = dom_document_createelement(doc1, "div");
+ *   
+ *   // Import elem from doc1 into doc2
+ *   DOMNode* imported = dom_document_importnode(doc2, (DOMNode*)elem, 0);
+ *   // imported is now owned by doc2, elem is unchanged in doc1
+ */
+DOMNode* dom_document_importnode(DOMDocument* doc, DOMNode* node, uint8_t deep);
+
+/**
+ * Adopt a node from another document.
+ * 
+ * Transfers ownership of a node from its current document to this document.
+ * Unlike importNode, adoptNode moves the node rather than copying it.
+ * 
+ * @param doc Target document
+ * @param node Node to adopt
+ * @return The same node, now owned by this document (never NULL)
+ * 
+ * Example:
+ *   DOMDocument* doc1 = dom_document_new();
+ *   DOMDocument* doc2 = dom_document_new();
+ *   DOMElement* elem = dom_document_createelement(doc1, "div");
+ *   
+ *   // Adopt elem from doc1 into doc2
+ *   DOMNode* adopted = dom_document_adoptnode(doc2, (DOMNode*)elem);
+ *   // adopted == elem, but now belongs to doc2
+ */
+DOMNode* dom_document_adoptnode(DOMDocument* doc, DOMNode* node);
+
+/**
  * Find first element matching a CSS selector.
  * 
  * Searches the document tree for an element matching the CSS selector.
