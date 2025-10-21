@@ -1,0 +1,1125 @@
+/**
+ * DOM JavaScript Bindings - C Header File
+ * 
+ * This header provides declarations for the DOM C-ABI library.
+ * 
+ * Usage:
+ *   #include "dom.h"
+ *   
+ *   // Compile with:
+ *   gcc -o myapp myapp.c -L/path/to/lib -ldom -lpthread
+ * 
+ * Version: 1.0.0
+ * License: MIT
+ * Spec: WHATWG DOM Living Standard
+ */
+
+#ifndef DOM_H
+#define DOM_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <stdint.h>
+
+/* ============================================================================
+ * Opaque Types
+ * ========================================================================= */
+
+typedef struct DOMDocument DOMDocument;
+typedef struct DOMElement DOMElement;
+typedef struct DOMNode DOMNode;
+typedef struct DOMText DOMText;
+typedef struct DOMComment DOMComment;
+typedef struct DOMCDATASection DOMCDATASection;
+typedef struct DOMProcessingInstruction DOMProcessingInstruction;
+typedef struct DOMDocumentFragment DOMDocumentFragment;
+typedef struct DOMAttr DOMAttr;
+typedef struct DOMDOMTokenList DOMDOMTokenList;
+typedef struct DOMNamedNodeMap DOMNamedNodeMap;
+typedef struct DOMShadowRoot DOMShadowRoot;
+typedef struct DOMEventTarget DOMEventTarget;
+typedef struct DOMEvent DOMEvent;
+typedef struct DOMRange DOMRange;
+
+/* ============================================================================
+ * Constants
+ * ========================================================================= */
+
+/* Node Types */
+#define DOM_ELEMENT_NODE                1
+#define DOM_ATTRIBUTE_NODE              2
+#define DOM_TEXT_NODE                   3
+#define DOM_CDATA_SECTION_NODE          4
+#define DOM_PROCESSING_INSTRUCTION_NODE 7
+#define DOM_COMMENT_NODE                8
+#define DOM_DOCUMENT_NODE               9
+#define DOM_DOCUMENT_TYPE_NODE          10
+#define DOM_DOCUMENT_FRAGMENT_NODE      11
+
+/* Error Codes */
+#define DOM_ERROR_SUCCESS                      0
+#define DOM_ERROR_INDEX_SIZE                   1
+#define DOM_ERROR_HIERARCHY_REQUEST            3
+#define DOM_ERROR_WRONG_DOCUMENT               4
+#define DOM_ERROR_INVALID_CHARACTER            5
+#define DOM_ERROR_NO_MODIFICATION_ALLOWED      7
+#define DOM_ERROR_NOT_FOUND                    8
+#define DOM_ERROR_NOT_SUPPORTED                9
+#define DOM_ERROR_INUSE_ATTRIBUTE              10
+#define DOM_ERROR_INVALID_STATE                11
+#define DOM_ERROR_SYNTAX                       12
+#define DOM_ERROR_INVALID_MODIFICATION         13
+#define DOM_ERROR_NAMESPACE                    14
+#define DOM_ERROR_INVALID_ACCESS               15
+
+/* Boolean values for C */
+#define DOM_TRUE  1
+#define DOM_FALSE 0
+
+/* Range Boundary Point Comparison Constants */
+#define DOM_RANGE_START_TO_START 0
+#define DOM_RANGE_START_TO_END   1
+#define DOM_RANGE_END_TO_END     2
+#define DOM_RANGE_END_TO_START   3
+
+/* ============================================================================
+ * Error Handling
+ * ========================================================================= */
+
+/**
+ * Get the name of an error code.
+ * 
+ * @param code Error code from a DOM function
+ * @return Null-terminated string (do NOT free)
+ * 
+ * Example:
+ *   int err = dom_element_setattribute(elem, "id", "test");
+ *   if (err != 0) {
+ *     printf("Error: %s\n", dom_error_code_name(err));
+ *   }
+ */
+const char* dom_error_code_name(int32_t code);
+
+/**
+ * Get a human-readable message for an error code.
+ * 
+ * @param code Error code from a DOM function
+ * @return Null-terminated string (do NOT free)
+ */
+const char* dom_error_code_message(int32_t code);
+
+/* ============================================================================
+ * Document Interface
+ * ========================================================================= */
+
+/**
+ * Create a new Document.
+ * 
+ * The document is created with ref_count = 1.
+ * Call dom_document_release() when done.
+ * 
+ * @return New document (never NULL)
+ * 
+ * Example:
+ *   DOMDocument* doc = dom_document_new();
+ *   // ... use doc ...
+ *   dom_document_release(doc);
+ */
+DOMDocument* dom_document_new(void);
+
+/**
+ * Increment document reference count.
+ * 
+ * Call this when sharing ownership of the document.
+ * Each addref must be matched with a release.
+ * 
+ * @param doc Document
+ */
+void dom_document_addref(DOMDocument* doc);
+
+/**
+ * Decrement document reference count.
+ * 
+ * When ref_count reaches 0, the document is freed.
+ * 
+ * @param doc Document
+ */
+void dom_document_release(DOMDocument* doc);
+
+/**
+ * Create an element.
+ * 
+ * @param doc Document
+ * @param localName Tag name (e.g., "div", "span")
+ * @return New element (never NULL, panics on error)
+ * 
+ * Example:
+ *   DOMElement* div = dom_document_createelement(doc, "div");
+ */
+DOMElement* dom_document_createelement(DOMDocument* doc, const char* localName);
+
+/**
+ * Create an element with namespace.
+ * 
+ * @param doc Document
+ * @param namespace Namespace URI (can be NULL)
+ * @param qualifiedName Qualified name (e.g., "svg:rect")
+ * @return New element (never NULL, panics on error)
+ */
+DOMElement* dom_document_createelementns(DOMDocument* doc, const char* ns, const char* qualifiedName);
+
+/**
+ * Create a text node.
+ * 
+ * @param doc Document
+ * @param data Text content
+ * @return New text node (never NULL)
+ */
+DOMText* dom_document_createtextnode(DOMDocument* doc, const char* data);
+
+/**
+ * Create a comment node.
+ * 
+ * @param doc Document
+ * @param data Comment content
+ * @return New comment node (never NULL)
+ */
+DOMComment* dom_document_createcomment(DOMDocument* doc, const char* data);
+
+/**
+ * Find first element matching a CSS selector.
+ * 
+ * Searches the document tree for an element matching the CSS selector.
+ * 
+ * @param doc Document
+ * @param selectors CSS selector string (e.g., ".class", "#id", "div > p")
+ * @return First matching element or NULL if not found
+ * 
+ * Example:
+ *   DOMElement* button = dom_document_queryselector(doc, "button.primary");
+ *   if (button) {
+ *     printf("Found primary button\n");
+ *   }
+ */
+DOMElement* dom_document_queryselector(DOMDocument* doc, const char* selectors);
+
+/**
+ * Find first element matching a CSS selector (temporary).
+ * 
+ * Note: This currently returns only the first match.
+ * Full querySelectorAll will be added when NodeList binding is complete.
+ * 
+ * @param doc Document
+ * @param selectors CSS selector string
+ * @return First matching element or NULL
+ */
+DOMElement* dom_document_queryselectorall_first(DOMDocument* doc, const char* selectors);
+
+/**
+ * Create a new Range.
+ * 
+ * Creates a collapsed range positioned at the start of the document.
+ * 
+ * @param doc Document
+ * @return New Range (must be released with dom_range_release)
+ * 
+ * Example:
+ *   DOMRange* range = dom_document_createrange(doc);
+ *   dom_range_setstart(range, textNode, 0);
+ *   dom_range_setend(range, textNode, 5);
+ *   dom_range_release(range);
+ */
+DOMRange* dom_document_createrange(DOMDocument* doc);
+
+/* ============================================================================
+ * Range Interface
+ * ========================================================================= */
+
+/**
+ * Get the start container node.
+ * 
+ * @param range Range
+ * @return Start container node (do NOT release)
+ */
+DOMNode* dom_range_get_startcontainer(DOMRange* range);
+
+/**
+ * Get the start offset.
+ * 
+ * @param range Range
+ * @return Offset within start container
+ */
+uint32_t dom_range_get_startoffset(DOMRange* range);
+
+/**
+ * Get the end container node.
+ * 
+ * @param range Range
+ * @return End container node (do NOT release)
+ */
+DOMNode* dom_range_get_endcontainer(DOMRange* range);
+
+/**
+ * Get the end offset.
+ * 
+ * @param range Range
+ * @return Offset within end container
+ */
+uint32_t dom_range_get_endoffset(DOMRange* range);
+
+/**
+ * Check if range is collapsed.
+ * 
+ * @param range Range
+ * @return 1 if collapsed, 0 otherwise
+ */
+uint8_t dom_range_get_collapsed(DOMRange* range);
+
+/**
+ * Get the common ancestor container.
+ * 
+ * @param range Range
+ * @return Common ancestor node (do NOT release)
+ */
+DOMNode* dom_range_get_commonancestorcontainer(DOMRange* range);
+
+/**
+ * Set the start boundary.
+ * 
+ * @param range Range
+ * @param node Container node
+ * @param offset Offset within node
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_range_setstart(DOMRange* range, DOMNode* node, uint32_t offset);
+
+/**
+ * Set the end boundary.
+ * 
+ * @param range Range
+ * @param node Container node
+ * @param offset Offset within node
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_range_setend(DOMRange* range, DOMNode* node, uint32_t offset);
+
+/**
+ * Set start before a node.
+ * 
+ * @param range Range
+ * @param node Node
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_range_setstartbefore(DOMRange* range, DOMNode* node);
+
+/**
+ * Set start after a node.
+ * 
+ * @param range Range
+ * @param node Node
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_range_setstartafter(DOMRange* range, DOMNode* node);
+
+/**
+ * Set end before a node.
+ * 
+ * @param range Range
+ * @param node Node
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_range_setendbefore(DOMRange* range, DOMNode* node);
+
+/**
+ * Set end after a node.
+ * 
+ * @param range Range
+ * @param node Node
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_range_setendafter(DOMRange* range, DOMNode* node);
+
+/**
+ * Collapse the range.
+ * 
+ * @param range Range
+ * @param to_start 1 to collapse to start, 0 to collapse to end
+ */
+void dom_range_collapse(DOMRange* range, uint8_t to_start);
+
+/**
+ * Select node contents.
+ * 
+ * @param range Range
+ * @param node Node
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_range_selectnodecontents(DOMRange* range, DOMNode* node);
+
+/**
+ * Select a node (including the node itself).
+ * 
+ * @param range Range
+ * @param node Node
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_range_selectnode(DOMRange* range, DOMNode* node);
+
+/**
+ * Compare boundary points.
+ * 
+ * @param range Range
+ * @param how Comparison type (DOM_RANGE_START_TO_START, etc.)
+ * @param source_range Range to compare with
+ * @return -1, 0, or 1, or error code (>= 8) on failure
+ */
+int16_t dom_range_compareboundarypoints(DOMRange* range, uint16_t how, DOMRange* source_range);
+
+/**
+ * Compare a point with the range.
+ * 
+ * @param range Range
+ * @param node Node
+ * @param offset Offset
+ * @return -1, 0, or 1, or error code (>= 8) on failure
+ */
+int16_t dom_range_comparepoint(DOMRange* range, DOMNode* node, uint32_t offset);
+
+/**
+ * Check if point is in range.
+ * 
+ * @param range Range
+ * @param node Node
+ * @param offset Offset
+ * @return 1 if in range, 0 if not, >= 2 on error
+ */
+uint8_t dom_range_ispointinrange(DOMRange* range, DOMNode* node, uint32_t offset);
+
+/**
+ * Check if node intersects range.
+ * 
+ * @param range Range
+ * @param node Node
+ * @return 1 if intersects, 0 otherwise
+ */
+uint8_t dom_range_intersectsnode(DOMRange* range, DOMNode* node);
+
+/**
+ * Delete range contents.
+ * 
+ * @param range Range
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_range_deletecontents(DOMRange* range);
+
+/**
+ * Extract contents into DocumentFragment.
+ * 
+ * @param range Range
+ * @return DocumentFragment (must be released), or NULL on error
+ */
+DOMDocumentFragment* dom_range_extractcontents(DOMRange* range);
+
+/**
+ * Clone contents into DocumentFragment.
+ * 
+ * @param range Range
+ * @return DocumentFragment (must be released), or NULL on error
+ */
+DOMDocumentFragment* dom_range_clonecontents(DOMRange* range);
+
+/**
+ * Insert node at range start.
+ * 
+ * @param range Range
+ * @param node Node to insert
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_range_insertnode(DOMRange* range, DOMNode* node);
+
+/**
+ * Surround contents with new parent.
+ * 
+ * @param range Range
+ * @param new_parent New parent node
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_range_surroundcontents(DOMRange* range, DOMNode* new_parent);
+
+/**
+ * Clone the range.
+ * 
+ * @param range Range
+ * @return Cloned range (must be released), or NULL on error
+ */
+DOMRange* dom_range_clonerange(DOMRange* range);
+
+/**
+ * Detach the range (no-op, legacy method).
+ * 
+ * @param range Range
+ */
+void dom_range_detach(DOMRange* range);
+
+/**
+ * Release a range.
+ * 
+ * @param range Range to release
+ */
+void dom_range_release(DOMRange* range);
+
+/* ============================================================================
+ * Element Interface
+ * ========================================================================= */
+
+/**
+ * Get element tag name.
+ * 
+ * @param elem Element
+ * @return Tag name (do NOT free, valid until element is released)
+ */
+const char* dom_element_get_tagname(DOMElement* elem);
+
+/**
+ * Get element namespace URI.
+ * 
+ * @param elem Element
+ * @return Namespace URI or NULL (do NOT free)
+ */
+const char* dom_element_get_namespaceuri(DOMElement* elem);
+
+/**
+ * Get element namespace prefix.
+ * 
+ * @param elem Element
+ * @return Prefix or NULL (do NOT free)
+ */
+const char* dom_element_get_prefix(DOMElement* elem);
+
+/**
+ * Get element local name.
+ * 
+ * @param elem Element
+ * @return Local name (do NOT free)
+ */
+const char* dom_element_get_localname(DOMElement* elem);
+
+/**
+ * Get element ID attribute.
+ * 
+ * @param elem Element
+ * @return ID value or empty string (do NOT free)
+ */
+const char* dom_element_get_id(DOMElement* elem);
+
+/**
+ * Set element ID attribute.
+ * 
+ * @param elem Element
+ * @param id New ID value
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_element_set_id(DOMElement* elem, const char* id);
+
+/**
+ * Get element class attribute.
+ * 
+ * @param elem Element
+ * @return Class value or empty string (do NOT free)
+ */
+const char* dom_element_get_classname(DOMElement* elem);
+
+/**
+ * Set element class attribute.
+ * 
+ * @param elem Element
+ * @param className New class value
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_element_set_classname(DOMElement* elem, const char* className);
+
+/**
+ * Get an attribute value.
+ * 
+ * @param elem Element
+ * @param qualifiedName Attribute name
+ * @return Attribute value or NULL if not present (do NOT free)
+ * 
+ * Example:
+ *   const char* id = dom_element_getattribute(elem, "id");
+ *   if (id != NULL) {
+ *     printf("ID: %s\n", id);
+ *   }
+ */
+const char* dom_element_getattribute(DOMElement* elem, const char* qualifiedName);
+
+/**
+ * Set an attribute value.
+ * 
+ * @param elem Element
+ * @param qualifiedName Attribute name
+ * @param value Attribute value
+ * @return 0 on success, error code on failure
+ * 
+ * Example:
+ *   int err = dom_element_setattribute(elem, "id", "container");
+ *   if (err != 0) {
+ *     fprintf(stderr, "Error: %s\n", dom_error_code_message(err));
+ *   }
+ */
+int32_t dom_element_setattribute(DOMElement* elem, const char* qualifiedName, const char* value);
+
+/**
+ * Remove an attribute.
+ * 
+ * @param elem Element
+ * @param qualifiedName Attribute name
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_element_removeattribute(DOMElement* elem, const char* qualifiedName);
+
+/**
+ * Check if element has an attribute.
+ * 
+ * @param elem Element
+ * @param qualifiedName Attribute name
+ * @return 1 if present, 0 if not present
+ */
+uint8_t dom_element_hasattribute(DOMElement* elem, const char* qualifiedName);
+
+/**
+ * Toggle an attribute.
+ * 
+ * If force is 0, toggles normally (add if missing, remove if present).
+ * If force is 1, adds the attribute.
+ * If force is 2, removes the attribute.
+ * 
+ * @param elem Element
+ * @param qualifiedName Attribute name
+ * @param force Toggle behavior (0 = toggle, 1 = force add, 2 = force remove)
+ * @return 1 if attribute is present after operation, 0 if not
+ */
+uint8_t dom_element_toggleattribute(DOMElement* elem, const char* qualifiedName, uint8_t force);
+
+/**
+ * Get namespaced attribute value.
+ * 
+ * @param elem Element
+ * @param namespace Namespace URI (can be NULL)
+ * @param localName Local attribute name
+ * @return Attribute value or NULL (do NOT free)
+ */
+const char* dom_element_getattributens(DOMElement* elem, const char* ns, const char* localName);
+
+/**
+ * Set namespaced attribute value.
+ * 
+ * @param elem Element
+ * @param namespace Namespace URI (can be NULL)
+ * @param qualifiedName Qualified name (e.g., "xml:lang")
+ * @param value Attribute value
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_element_setattributens(DOMElement* elem, const char* ns, const char* qualifiedName, const char* value);
+
+/**
+ * Remove namespaced attribute.
+ * 
+ * @param elem Element
+ * @param namespace Namespace URI (can be NULL)
+ * @param localName Local attribute name
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_element_removeattributens(DOMElement* elem, const char* ns, const char* localName);
+
+/**
+ * Check if element has namespaced attribute.
+ * 
+ * @param elem Element
+ * @param namespace Namespace URI (can be NULL)
+ * @param localName Local attribute name
+ * @return 1 if present, 0 if not present
+ */
+uint8_t dom_element_hasattributens(DOMElement* elem, const char* ns, const char* localName);
+
+/**
+ * Check if element has any attributes.
+ * 
+ * @param elem Element
+ * @return 1 if has attributes, 0 if not
+ */
+uint8_t dom_element_hasattributes(DOMElement* elem);
+
+/**
+ * Test if element matches a CSS selector.
+ * 
+ * Returns true if the element would be selected by the specified selector string.
+ * 
+ * @param elem Element
+ * @param selectors CSS selector string (e.g., ".class", "#id", "div.class")
+ * @return 1 if matches, 0 if not
+ * 
+ * Example:
+ *   if (dom_element_matches(elem, ".active")) {
+ *     printf("Element has 'active' class\n");
+ *   }
+ */
+uint8_t dom_element_matches(DOMElement* elem, const char* selectors);
+
+/**
+ * Find closest ancestor element matching a selector.
+ * 
+ * Traverses the element and its parents (heading toward document root)
+ * until it finds a node that matches the specified CSS selector.
+ * 
+ * @param elem Element to start from
+ * @param selectors CSS selector string
+ * @return Matching element or NULL if not found
+ * 
+ * Example:
+ *   DOMElement* container = dom_element_closest(elem, ".container");
+ *   if (container) {
+ *     printf("Found container ancestor\n");
+ *   }
+ */
+DOMElement* dom_element_closest(DOMElement* elem, const char* selectors);
+
+/**
+ * Webkit prefixed version of matches() for compatibility.
+ * 
+ * @param elem Element
+ * @param selectors CSS selector string
+ * @return 1 if matches, 0 if not
+ */
+uint8_t dom_element_webkitmatchesselector(DOMElement* elem, const char* selectors);
+
+/**
+ * Find first descendant element matching a CSS selector.
+ * 
+ * Searches the element's descendants for an element matching the CSS selector.
+ * 
+ * @param elem Element to search within
+ * @param selectors CSS selector string
+ * @return First matching descendant or NULL if not found
+ * 
+ * Example:
+ *   DOMElement* input = dom_element_queryselector(form, "input[type='text']");
+ *   if (input) {
+ *     printf("Found text input\n");
+ *   }
+ */
+DOMElement* dom_element_queryselector(DOMElement* elem, const char* selectors);
+
+/**
+ * Find first descendant element matching a CSS selector (temporary).
+ * 
+ * Note: This currently returns only the first match.
+ * Full querySelectorAll will be added when NodeList binding is complete.
+ * 
+ * @param elem Element to search within
+ * @param selectors CSS selector string
+ * @return First matching descendant or NULL
+ */
+DOMElement* dom_element_queryselectorall_first(DOMElement* elem, const char* selectors);
+
+/**
+ * Increment element reference count.
+ * 
+ * @param elem Element
+ */
+void dom_element_addref(DOMElement* elem);
+
+/**
+ * Decrement element reference count.
+ * 
+ * When ref_count reaches 0, the element is freed.
+ * This also releases all child nodes.
+ * 
+ * @param elem Element
+ */
+void dom_element_release(DOMElement* elem);
+
+/* ============================================================================
+ * DOMTokenList Interface (Element.classList)
+ * ========================================================================= */
+
+/**
+ * Get the classList (DOMTokenList) for an element.
+ * 
+ * Returns a live collection of class tokens on the element.
+ * 
+ * @param elem Element
+ * @return DOMTokenList (must be released by caller)
+ * 
+ * Example:
+ *   DOMDOMTokenList* classList = dom_element_get_classlist(elem);
+ *   dom_domtokenlist_add(classList, ...);
+ *   dom_domtokenlist_release(classList);
+ */
+DOMDOMTokenList* dom_element_get_classlist(DOMElement* elem);
+
+/**
+ * Get the number of tokens in the list.
+ * 
+ * @param list DOMTokenList
+ * @return Number of unique tokens
+ */
+uint32_t dom_domtokenlist_get_length(DOMDOMTokenList* list);
+
+/**
+ * Get the value attribute (space-separated token string).
+ * 
+ * @param list DOMTokenList
+ * @return Token string (do NOT free)
+ */
+const char* dom_domtokenlist_get_value(DOMDOMTokenList* list);
+
+/**
+ * Set the value attribute (replace all tokens).
+ * 
+ * @param list DOMTokenList
+ * @param value Space-separated token string
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_domtokenlist_set_value(DOMDOMTokenList* list, const char* value);
+
+/**
+ * Get a token at a specific index.
+ * 
+ * @param list DOMTokenList
+ * @param index Zero-based index
+ * @return Token at index (do NOT free), or NULL if out of bounds
+ */
+const char* dom_domtokenlist_item(DOMDOMTokenList* list, uint32_t index);
+
+/**
+ * Check if a token exists in the list.
+ * 
+ * @param list DOMTokenList
+ * @param token Token to search for
+ * @return 1 if exists, 0 otherwise
+ */
+uint8_t dom_domtokenlist_contains(DOMDOMTokenList* list, const char* token);
+
+/**
+ * Check if a token is supported (validation).
+ * 
+ * For classList, always returns 1 (no validation).
+ * 
+ * @param list DOMTokenList
+ * @param token Token to validate
+ * @return 1 if supported, 0 otherwise
+ */
+uint8_t dom_domtokenlist_supports(DOMDOMTokenList* list, const char* token);
+
+/**
+ * Add one or more tokens to the list.
+ * 
+ * Duplicates are ignored (ordered set behavior).
+ * 
+ * @param list DOMTokenList
+ * @param tokens Array of token strings
+ * @param count Number of tokens in array
+ * @return 0 on success, error code on failure
+ * 
+ * Example:
+ *   const char* tokens[] = {"btn", "btn-primary", "active"};
+ *   dom_domtokenlist_add(classList, tokens, 3);
+ */
+int32_t dom_domtokenlist_add(DOMDOMTokenList* list, const char** tokens, uint32_t count);
+
+/**
+ * Remove one or more tokens from the list.
+ * 
+ * Non-existent tokens are ignored.
+ * 
+ * @param list DOMTokenList
+ * @param tokens Array of token strings
+ * @param count Number of tokens in array
+ * @return 0 on success, error code on failure
+ * 
+ * Example:
+ *   const char* tokens[] = {"active", "disabled"};
+ *   dom_domtokenlist_remove(classList, tokens, 2);
+ */
+int32_t dom_domtokenlist_remove(DOMDOMTokenList* list, const char** tokens, uint32_t count);
+
+/**
+ * Toggle a token in the list.
+ * 
+ * If token exists, removes it and returns 0.
+ * If token doesn't exist, adds it and returns 1.
+ * Optional force parameter: 1 = always add, 0 = always remove, -1 = toggle.
+ * 
+ * @param list DOMTokenList
+ * @param token Token to toggle
+ * @param force -1 = toggle, 0 = force remove, 1 = force add
+ * @return 1 if token is now present, 0 if now absent
+ * 
+ * Example:
+ *   // Toggle (add if absent, remove if present)
+ *   uint8_t is_active = dom_domtokenlist_toggle(classList, "active", -1);
+ *   
+ *   // Force add
+ *   dom_domtokenlist_toggle(classList, "enabled", 1);
+ *   
+ *   // Force remove
+ *   dom_domtokenlist_toggle(classList, "disabled", 0);
+ */
+uint8_t dom_domtokenlist_toggle(DOMDOMTokenList* list, const char* token, int8_t force);
+
+/**
+ * Replace a token with a new token.
+ * 
+ * @param list DOMTokenList
+ * @param token Token to replace
+ * @param newToken Replacement token
+ * @return 1 if replacement occurred, 0 if token didn't exist
+ * 
+ * Example:
+ *   if (dom_domtokenlist_replace(classList, "btn-primary", "btn-secondary")) {
+ *     printf("Replaced primary with secondary\n");
+ *   }
+ */
+uint8_t dom_domtokenlist_replace(DOMDOMTokenList* list, const char* token, const char* newToken);
+
+/**
+ * Release a DOMTokenList.
+ * 
+ * DOMTokenList is a value type but heap-allocated for C interop.
+ * Call this when done with a DOMTokenList returned from the API.
+ * 
+ * @param list DOMTokenList to release
+ * 
+ * Note: Releasing the list does NOT affect the element's class attribute.
+ */
+void dom_domtokenlist_release(DOMDOMTokenList* list);
+
+/* ============================================================================
+ * Node Interface
+ * ========================================================================= */
+
+/**
+ * Get node type.
+ * 
+ * @param node Node
+ * @return Node type constant (DOM_ELEMENT_NODE, etc.)
+ */
+uint16_t dom_node_get_nodetype(DOMNode* node);
+
+/**
+ * Get node name.
+ * 
+ * For elements, this is the tag name.
+ * For text nodes, this is "#text".
+ * 
+ * @param node Node
+ * @return Node name (do NOT free)
+ */
+const char* dom_node_get_nodename(DOMNode* node);
+
+/**
+ * Get node value.
+ * 
+ * For text/comment nodes, returns the text content.
+ * For elements, returns NULL.
+ * 
+ * @param node Node
+ * @return Node value or NULL (do NOT free)
+ */
+const char* dom_node_get_nodevalue(DOMNode* node);
+
+/**
+ * Set node value.
+ * 
+ * @param node Node
+ * @param value New value (can be NULL)
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_node_set_nodevalue(DOMNode* node, const char* value);
+
+/**
+ * Get parent node.
+ * 
+ * @param node Node
+ * @return Parent node or NULL (do NOT release)
+ */
+DOMNode* dom_node_get_parentnode(DOMNode* node);
+
+/**
+ * Get parent element.
+ * 
+ * Returns parent only if it's an element node.
+ * 
+ * @param node Node
+ * @return Parent element or NULL (do NOT release)
+ */
+DOMElement* dom_node_get_parentelement(DOMNode* node);
+
+/**
+ * Get first child node.
+ * 
+ * @param node Node
+ * @return First child or NULL (do NOT release)
+ */
+DOMNode* dom_node_get_firstchild(DOMNode* node);
+
+/**
+ * Get last child node.
+ * 
+ * @param node Node
+ * @return Last child or NULL (do NOT release)
+ */
+DOMNode* dom_node_get_lastchild(DOMNode* node);
+
+/**
+ * Get previous sibling node.
+ * 
+ * @param node Node
+ * @return Previous sibling or NULL (do NOT release)
+ */
+DOMNode* dom_node_get_previoussibling(DOMNode* node);
+
+/**
+ * Get next sibling node.
+ * 
+ * @param node Node
+ * @return Next sibling or NULL (do NOT release)
+ */
+DOMNode* dom_node_get_nextsibling(DOMNode* node);
+
+/**
+ * Get owner document.
+ * 
+ * @param node Node
+ * @return Owner document or NULL (do NOT release)
+ */
+DOMDocument* dom_node_get_ownerdocument(DOMNode* node);
+
+/**
+ * Check if node has child nodes.
+ * 
+ * @param node Node
+ * @return 1 if has children, 0 if not
+ */
+uint8_t dom_node_haschildnodes(DOMNode* node);
+
+/**
+ * Check if this node contains another node.
+ * 
+ * A node contains itself and all its descendants.
+ * 
+ * @param node Node
+ * @param other Node to check
+ * @return 1 if contains, 0 if not
+ */
+uint8_t dom_node_contains(DOMNode* node, DOMNode* other);
+
+/**
+ * Append a child node.
+ * 
+ * The parent takes ownership of the child.
+ * When the parent is released, the child is also released.
+ * 
+ * @param parent Parent node
+ * @param child Child node to append
+ * @return The appended child (do NOT release separately)
+ * 
+ * Example:
+ *   DOMElement* div = dom_document_createelement(doc, "div");
+ *   DOMElement* span = dom_document_createelement(doc, "span");
+ *   dom_node_appendchild((DOMNode*)div, (DOMNode*)span);
+ *   // Only release div - it will release span automatically
+ *   dom_element_release(div);
+ */
+DOMNode* dom_node_appendchild(DOMNode* parent, DOMNode* child);
+
+/**
+ * Insert a child node before a reference node.
+ * 
+ * @param parent Parent node
+ * @param node Node to insert
+ * @param child Reference node (insert before this)
+ * @return The inserted node (do NOT release separately)
+ */
+DOMNode* dom_node_insertbefore(DOMNode* parent, DOMNode* node, DOMNode* child);
+
+/**
+ * Remove a child node.
+ * 
+ * After removal, you must call dom_node_release() on the child.
+ * 
+ * @param parent Parent node
+ * @param child Child node to remove
+ * @return The removed child (must be released by caller)
+ */
+DOMNode* dom_node_removechild(DOMNode* parent, DOMNode* child);
+
+/**
+ * Replace a child node.
+ * 
+ * @param parent Parent node
+ * @param node New node
+ * @param child Old node to replace
+ * @return The replaced child (must be released by caller)
+ */
+DOMNode* dom_node_replacechild(DOMNode* parent, DOMNode* node, DOMNode* child);
+
+/**
+ * Clone a node.
+ * 
+ * @param node Node to clone
+ * @param deep If 1, clone descendants too; if 0, shallow clone
+ * @return Cloned node (must be released by caller)
+ */
+DOMNode* dom_node_clonenode(DOMNode* node, uint8_t deep);
+
+/**
+ * Check if two nodes are the same (identity check).
+ * 
+ * @param node First node
+ * @param other Second node
+ * @return 1 if same, 0 if not
+ */
+uint8_t dom_node_issamenode(DOMNode* node, DOMNode* other);
+
+/**
+ * Check if two nodes are equal (value check).
+ * 
+ * @param node First node
+ * @param other Second node
+ * @return 1 if equal, 0 if not
+ */
+uint8_t dom_node_isequalnode(DOMNode* node, DOMNode* other);
+
+/**
+ * Normalize the node tree.
+ * 
+ * Merges adjacent text nodes and removes empty text nodes.
+ * 
+ * @param node Node
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_node_normalize(DOMNode* node);
+
+/**
+ * Increment node reference count.
+ * 
+ * @param node Node
+ */
+void dom_node_addref(DOMNode* node);
+
+/**
+ * Decrement node reference count.
+ * 
+ * @param node Node
+ */
+void dom_node_release(DOMNode* node);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* DOM_H */

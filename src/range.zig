@@ -1138,23 +1138,25 @@ pub const Range = struct {
         source: *const Range,
     ) !i16 {
         // Select boundary points based on comparison type
+        // The first part of the enum name indicates which point from 'self' to use
         const this_point = switch (how) {
-            .start_to_start, .end_to_start => BoundaryPoint{
+            .start_to_start, .start_to_end => BoundaryPoint{
                 .container = self.start_container,
                 .offset = self.start_offset,
             },
-            .start_to_end, .end_to_end => BoundaryPoint{
+            .end_to_start, .end_to_end => BoundaryPoint{
                 .container = self.end_container,
                 .offset = self.end_offset,
             },
         };
 
+        // The second part of the enum name indicates which point from 'source' to use
         const source_point = switch (how) {
-            .start_to_start, .start_to_end => BoundaryPoint{
+            .start_to_start, .end_to_start => BoundaryPoint{
                 .container = source.start_container,
                 .offset = source.start_offset,
             },
-            .end_to_start, .end_to_end => BoundaryPoint{
+            .start_to_end, .end_to_end => BoundaryPoint{
                 .container = source.end_container,
                 .offset = source.end_offset,
             },
@@ -1330,11 +1332,11 @@ pub const Range = struct {
     /// // intersects = true
     /// ```
     pub fn intersectsNode(self: *const Range, node: *Node) bool {
-        // Step 2: Get parent
-        const parent = node.parent_node orelse return true;
+        // Step 2: Get parent - if null, node is not in tree, cannot intersect
+        const parent = node.parent_node orelse return false;
 
         // Step 4: Get node's index
-        const offset = nodeIndex(node) catch return true;
+        const offset = nodeIndex(node) catch return false;
 
         // Step 5: Check if node intersects range
         const before_point = BoundaryPoint{ .container = parent, .offset = offset };
