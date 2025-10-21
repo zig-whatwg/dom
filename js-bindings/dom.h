@@ -512,14 +512,46 @@ DOMRange* dom_range_clonerange(DOMRange* range);
 void dom_range_detach(DOMRange* range);
 
 /**
- * Release a range.
+ * Release a reference to an element.
  * 
- * @param range Range to release
+ * @param elem Element
  */
-void dom_range_release(DOMRange* range);
+void dom_element_release(DOMElement* elem);
+
+/**
+ * Insert an element at a position relative to the target element.
+ * 
+ * @param target Element to insert relative to
+ * @param where Position: "beforebegin", "afterbegin", "beforeend", "afterend"
+ * @param element Element to insert
+ * @return The inserted element, or NULL if insertion failed
+ * 
+ * Positions:
+ * - "beforebegin": Before target (requires parent)
+ * - "afterbegin": As first child of target
+ * - "beforeend": As last child of target
+ * - "afterend": After target (requires parent)
+ */
+DOMElement* dom_element_insertadjacentelement(DOMElement* target, const char* where, DOMElement* element);
+
+/**
+ * Insert text at a position relative to the target element.
+ * 
+ * @param target Element to insert relative to
+ * @param where Position: "beforebegin", "afterbegin", "beforeend", "afterend"
+ * @param data Text content to insert
+ * @return 0 on success, error code on failure
+ * 
+ * Positions:
+ * - "beforebegin": Before target (requires parent, no-op if no parent)
+ * - "afterbegin": As first child of target
+ * - "beforeend": As last child of target
+ * - "afterend": After target (requires parent, no-op if no parent)
+ */
+int32_t dom_element_insertadjacenttext(DOMElement* target, const char* where, const char* data);
 
 /* ============================================================================
- * Element Interface
+ * DOMTokenList Interface (Element.classList)
  * ========================================================================= */
 
 /**

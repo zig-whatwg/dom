@@ -680,25 +680,79 @@ pub export fn dom_element_getelementsbyclassname(handle: *DOMElement, classNames
     @panic("TODO: Non-nullable pointer return");
 }
 
-/// insertAdjacentElement method
+/// Insert an element at a position relative to this element.
 ///
-/// WebIDL: `Element insertAdjacentElement(DOMString where, Element element);`
+/// ## WebIDL
+/// ```webidl
+/// Element? insertAdjacentElement(DOMString where, Element element);
+/// ```
+///
+/// ## Parameters
+/// - `handle`: Element to insert relative to
+/// - `where`: Position ("beforebegin", "afterbegin", "beforeend", "afterend")
+/// - `element`: Element to insert
+///
+/// ## Returns
+/// The inserted element, or NULL if insertion failed
+///
+/// ## Spec
+/// - https://dom.spec.whatwg.org/#dom-element-insertadjacentelement
+/// - https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentElement
+///
+/// ## Positions
+/// - "beforebegin": Before target element (requires parent)
+/// - "afterbegin": As first child of target
+/// - "beforeend": As last child of target
+/// - "afterend": After target element (requires parent)
 pub export fn dom_element_insertadjacentelement(handle: *DOMElement, where: [*:0]const u8, element: *DOMElement) ?*DOMElement {
-    _ = handle;
-    _ = where;
-    _ = element;
-    // TODO: Implement method
-    return null;
+    const target_elem: *Element = @ptrCast(@alignCast(handle));
+    const insert_elem: *Element = @ptrCast(@alignCast(element));
+    const where_str = cStringToZigString(where);
+
+    const result = target_elem.insertAdjacentElement(where_str, insert_elem) catch {
+        return null;
+    };
+
+    return if (result) |elem| @ptrCast(elem) else null;
 }
 
-/// insertAdjacentText method
+/// Insert text at a position relative to this element.
 ///
-/// WebIDL: `undefined insertAdjacentText(DOMString where, DOMString data);`
+/// ## WebIDL
+/// ```webidl
+/// undefined insertAdjacentText(DOMString where, DOMString data);
+/// ```
+///
+/// ## Parameters
+/// - `handle`: Element to insert relative to
+/// - `where`: Position ("beforebegin", "afterbegin", "beforeend", "afterend")
+/// - `data`: Text content to insert
+///
+/// ## Returns
+/// 0 on success, error code on failure
+///
+/// ## Spec
+/// - https://dom.spec.whatwg.org/#dom-element-insertadjacenttext
+/// - https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentText
+///
+/// ## Positions
+/// - "beforebegin": Before target element (requires parent)
+/// - "afterbegin": As first child of target
+/// - "beforeend": As last child of target
+/// - "afterend": After target element (requires parent)
+///
+/// ## Note
+/// This creates a Text node internally. For positions that require a parent
+/// (beforebegin, afterend), if parent is null, this is a no-op (returns success).
 pub export fn dom_element_insertadjacenttext(handle: *DOMElement, where: [*:0]const u8, data: [*:0]const u8) c_int {
-    _ = handle;
-    _ = where;
-    _ = data;
-    // TODO: Implement method
+    const target_elem: *Element = @ptrCast(@alignCast(handle));
+    const where_str = cStringToZigString(where);
+    const data_str = cStringToZigString(data);
+
+    target_elem.insertAdjacentText(where_str, data_str) catch |err| {
+        return @intFromEnum(zigErrorToDOMError(err));
+    };
+
     return 0; // Success
 }
 // ============================================================================
