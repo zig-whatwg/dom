@@ -46,6 +46,8 @@ typedef struct DOMRange DOMRange;
 typedef struct DOMTreeWalker DOMTreeWalker;
 typedef struct DOMNodeIterator DOMNodeIterator;
 typedef struct DOMHTMLCollection DOMHTMLCollection;
+typedef struct DOMAbortController DOMAbortController;
+typedef struct DOMAbortSignal DOMAbortSignal;
 
 /* ============================================================================
  * Constants
@@ -2007,6 +2009,189 @@ bool dom_shadowroot_get_serializable(DOMShadowRoot* shadow);
  *   // host == elem
  */
 DOMElement* dom_shadowroot_get_host(DOMShadowRoot* shadow);
+
+// ============================================================================
+// AbortController & AbortSignal
+// ============================================================================
+
+/**
+ * Create a new AbortController.
+ * 
+ * The controller is created with a signal that can be passed to abortable operations.
+ * Call dom_abortcontroller_release() when done to free both controller and signal.
+ * 
+ * @return AbortController handle (never NULL)
+ * 
+ * Example:
+ *   DOMAbortController* controller = dom_abortcontroller_new();
+ *   DOMAbortSignal* signal = dom_abortcontroller_get_signal(controller);
+ *   
+ *   // Pass signal to operation
+ *   fetch_with_abort(url, signal);
+ *   
+ *   // User cancels
+ *   dom_abortcontroller_abort(controller, NULL);
+ *   
+ *   dom_abortcontroller_release(controller);
+ */
+DOMAbortController* dom_abortcontroller_new(void);
+
+/**
+ * Get the controller's signal.
+ * 
+ * The signal is [SameObject] - always returns the same instance for a controller.
+ * The signal is owned by the controller - do NOT release it separately.
+ * 
+ * @param controller AbortController handle
+ * @return AbortSignal handle (never NULL)
+ * 
+ * Example:
+ *   DOMAbortSignal* signal = dom_abortcontroller_get_signal(controller);
+ *   
+ *   // [SameObject] - always same pointer
+ *   DOMAbortSignal* signal2 = dom_abortcontroller_get_signal(controller);
+ *   // signal == signal2
+ *   
+ *   // Pass to multiple operations
+ *   fetch_with_abort(url1, signal);
+ *   fetch_with_abort(url2, signal);
+ */
+DOMAbortSignal* dom_abortcontroller_get_signal(DOMAbortController* controller);
+
+/**
+ * Abort the controller's signal.
+ * 
+ * Triggers abort on the signal, causing all operations using it to be cancelled.
+ * If already aborted, this is a no-op (idempotent).
+ * 
+ * @param controller AbortController handle
+ * @param reason Abort reason (opaque pointer, can be NULL for default reason)
+ * 
+ * Example:
+ *   // Abort with default reason ("AbortError")
+ *   dom_abortcontroller_abort(controller, NULL);
+ *   
+ *   // Abort with custom reason
+ *   MyError* error = create_timeout_error();
+ *   dom_abortcontroller_abort(controller, (void*)error);
+ */
+void dom_abortcontroller_abort(DOMAbortController* controller, void* reason);
+
+/**
+ * Release an AbortController.
+ * 
+ * Frees the controller and its signal. After this call, both handles are invalid.
+ * 
+ * @param controller AbortController handle
+ * 
+ * Example:
+ *   DOMAbortController* controller = dom_abortcontroller_new();
+ *   // ... use controller ...
+ *   dom_abortcontroller_release(controller);
+ */
+void dom_abortcontroller_release(DOMAbortController* controller);
+
+/**
+ * Create a pre-aborted signal (static factory).
+ * 
+ * Returns a signal that's already aborted, useful for immediately-cancelled operations.
+ * The returned signal has ref_count = 1 - caller MUST call dom_abortsignal_release().
+ * 
+ * @param reason Abort reason (opaque pointer, can be NULL for default reason)
+ * @return AbortSignal handle (never NULL, already aborted)
+ * 
+ * Example:
+ *   // Return immediately-aborted signal
+ *   DOMAbortSignal* signal = dom_abortsignal_abort(NULL);
+ *   
+ *   if (dom_abortsignal_get_aborted(signal)) {
+ *       printf("Signal is aborted\n");
+ *   }
+ *   
+ *   dom_abortsignal_release(signal);
+ */
+DOMAbortSignal* dom_abortsignal_abort(void* reason);
+
+/**
+ * Check if signal has been aborted.
+ * 
+ * @param signal AbortSignal handle
+ * @return 1 if aborted, 0 if not aborted
+ * 
+ * Example:
+ *   void fetch_data(const char* url, DOMAbortSignal* signal) {
+ *       // Check before starting
+ *       if (dom_abortsignal_get_aborted(signal)) {
+ *           printf("Already aborted\n");
+ *           return;
+ *       }
+ *       
+ *       // Perform work...
+ *       
+ *       // Check periodically
+ *       if (dom_abortsignal_get_aborted(signal)) {
+ *           printf("Aborted during operation\n");
+ *           return;
+ *       }
+ *   }
+ */
+uint8_t dom_abortsignal_get_aborted(DOMAbortSignal* signal);
+
+/**
+ * Throw if signal has been aborted.
+ * 
+ * In C, "throw" returns an error code. Returns 0 if not aborted,
+ * DOM_ERROR_INVALID_STATE if aborted.
+ * 
+ * @param signal AbortSignal handle
+ * @return 0 if not aborted, DOM_ERROR_INVALID_STATE (11) if aborted
+ * 
+ * Example:
+ *   int err = dom_abortsignal_throwifaborted(signal);
+ *   if (err != 0) {
+ *       printf("Aborted: %s\n", dom_error_code_message(err));
+ *       return err;
+ *   }
+ *   
+ *   // Continue operation...
+ */
+int32_t dom_abortsignal_throwifaborted(DOMAbortSignal* signal);
+
+/**
+ * Increment signal reference count.
+ * 
+ * Call this when sharing the signal with another owner.
+ * Each acquire() MUST be balanced with a release().
+ * 
+ * @param signal AbortSignal handle
+ * 
+ * Example:
+ *   DOMAbortSignal* signal = dom_abortcontroller_get_signal(controller);
+ *   
+ *   // Share with another context
+ *   dom_abortsignal_acquire(signal);
+ *   my_context->signal = signal;
+ *   
+ *   // Later, both contexts must release
+ *   dom_abortsignal_release(my_context->signal);
+ *   dom_abortcontroller_release(controller);
+ */
+void dom_abortsignal_acquire(DOMAbortSignal* signal);
+
+/**
+ * Decrement signal reference count.
+ * 
+ * Automatically frees the signal when ref_count reaches 0.
+ * MUST be called by every owner when done with the signal.
+ * 
+ * @param signal AbortSignal handle
+ * 
+ * Example:
+ *   DOMAbortSignal* signal = dom_abortsignal_abort(NULL);
+ *   // ... use signal ...
+ *   dom_abortsignal_release(signal);
+ */
+void dom_abortsignal_release(DOMAbortSignal* signal);
 
 #ifdef __cplusplus
 }

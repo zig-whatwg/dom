@@ -91,6 +91,8 @@ const nodeiterator = @import("nodeiterator.zig");
 const childnode = @import("childnode.zig");
 const parentnode = @import("parentnode.zig");
 const shadowroot = @import("shadowroot.zig");
+const abortcontroller = @import("abortcontroller.zig");
+const abortsignal = @import("abortsignal.zig");
 
 // Force export of all C-ABI functions by referencing them
 // This ensures they are included in the static library
@@ -125,4 +127,6 @@ comptime {
     _ = childnode;
     _ = parentnode;
     _ = shadowroot;
+    _ = abortcontroller;
+    _ = abortsignal;
 }
