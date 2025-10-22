@@ -475,6 +475,22 @@ pub const AttrCache = struct {
     }
 };
 
+/// Helper struct for holding interned attribute name and value.
+///
+/// Used by setAttributeImpl to ensure both name and value are interned
+/// via Document.string_pool for stable pointer lifetime and null-termination.
+///
+/// **Critical for C API compatibility**: Attribute names must be interned
+/// because C API strings (from V8, Node.js, etc.) are temporary and become
+/// invalid after the API call returns. Storing these temporary pointers
+/// directly causes use-after-free bugs.
+///
+/// See: ATTRIBUTE_NAME_INTERNING_ANALYSIS.md for detailed analysis.
+const InternedStrings = struct {
+    interned_name: []const u8,
+    interned_value: []const u8,
+};
+
 /// Element node representing an HTML/XML element.
 ///
 /// Embeds Node as first field for vtable polymorphism.
@@ -993,35 +1009,47 @@ pub const Element = struct {
             }
         }
 
-        // Intern value string to ensure null-termination for C-ABI compatibility
-        const interned_value = if (self.prototype.owner_document) |owner| blk: {
+        // Intern BOTH name and value for stable pointers and null-termination
+        // CRITICAL: Names must be interned to prevent use-after-free when C API
+        // strings (from V8, Node.js, etc.) become invalid after function returns.
+        // See: ATTRIBUTE_NAME_INTERNING_ANALYSIS.md for detailed analysis.
+        const interned = if (self.prototype.owner_document) |owner| blk: {
             if (owner.node_type == .document) {
                 const Document = @import("document.zig").Document;
                 const doc: *Document = @fieldParentPtr("prototype", owner);
-                break :blk try doc.string_pool.intern(value);
+                break :blk InternedStrings{
+                    .interned_name = try doc.string_pool.intern(name),
+                    .interned_value = try doc.string_pool.intern(value),
+                };
             }
-            break :blk value;
-        } else value;
+            break :blk InternedStrings{
+                .interned_name = name,
+                .interned_value = value,
+            };
+        } else InternedStrings{
+            .interned_name = name,
+            .interned_value = value,
+        };
 
-        // Set the attribute
-        try self.attributes.set(name, interned_value);
+        // Set the attribute with interned strings
+        try self.attributes.set(interned.interned_name, interned.interned_value);
 
         // Invalidate cached Attr for this name
-        self.invalidateCachedAttr(name);
+        self.invalidateCachedAttr(interned.interned_name);
 
         // Update bloom filter for class attribute (Phase 3: class_map removed, bloom filter still used)
-        if (std.mem.eql(u8, name, "class")) {
-            self.updateClassBloom(value);
+        if (std.mem.eql(u8, interned.interned_name, "class")) {
+            self.updateClassBloom(interned.interned_value);
         }
 
         // Add new ID to document map (only if connected, and only if ID not already in use - first wins)
-        if (std.mem.eql(u8, name, "id")) {
+        if (std.mem.eql(u8, interned.interned_name, "id")) {
             if (self.prototype.isConnected()) {
                 if (self.prototype.owner_document) |owner| {
                     if (owner.node_type == .document) {
                         const Document = @import("document.zig").Document;
                         const doc: *Document = @fieldParentPtr("prototype", owner);
-                        const result = try doc.id_map.getOrPut(value);
+                        const result = try doc.id_map.getOrPut(interned.interned_value);
                         if (!result.found_existing) {
                             result.value_ptr.* = self;
                             doc.invalidateIdCache();

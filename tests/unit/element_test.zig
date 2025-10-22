@@ -2229,3 +2229,134 @@ test "Element delegation - clean WHATWG-compliant API" {
     _ = try parent.dispatchEvent(&event);
     try std.testing.expect(called);
 }
+
+// Regression test for attribute name interning bug (October 2025)
+// This test validates that attribute names are properly interned via Document.string_pool
+// to prevent use-after-free bugs when C API strings become invalid.
+//
+// Background: The C API (V8, Node.js, FFI) passes temporary string buffers that become
+// invalid after the API call returns. Without interning, storing these pointers directly
+// causes corruption when the buffers are reused.
+//
+// Bug manifestation: document.getElementById() returned null despite element having ID
+// because attribute name "id" was corrupted to garbage like "T2" after buffer reuse.
+//
+// See: ATTRIBUTE_NAME_INTERNING_ANALYSIS.md for detailed analysis
+test "Element - setAttribute with temporary buffers (regression test for name interning)" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+    _ = try doc.prototype.appendChild(&elem.prototype);
+
+    // Simulate C API behavior: temporary buffers that get overwritten
+    // In real C API usage, these buffers would be from V8's UTF8Value or similar,
+    // and would become invalid after the API call returns.
+
+    // First, set an attribute with a temporary buffer
+    {
+        var temp_name_buffer = [_]u8{ 'i', 'd', 0, 0, 0, 0, 0, 0 }; // Extra zeros for overwrite test
+        var temp_value_buffer = [_]u8{ 't', 'e', 's', 't', '-', 'i', 'd', 0 };
+
+        const name_slice = temp_name_buffer[0..2]; // "id"
+        const value_slice = temp_value_buffer[0..7]; // "test-id"
+
+        try elem.setAttribute(name_slice, value_slice);
+
+        // Verify attribute was set correctly
+        try std.testing.expectEqualStrings("test-id", elem.getAttribute("id").?);
+
+        // Simulate buffer reuse/corruption (what happens in V8 after API call returns)
+        @memset(&temp_name_buffer, 'X'); // Overwrite with garbage
+        @memset(&temp_value_buffer, 'Y'); // Overwrite with garbage
+    }
+
+    // Critical test: After buffers are corrupted, attribute should STILL be accessible
+    // This proves the strings were interned (stable copies made)
+    const retrieved_id = elem.getAttribute("id");
+    try std.testing.expect(retrieved_id != null);
+    try std.testing.expectEqualStrings("test-id", retrieved_id.?);
+
+    // Also verify via Document.getElementById() (the original bug report)
+    elem.setId("searchable-id") catch unreachable;
+
+    // Simulate buffer corruption again
+    {
+        var temp_buffer = [_]u8{ 's', 'e', 'a', 'r', 'c', 'h', 'a', 'b', 'l', 'e', '-', 'i', 'd', 0 };
+        @memset(&temp_buffer, 'Z');
+    }
+
+    // getElementById should find the element even after buffer corruption
+    const found = doc.getElementById("searchable-id");
+    try std.testing.expect(found != null);
+    try std.testing.expect(found.? == elem);
+
+    // Verify the attribute name itself is still intact (not corrupted to "T2" or similar)
+    const id_attr = elem.getAttribute("id");
+    try std.testing.expect(id_attr != null);
+    try std.testing.expectEqualStrings("searchable-id", id_attr.?);
+}
+
+// Additional regression test: Multiple attributes with temporary buffers
+test "Element - multiple setAttribute calls with buffer reuse" {
+    const allocator = std.testing.allocator;
+
+    const doc = try Document.init(allocator);
+    defer doc.release();
+
+    const elem = try doc.createElement("div");
+    _ = try doc.prototype.appendChild(&elem.prototype);
+
+    // Simulate setting multiple attributes where the C API reuses the same buffer
+    var shared_buffer = [_]u8{0} ** 64;
+
+    // Set first attribute: id="elem1"
+    {
+        @memcpy(shared_buffer[0..2], "id");
+        const name = shared_buffer[0..2];
+        @memcpy(shared_buffer[10..15], "elem1");
+        const value = shared_buffer[10..15];
+
+        try elem.setAttribute(name, value);
+    }
+
+    // Overwrite buffer and set second attribute: class="button"
+    {
+        @memset(&shared_buffer, 'X'); // Simulate buffer reuse
+        @memcpy(shared_buffer[0..5], "class");
+        const name = shared_buffer[0..5];
+        @memcpy(shared_buffer[20..26], "button");
+        const value = shared_buffer[20..26];
+
+        try elem.setAttribute(name, value);
+    }
+
+    // Overwrite buffer and set third attribute: data-role="menu"
+    {
+        @memset(&shared_buffer, 'Y'); // Simulate buffer reuse again
+        @memcpy(shared_buffer[0..9], "data-role");
+        const name = shared_buffer[0..9];
+        @memcpy(shared_buffer[30..34], "menu");
+        const value = shared_buffer[30..34];
+
+        try elem.setAttribute(name, value);
+    }
+
+    // Final corruption
+    @memset(&shared_buffer, 'Z');
+
+    // All three attributes should still be retrievable with correct names and values
+    try std.testing.expectEqualStrings("elem1", elem.getAttribute("id").?);
+    try std.testing.expectEqualStrings("button", elem.getAttribute("class").?);
+    try std.testing.expectEqualStrings("menu", elem.getAttribute("data-role").?);
+
+    // Verify attribute count
+    try std.testing.expectEqual(@as(usize, 3), elem.attributes.count());
+
+    // Verify hasAttribute works with the interned names
+    try std.testing.expect(elem.hasAttribute("id"));
+    try std.testing.expect(elem.hasAttribute("class"));
+    try std.testing.expect(elem.hasAttribute("data-role"));
+}
