@@ -1,5 +1,74 @@
 # Documentation Standards Skill
 
+## ⚠️ CRITICAL: Session Documentation & File Organization
+
+### NEVER Create Files in Project Root
+
+**Root directory is for essential project files ONLY.**
+
+❌ **NEVER create in root:**
+- Session summaries
+- Completion reports  
+- Status documents
+- Test files
+- Build artifacts (*.o, *.a, *.dylib, *.so)
+- Temporary files
+
+✅ **ALWAYS use proper locations:**
+- **Session work tracking**: Use `bd` (beads) for session notes and issue tracking
+- **Completion reports**: `summaries/completion/`
+- **Design documents**: `summaries/plans/`
+- **Analysis docs**: `summaries/analysis/`
+- **Session notes**: `summaries/notes/` (only if not using beads)
+- **Tests**: Co-locate with implementation in `src/` or `tests/`
+- **Build artifacts**: Automatically ignored by `.gitignore`, but clean up if created
+
+### Use Beads for Session Tracking
+
+**This project uses `bd` (beads) for issue tracking and session notes.**
+
+```bash
+# Create issue for session work
+bd create "Implement X feature"
+
+# Add notes to issue
+bd comments add <issue-id> "Session progress notes..."
+
+# Close when done
+bd close <issue-id>
+
+# View current work
+bd list
+```
+
+**DO NOT create markdown files in root for session tracking.**
+
+### File Organization Reference
+
+```
+/
+├── README.md          # Project overview
+├── CHANGELOG.md       # Version history (Keep a Changelog)
+├── CONTRIBUTING.md    # Contribution guidelines
+├── AGENTS.md          # Agent guidelines (this project)
+├── build.zig          # Build configuration
+├── .gitignore         # Git ignore patterns
+│
+├── src/               # Source code + co-located tests
+├── tests/             # Standalone test suites
+│   ├── unit/          # Unit tests
+│   └── wpt/           # Web Platform Tests
+│
+├── summaries/         # Session documentation (NOT root!)
+│   ├── completion/    # Completion reports
+│   ├── plans/         # Design documents  
+│   ├── analysis/      # Technical analysis
+│   └── notes/         # Session notes (if not using beads)
+│
+├── skills/            # Agent skills
+└── memory/            # Persistent knowledge (memory tool)
+```
+
 ## ⚠️ CRITICAL: Generic DOM Library - Documentation Rules
 
 **THIS IS A GENERIC DOM LIBRARY** - Documentation examples MUST use generic element/attribute names.

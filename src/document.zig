@@ -624,7 +624,7 @@ pub const Document = struct {
     // Convenience Methods - EventTarget API Delegation
     // ================================================================
 
-    /// Convenience: doc.addEventListener(...) instead of doc.prototype.prototype.addEventListener(...)
+    /// Convenience: doc.addEventListener(...) instead of doc.prototype.addEventListener(...)
     pub inline fn addEventListener(
         self: *Document,
         event_type: []const u8,
@@ -635,7 +635,7 @@ pub const Document = struct {
         passive: bool,
         signal: ?*anyopaque,
     ) !void {
-        return try self.prototype.prototype.addEventListener(
+        return try self.prototype.addEventListener(
             event_type,
             callback,
             context,
@@ -646,19 +646,19 @@ pub const Document = struct {
         );
     }
 
-    /// Convenience: doc.removeEventListener(...) instead of doc.prototype.prototype.removeEventListener(...)
+    /// Convenience: doc.removeEventListener(...) instead of doc.prototype.removeEventListener(...)
     pub inline fn removeEventListener(
         self: *Document,
         event_type: []const u8,
         callback: EventCallback,
         capture: bool,
     ) void {
-        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+        self.prototype.removeEventListener(event_type, callback, capture);
     }
 
-    /// Convenience: doc.dispatchEvent(event) instead of doc.prototype.prototype.dispatchEvent(event)
+    /// Convenience: doc.dispatchEvent(event) instead of doc.prototype.dispatchEvent(event)
     pub inline fn dispatchEvent(self: *Document, event: *Event) !bool {
-        return try self.prototype.prototype.dispatchEvent(event);
+        return try self.prototype.dispatchEvent(event);
     }
 
     // ================================================================
@@ -2631,6 +2631,11 @@ pub const Document = struct {
     /// // Returns: Element or null
     /// ```
     pub fn querySelector(self: *Document, selectors: []const u8) !?*Element {
+        // Empty selector is invalid per WHATWG spec
+        if (selectors.len == 0) {
+            return error.InvalidSelector;
+        }
+
         // Delegate to documentElement if it exists
         if (self.documentElement()) |root| {
             return try root.querySelector(self.prototype.allocator, selectors);
@@ -2670,12 +2675,42 @@ pub const Document = struct {
     /// // Returns: NodeList (array-like, always defined)
     /// ```
     pub fn querySelectorAll(self: *Document, selectors: []const u8) ![]const *Element {
-        // Delegate to documentElement if it exists
-        if (self.documentElement()) |root| {
-            return try root.querySelectorAll(self.prototype.allocator, selectors);
+        // Empty selector is invalid per WHATWG spec
+        if (selectors.len == 0) {
+            return error.InvalidSelector;
         }
-        // Return empty slice if no document element
-        return &[_]*Element{};
+
+        // Get documentElement
+        const root = self.documentElement() orelse {
+            // No document element, return empty
+            return &[_]*Element{};
+        };
+
+        // Document.querySelectorAll should search the entire document tree,
+        // including the documentElement itself. Element.querySelectorAll only
+        // searches descendants (not self).
+
+        // Get parsed selector from cache
+        const parsed_selector = try self.selector_cache.get(selectors);
+        const Matcher = @import("selector/matcher.zig").Matcher;
+        const matcher = Matcher.init(self.prototype.allocator);
+
+        var results = std.ArrayList(*Element){};
+        errdefer results.deinit(self.prototype.allocator);
+
+        // Check if documentElement itself matches
+        if (try matcher.matches(root, &parsed_selector.selector_list)) {
+            try results.append(self.prototype.allocator, root);
+        }
+
+        // Get all descendants that match
+        const descendants = try root.querySelectorAll(self.prototype.allocator, selectors);
+        defer self.prototype.allocator.free(descendants);
+
+        // Add all descendants
+        try results.appendSlice(self.prototype.allocator, descendants);
+
+        return try results.toOwnedSlice(self.prototype.allocator);
     }
 
     /// Returns a live collection of element children.

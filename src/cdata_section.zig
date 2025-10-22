@@ -289,7 +289,7 @@ pub const CDATASection = struct {
         return try self.prototype.prototype.cloneNode(deep);
     }
 
-    // EventTarget methods (via .prototype.prototype.prototype)
+    // EventTarget methods (via .prototype.prototype - Text.prototype is Node, Node has EventTarget methods)
     pub inline fn addEventListener(
         self: *CDATASection,
         event_type: []const u8,
@@ -300,13 +300,13 @@ pub const CDATASection = struct {
         passive: bool,
         signal: ?*anyopaque,
     ) !void {
-        return try self.prototype.prototype.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
+        return try self.prototype.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
     }
     pub inline fn removeEventListener(self: *CDATASection, event_type: []const u8, callback: EventCallback, capture: bool) void {
-        self.prototype.prototype.prototype.removeEventListener(event_type, callback, capture);
+        self.prototype.prototype.removeEventListener(event_type, callback, capture);
     }
     pub inline fn dispatchEvent(self: *CDATASection, event: *Event) !bool {
-        return try self.prototype.prototype.prototype.dispatchEvent(event);
+        return try self.prototype.prototype.dispatchEvent(event);
     }
 
     /// Creates a new CDATASection node with the specified content.

@@ -71,6 +71,11 @@ const dom = @import("dom");
 
 const Text = dom.Text;
 const DOMText = types.DOMText;
+const DOMNode = types.DOMNode;
+const DOMErrorCode = types.DOMErrorCode;
+const zigErrorToDOMError = types.zigErrorToDOMError;
+const zigStringToCString = types.zigStringToCString;
+const cStringToZigString = types.cStringToZigString;
 
 // ============================================================================
 // Text-Specific Methods
@@ -146,12 +151,100 @@ pub export fn dom_text_splittext(text: *DOMText, offset: u32) ?*DOMText {
 /// ```
 pub export fn dom_text_get_wholetext(text: *DOMText) [*:0]const u8 {
     const text_node: *const Text = @ptrCast(@alignCast(text));
-    const allocator = std.heap.page_allocator;
+    const allocator = std.heap.c_allocator;
+
     const whole = text_node.wholeText(allocator) catch return "";
-    // WARNING: This leaks memory! Need proper caching
-    // TODO: Cache wholeText result or use arena allocator
-    _ = whole;
-    return "";
+
+    // Allocate null-terminated C string
+    const c_str = allocator.allocSentinel(u8, whole.len, 0) catch {
+        allocator.free(whole);
+        return "";
+    };
+
+    @memcpy(c_str, whole);
+    allocator.free(whole);
+
+    // WARNING: Caller must free with dom_text_free_wholetext()
+    return c_str;
+}
+
+/// Free wholeText string.
+///
+/// ## Parameters
+/// - `str`: String returned from dom_text_get_wholetext()
+///
+/// ## Note
+/// Must be called to free the string allocated by dom_text_get_wholetext().
+///
+/// ## Example (C)
+/// ```c
+/// const char* whole = dom_text_get_wholetext(text);
+/// printf("Whole text: %s\n", whole);
+/// dom_text_free_wholetext(whole);
+/// ```
+pub export fn dom_text_free_wholetext(str: [*:0]const u8) void {
+    const allocator = std.heap.c_allocator;
+    const len = std.mem.len(str);
+    const slice = str[0..len :0];
+    allocator.free(slice);
+}
+
+// ============================================================================
+// Node API Delegation (Convenience Methods)
+// ============================================================================
+// These methods delegate to the Node interface for convenience, avoiding the
+// need to cast Text to Node in C code.
+
+/// Get the parent node
+///
+/// WebIDL: `readonly attribute Node? parentNode;` (inherited from Node)
+pub export fn dom_text_get_parentnode(handle: *DOMText) ?*DOMNode {
+    const text: *const Text = @ptrCast(@alignCast(handle));
+    const parent = text.parentNode() orelse return null;
+    return @ptrCast(parent);
+}
+
+/// Get the next sibling node
+///
+/// WebIDL: `readonly attribute Node? nextSibling;` (inherited from Node)
+pub export fn dom_text_get_nextsibling(handle: *DOMText) ?*DOMNode {
+    const text: *const Text = @ptrCast(@alignCast(handle));
+    const sibling = text.nextSibling() orelse return null;
+    return @ptrCast(sibling);
+}
+
+/// Get the previous sibling node
+///
+/// WebIDL: `readonly attribute Node? previousSibling;` (inherited from Node)
+pub export fn dom_text_get_previoussibling(handle: *DOMText) ?*DOMNode {
+    const text: *const Text = @ptrCast(@alignCast(handle));
+    const sibling = text.previousSibling() orelse return null;
+    return @ptrCast(sibling);
+}
+
+/// Get the node name (returns "#text" for text nodes)
+///
+/// WebIDL: `readonly attribute DOMString nodeName;` (inherited from Node)
+pub export fn dom_text_get_nodename(handle: *DOMText) [*:0]const u8 {
+    const text: *const Text = @ptrCast(@alignCast(handle));
+    return zigStringToCString(text.nodeName());
+}
+
+/// Clone this text node
+///
+/// WebIDL: `Node cloneNode(optional boolean deep = false);` (inherited from Node)
+pub export fn dom_text_clonenode(handle: *DOMText, deep: u8) ?*DOMNode {
+    const text: *const Text = @ptrCast(@alignCast(handle));
+    const cloned = text.cloneNode(deep != 0) catch return null;
+    return @ptrCast(cloned);
+}
+
+/// Check if this text node is connected to a document
+///
+/// WebIDL: `readonly attribute boolean isConnected;` (inherited from Node)
+pub export fn dom_text_get_isconnected(handle: *DOMText) u8 {
+    const text: *const Text = @ptrCast(@alignCast(handle));
+    return if (text.isConnected()) 1 else 0;
 }
 
 // ============================================================================

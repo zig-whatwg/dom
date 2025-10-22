@@ -785,6 +785,84 @@ pub export fn dom_range_detach(range: *DOMRange) void {
     r.detach();
 }
 
+/// Get text content of the range as string.
+///
+/// ## WebIDL
+/// ```webidl
+/// stringifier;
+/// ```
+///
+/// ## Algorithm (WHATWG DOM §5.5)
+/// Returns the text content of the range by concatenating the data of all Text nodes
+/// that are partially or completely contained within the range.
+///
+/// ## Parameters
+/// - `range`: Range handle
+///
+/// ## Returns
+/// Text content string (caller must free with dom_range_free_tostring)
+/// Returns NULL on error.
+///
+/// ## Memory Management
+/// The returned string is allocated and owned by the caller.
+/// You MUST call dom_range_free_tostring() when done to avoid memory leaks.
+///
+/// ## Spec References
+/// - Method: https://dom.spec.whatwg.org/#dom-range-stringifier
+/// - WebIDL: dom.idl:531
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Range/toString
+///
+/// ## Example
+/// ```c
+/// DOMRange* range = dom_document_createrange(doc);
+/// dom_range_setstart(range, textNode, 0);
+/// dom_range_setend(range, textNode, 5);
+///
+/// const char* text = dom_range_tostring(range);
+/// if (text) {
+///     printf("Range text: %s\n", text);
+///     dom_range_free_tostring(text);
+/// }
+/// dom_range_release(range);
+/// ```
+pub export fn dom_range_tostring(range: *DOMRange) ?[*:0]const u8 {
+    const r: *const Range = @ptrCast(@alignCast(range));
+    const allocator = std.heap.c_allocator;
+
+    // Get string from range
+    const text = r.toString(allocator) catch return null;
+
+    // Allocate null-terminated C string
+    const c_str = allocator.allocSentinel(u8, text.len, 0) catch {
+        allocator.free(text);
+        return null;
+    };
+
+    @memcpy(c_str, text);
+    allocator.free(text);
+
+    // WARNING: Caller must free with dom_range_free_tostring()
+    return c_str;
+}
+
+/// Free toString string.
+///
+/// ## Parameters
+/// - `str`: String returned from dom_range_tostring()
+///
+/// ## Example
+/// ```c
+/// const char* text = dom_range_tostring(range);
+/// // ... use text ...
+/// dom_range_free_tostring(text);
+/// ```
+pub export fn dom_range_free_tostring(str: [*:0]const u8) void {
+    const allocator = std.heap.c_allocator;
+    const len = std.mem.len(str);
+    const slice = str[0..len :0];
+    allocator.free(slice);
+}
+
 /// Release a Range.
 ///
 /// Frees the range and all associated resources.

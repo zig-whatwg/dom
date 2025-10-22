@@ -1,0 +1,890 @@
+#include "element_wrapper.h"
+#include "../wrapper_cache.h"
+#include "../core/template_cache.h"
+#include "../core/utilities.h"
+#include "../collections/nodelist_wrapper.h"
+#include "../collections/domtokenlist_wrapper.h"
+#include "../shadow/shadowroot_wrapper.h"
+
+namespace v8_dom {
+
+v8::Local<v8::Object> ElementWrapper::Wrap(v8::Isolate* isolate,
+                                              v8::Local<v8::Context> context,
+                                              DOMElement* obj) {
+    if (!obj) {
+        return v8::Local<v8::Object>();
+    }
+    
+    // Check wrapper cache first
+    WrapperCache* cache = WrapperCache::ForIsolate(isolate);
+    if (cache->Has(obj)) {
+        return cache->Get(isolate, obj);
+    }
+    
+    // Create new wrapper
+    v8::EscapableHandleScope handle_scope(isolate);
+    v8::Local<v8::FunctionTemplate> tmpl = GetTemplate(isolate);
+    v8::Local<v8::Function> constructor = tmpl->GetFunction(context).ToLocalChecked();
+    v8::Local<v8::Object> wrapper = constructor->NewInstance(context).ToLocalChecked();
+    
+    // Store C pointer in internal field
+    wrapper->SetInternalField(0, v8::External::New(isolate, obj));
+    
+    // Increment C-side reference count
+    dom_element_addref(obj);
+    
+    // Cache with release callback
+    cache->Set(isolate, obj, wrapper, [](void* ptr) {
+        dom_element_release(static_cast<DOMElement*>(ptr));
+    });
+    
+    return handle_scope.Escape(wrapper);
+}
+
+DOMElement* ElementWrapper::Unwrap(v8::Local<v8::Object> obj) {
+    if (obj.IsEmpty() || obj->InternalFieldCount() < 1) {
+        return nullptr;
+    }
+    
+    // V8 13.5: GetInternalField returns Local<Data>, cast to Local<Value>
+    v8::Local<v8::Data> data = obj->GetInternalField(0);
+    v8::Local<v8::Value> ptr = data.As<v8::Value>();
+    if (ptr.IsEmpty()) return nullptr;
+    if (!ptr->IsExternal()) {
+        return nullptr;
+    }
+    
+    return static_cast<DOMElement*>(v8::Local<v8::External>::Cast(ptr)->Value());
+}
+
+void ElementWrapper::InstallTemplate(v8::Isolate* isolate) {
+    v8::Local<v8::FunctionTemplate> tmpl = v8::FunctionTemplate::New(isolate);
+    tmpl->SetClassName(v8::String::NewFromUtf8Literal(isolate, "Element"));
+    tmpl->InstanceTemplate()->SetInternalFieldCount(1);
+    
+    // Inherit from Node
+    tmpl->Inherit(NodeWrapper::GetTemplate(isolate));
+
+    // Get prototype template for adding properties/methods
+    v8::Local<v8::ObjectTemplate> proto = tmpl->PrototypeTemplate();
+    
+    // Readonly properties
+    proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "tagName"),
+                      TagNameGetter);
+    proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "namespaceURI"),
+                      NamespaceURIGetter);
+    proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "prefix"),
+                      PrefixGetter);
+    proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "localName"),
+                      LocalNameGetter);
+    proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "classList"),
+                      ClassListGetter);
+    proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "shadowRoot"),
+                      ShadowRootGetter);
+    proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "assignedSlot"),
+                      AssignedSlotGetter);
+    
+    // Read/write properties
+    proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "id"),
+                      IdGetter, IdSetter);
+    proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "className"),
+                      ClassNameGetter, ClassNameSetter);
+    proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "slot"),
+                      SlotGetter, SlotSetter);
+    
+    // Methods - Attributes
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "getAttribute"),
+              v8::FunctionTemplate::New(isolate, GetAttribute));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "getAttributeNS"),
+              v8::FunctionTemplate::New(isolate, GetAttributeNS));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "setAttribute"),
+              v8::FunctionTemplate::New(isolate, SetAttribute));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "setAttributeNS"),
+              v8::FunctionTemplate::New(isolate, SetAttributeNS));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "removeAttribute"),
+              v8::FunctionTemplate::New(isolate, RemoveAttribute));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "removeAttributeNS"),
+              v8::FunctionTemplate::New(isolate, RemoveAttributeNS));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "toggleAttribute"),
+              v8::FunctionTemplate::New(isolate, ToggleAttribute));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "hasAttribute"),
+              v8::FunctionTemplate::New(isolate, HasAttribute));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "hasAttributeNS"),
+              v8::FunctionTemplate::New(isolate, HasAttributeNS));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "hasAttributes"),
+              v8::FunctionTemplate::New(isolate, HasAttributes));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "getAttributeNames"),
+              v8::FunctionTemplate::New(isolate, GetAttributeNames));
+    
+    // Methods - Querying
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "matches"),
+              v8::FunctionTemplate::New(isolate, Matches));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "closest"),
+              v8::FunctionTemplate::New(isolate, Closest));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "querySelector"),
+              v8::FunctionTemplate::New(isolate, QuerySelector));
+    // TODO: Enable when dom_element_queryselectorall is implemented
+    //     proto->Set(v8::String::NewFromUtf8Literal(isolate, "querySelectorAll"),
+    //               v8::FunctionTemplate::New(isolate, QuerySelectorAll));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "webkitMatchesSelector"),
+              v8::FunctionTemplate::New(isolate, WebkitMatchesSelector));
+    
+    // Methods - Shadow DOM
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "attachShadow"),
+              v8::FunctionTemplate::New(isolate, AttachShadow));
+    
+    // Methods - Adjacent insertion
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "insertAdjacentElement"),
+              v8::FunctionTemplate::New(isolate, InsertAdjacentElement));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "insertAdjacentText"),
+              v8::FunctionTemplate::New(isolate, InsertAdjacentText));
+    
+    // Cache the template
+    TemplateCache* cache = TemplateCache::ForIsolate(isolate);
+    cache->Set(kTemplateIndex, tmpl);
+}
+
+v8::Local<v8::FunctionTemplate> ElementWrapper::GetTemplate(v8::Isolate* isolate) {
+    TemplateCache* cache = TemplateCache::ForIsolate(isolate);
+    
+    if (!cache->Has(kTemplateIndex)) {
+        InstallTemplate(isolate);
+    }
+    
+    return cache->Get(kTemplateIndex);
+}
+
+// ============================================================================
+// Property Implementations - Readonly
+// ============================================================================
+
+void ElementWrapper::TagNameGetter(v8::Local<v8::Name> property,
+                                   const v8::PropertyCallbackInfo<v8::Value>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    const char* tag_name = dom_element_get_tagname(elem);
+    info.GetReturnValue().Set(CStringToV8String(isolate, tag_name));
+}
+
+void ElementWrapper::NamespaceURIGetter(v8::Local<v8::Name> property,
+                                        const v8::PropertyCallbackInfo<v8::Value>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    const char* ns = dom_element_get_namespaceuri(elem);
+    if (ns && ns[0] != '\0') {
+        info.GetReturnValue().Set(CStringToV8String(isolate, ns));
+    } else {
+        info.GetReturnValue().SetNull();
+    }
+}
+
+void ElementWrapper::PrefixGetter(v8::Local<v8::Name> property,
+                                  const v8::PropertyCallbackInfo<v8::Value>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    const char* prefix = dom_element_get_prefix(elem);
+    if (prefix && prefix[0] != '\0') {
+        info.GetReturnValue().Set(CStringToV8String(isolate, prefix));
+    } else {
+        info.GetReturnValue().SetNull();
+    }
+}
+
+void ElementWrapper::LocalNameGetter(v8::Local<v8::Name> property,
+                                     const v8::PropertyCallbackInfo<v8::Value>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    const char* local_name = dom_element_get_localname(elem);
+    info.GetReturnValue().Set(CStringToV8String(isolate, local_name));
+}
+
+void ElementWrapper::ClassListGetter(v8::Local<v8::Name> property,
+                                     const v8::PropertyCallbackInfo<v8::Value>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    DOMDOMTokenList* classList = dom_element_get_classlist(elem);
+    if (classList) {
+        v8::Local<v8::Object> wrapped = DOMTokenListWrapper::Wrap(isolate, context, classList);
+        info.GetReturnValue().Set(wrapped);
+    } else {
+        info.GetReturnValue().SetNull();
+    }
+}
+
+void ElementWrapper::ShadowRootGetter(v8::Local<v8::Name> property,
+                                      const v8::PropertyCallbackInfo<v8::Value>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    DOMShadowRoot* shadowRoot = dom_element_get_shadowroot(elem);
+    if (shadowRoot) {
+        v8::Local<v8::Object> wrapped = ShadowRootWrapper::Wrap(isolate, context, shadowRoot);
+        info.GetReturnValue().Set(wrapped);
+    } else {
+        info.GetReturnValue().SetNull();
+    }
+}
+
+void ElementWrapper::AssignedSlotGetter(v8::Local<v8::Name> property,
+                                        const v8::PropertyCallbackInfo<v8::Value>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    DOMElement* assignedSlot = dom_element_get_assignedslot(elem);
+    if (assignedSlot) {
+        v8::Local<v8::Object> wrapped = ElementWrapper::Wrap(isolate, context, assignedSlot);
+        info.GetReturnValue().Set(wrapped);
+    } else {
+        info.GetReturnValue().SetNull();
+    }
+}
+
+// ============================================================================
+// Property Implementations - Read/Write
+// ============================================================================
+
+void ElementWrapper::IdGetter(v8::Local<v8::Name> property,
+                              const v8::PropertyCallbackInfo<v8::Value>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    const char* id = dom_element_get_id(elem);
+    info.GetReturnValue().Set(CStringToV8String(isolate, id));
+}
+
+void ElementWrapper::IdSetter(v8::Local<v8::Name> property,
+                              v8::Local<v8::Value> value,
+                              const v8::PropertyCallbackInfo<void>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    CStringFromV8 id(isolate, value);
+    int32_t err = dom_element_set_id(elem, id.get());
+    if (err != 0) {
+        ThrowDOMException(isolate, err);
+    }
+}
+
+void ElementWrapper::ClassNameGetter(v8::Local<v8::Name> property,
+                                     const v8::PropertyCallbackInfo<v8::Value>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    const char* className = dom_element_get_classname(elem);
+    info.GetReturnValue().Set(CStringToV8String(isolate, className));
+}
+
+void ElementWrapper::ClassNameSetter(v8::Local<v8::Name> property,
+                                     v8::Local<v8::Value> value,
+                                     const v8::PropertyCallbackInfo<void>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    CStringFromV8 className(isolate, value);
+    int32_t err = dom_element_set_classname(elem, className.get());
+    if (err != 0) {
+        ThrowDOMException(isolate, err);
+    }
+}
+
+void ElementWrapper::SlotGetter(v8::Local<v8::Name> property,
+                                const v8::PropertyCallbackInfo<v8::Value>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    const char* slot = dom_element_get_slot(elem);
+    info.GetReturnValue().Set(CStringToV8String(isolate, slot));
+}
+
+void ElementWrapper::SlotSetter(v8::Local<v8::Name> property,
+                                v8::Local<v8::Value> value,
+                                const v8::PropertyCallbackInfo<void>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    DOMElement* elem = Unwrap(info.This().As<v8::Object>());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    CStringFromV8 slot(isolate, value);
+    int32_t err = dom_element_set_slot(elem, slot.get());
+    if (err != 0) {
+        ThrowDOMException(isolate, err);
+    }
+}
+
+// ============================================================================
+// Method Implementations - Attributes
+// ============================================================================
+
+void ElementWrapper::GetAttribute(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 1) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "getAttribute requires 1 argument")));
+        return;
+    }
+    
+    CStringFromV8 qualifiedName(isolate, args[0]);
+    const char* value = dom_element_getattribute(elem, qualifiedName.get());
+    
+    // DEBUG: Print the returned pointer and first few bytes
+    std::fprintf(stderr, "[DEBUG] getAttribute returned: %p\n", (void*)value);
+    if (value) {
+        std::fprintf(stderr, "[DEBUG] First 8 bytes hex: ");
+        for (int i = 0; i < 8 && value[i] != '\0'; i++) {
+            std::fprintf(stderr, "%02x ", (unsigned char)value[i]);
+        }
+        std::fprintf(stderr, "\n[DEBUG] String: [%s]\n", value);
+    }
+    
+    if (value && value[0] != '\0') {
+        args.GetReturnValue().Set(CStringToV8String(isolate, value));
+    } else {
+        args.GetReturnValue().SetNull();
+    }
+}
+
+void ElementWrapper::GetAttributeNS(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 2) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "getAttributeNS requires 2 arguments")));
+        return;
+    }
+    
+    CStringFromV8 ns(isolate, args[0]);
+    CStringFromV8 localName(isolate, args[1]);
+    const char* value = dom_element_getattributens(elem, ns.get(), localName.get());
+    
+    if (value && value[0] != '\0') {
+        args.GetReturnValue().Set(CStringToV8String(isolate, value));
+    } else {
+        args.GetReturnValue().SetNull();
+    }
+}
+
+void ElementWrapper::SetAttribute(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 2) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "setAttribute requires 2 arguments")));
+        return;
+    }
+    
+    CStringFromV8 qualifiedName(isolate, args[0]);
+    CStringFromV8 value(isolate, args[1]);
+    int32_t err = dom_element_setattribute(elem, qualifiedName.get(), value.get());
+    
+    if (err != 0) {
+        ThrowDOMException(isolate, err);
+    }
+}
+
+void ElementWrapper::SetAttributeNS(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 3) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "setAttributeNS requires 3 arguments")));
+        return;
+    }
+    
+    CStringFromV8 ns(isolate, args[0]);
+    CStringFromV8 qualifiedName(isolate, args[1]);
+    CStringFromV8 value(isolate, args[2]);
+    int32_t err = dom_element_setattributens(elem, ns.get(), qualifiedName.get(), value.get());
+    
+    if (err != 0) {
+        ThrowDOMException(isolate, err);
+    }
+}
+
+void ElementWrapper::RemoveAttribute(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 1) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "removeAttribute requires 1 argument")));
+        return;
+    }
+    
+    CStringFromV8 qualifiedName(isolate, args[0]);
+    int32_t err = dom_element_removeattribute(elem, qualifiedName.get());
+    
+    if (err != 0) {
+        ThrowDOMException(isolate, err);
+    }
+}
+
+void ElementWrapper::RemoveAttributeNS(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 2) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "removeAttributeNS requires 2 arguments")));
+        return;
+    }
+    
+    CStringFromV8 ns(isolate, args[0]);
+    CStringFromV8 localName(isolate, args[1]);
+    int32_t err = dom_element_removeattributens(elem, ns.get(), localName.get());
+    
+    if (err != 0) {
+        ThrowDOMException(isolate, err);
+    }
+}
+
+void ElementWrapper::ToggleAttribute(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 1) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "toggleAttribute requires 1 argument")));
+        return;
+    }
+    
+    CStringFromV8 qualifiedName(isolate, args[0]);
+    uint8_t force = args.Length() >= 2 ? args[1]->BooleanValue(isolate) : 2;  // 2 = not provided
+    uint8_t result = dom_element_toggleattribute(elem, qualifiedName.get(), force);
+    
+    args.GetReturnValue().Set(v8::Boolean::New(isolate, result != 0));
+}
+
+void ElementWrapper::HasAttribute(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 1) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "hasAttribute requires 1 argument")));
+        return;
+    }
+    
+    CStringFromV8 qualifiedName(isolate, args[0]);
+    uint8_t result = dom_element_hasattribute(elem, qualifiedName.get());
+    
+    args.GetReturnValue().Set(v8::Boolean::New(isolate, result != 0));
+}
+
+void ElementWrapper::HasAttributeNS(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 2) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "hasAttributeNS requires 2 arguments")));
+        return;
+    }
+    
+    CStringFromV8 ns(isolate, args[0]);
+    CStringFromV8 localName(isolate, args[1]);
+    uint8_t result = dom_element_hasattributens(elem, ns.get(), localName.get());
+    
+    args.GetReturnValue().Set(v8::Boolean::New(isolate, result != 0));
+}
+
+void ElementWrapper::HasAttributes(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    uint8_t result = dom_element_hasattributes(elem);
+    args.GetReturnValue().Set(v8::Boolean::New(isolate, result != 0));
+}
+
+void ElementWrapper::GetAttributeNames(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    uint32_t count = 0;
+    const char** names = dom_element_getattributenames(elem, &count);
+    
+    v8::Local<v8::Array> array = v8::Array::New(isolate, count);
+    for (uint32_t i = 0; i < count; i++) {
+        array->Set(context, i, CStringToV8String(isolate, names[i])).Check();
+    }
+    
+    dom_element_free_attributenames(names, count);
+    args.GetReturnValue().Set(array);
+}
+
+// ============================================================================
+// Method Implementations - Querying
+// ============================================================================
+
+void ElementWrapper::Matches(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 1) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "matches requires 1 argument")));
+        return;
+    }
+    
+    CStringFromV8 selectors(isolate, args[0]);
+    uint8_t result = dom_element_matches(elem, selectors.get());
+    
+    args.GetReturnValue().Set(v8::Boolean::New(isolate, result != 0));
+}
+
+void ElementWrapper::Closest(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 1) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "closest requires 1 argument")));
+        return;
+    }
+    
+    CStringFromV8 selectors(isolate, args[0]);
+    DOMElement* result = dom_element_closest(elem, selectors.get());
+    
+    if (result) {
+        args.GetReturnValue().Set(ElementWrapper::Wrap(isolate, context, result));
+    } else {
+        args.GetReturnValue().SetNull();
+    }
+}
+
+void ElementWrapper::QuerySelector(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 1) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "querySelector requires 1 argument")));
+        return;
+    }
+    
+    CStringFromV8 selectors(isolate, args[0]);
+    DOMElement* result = dom_element_queryselector(elem, selectors.get());
+    
+    if (result) {
+        args.GetReturnValue().Set(ElementWrapper::Wrap(isolate, context, result));
+    } else {
+        args.GetReturnValue().SetNull();
+    }
+}
+#if 0 // TODO: Enable when dom_element_queryselectorall is implemented
+
+void ElementWrapper::QuerySelectorAll(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 1) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "querySelectorAll requires 1 argument")));
+        return;
+    }
+    
+    CStringFromV8 selectors(isolate, args[0]);
+    DOMNodeList* result = dom_element_queryselectorall(elem, selectors.get());
+    
+    if (result) {
+        args.GetReturnValue().Set(NodeListWrapper::Wrap(isolate, context, result));
+    } else {
+        args.GetReturnValue().SetNull();
+    }
+    }
+#endif
+
+
+void ElementWrapper::WebkitMatchesSelector(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 1) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "webkitMatchesSelector requires 1 argument")));
+        return;
+    }
+    
+    CStringFromV8 selectors(isolate, args[0]);
+    uint8_t result = dom_element_webkitmatchesselector(elem, selectors.get());
+    
+    args.GetReturnValue().Set(v8::Boolean::New(isolate, result != 0));
+}
+
+// ============================================================================
+// Method Implementations - Shadow DOM
+// ============================================================================
+
+void ElementWrapper::AttachShadow(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 1 || !args[0]->IsObject()) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "attachShadow requires an options object")));
+        return;
+    }
+    
+    v8::Local<v8::Object> options = args[0].As<v8::Object>();
+    
+    // Get mode property
+    v8::Local<v8::Value> mode_val = options->Get(context,
+        v8::String::NewFromUtf8Literal(isolate, "mode")).ToLocalChecked();
+    std::string mode_str = V8StringToStdString(isolate, mode_val);
+    
+    int mode = 1; // Default to open
+    if (mode_str == "closed") {
+        mode = 2;
+    }
+    
+    // Get delegatesFocus property (optional)
+    v8::Local<v8::Value> delegates_val = options->Get(context,
+        v8::String::NewFromUtf8Literal(isolate, "delegatesFocus")).ToLocalChecked();
+    bool delegates_focus = delegates_val->BooleanValue(isolate);
+    
+    DOMShadowRoot* shadowRoot = dom_element_attachshadow(elem, mode, delegates_focus);
+    
+    if (shadowRoot) {
+        args.GetReturnValue().Set(ShadowRootWrapper::Wrap(isolate, context, shadowRoot));
+    } else {
+        // attachShadow can throw if already attached or invalid element
+        isolate->ThrowException(v8::Exception::Error(
+            v8::String::NewFromUtf8Literal(isolate, "Failed to attach shadow root")));
+    }
+}
+
+// ============================================================================
+// Method Implementations - Adjacent Insertion
+// ============================================================================
+
+void ElementWrapper::InsertAdjacentElement(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 2) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "insertAdjacentElement requires 2 arguments")));
+        return;
+    }
+    
+    CStringFromV8 where(isolate, args[0]);
+    
+    if (!args[1]->IsObject()) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Second argument must be an Element")));
+        return;
+    }
+    
+    DOMElement* element = ElementWrapper::Unwrap(args[1].As<v8::Object>());
+    if (!element) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Second argument must be an Element")));
+        return;
+    }
+    
+    DOMElement* result = dom_element_insertadjacentelement(elem, where.get(), element);
+    
+    if (result) {
+        args.GetReturnValue().Set(ElementWrapper::Wrap(isolate, context, result));
+    } else {
+        args.GetReturnValue().SetNull();
+    }
+}
+
+void ElementWrapper::InsertAdjacentText(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    DOMElement* elem = Unwrap(args.This());
+    if (!elem) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Element")));
+        return;
+    }
+    
+    if (args.Length() < 2) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "insertAdjacentText requires 2 arguments")));
+        return;
+    }
+    
+    CStringFromV8 where(isolate, args[0]);
+    CStringFromV8 data(isolate, args[1]);
+    
+    int32_t err = dom_element_insertadjacenttext(elem, where.get(), data.get());
+    
+    if (err != 0) {
+        ThrowDOMException(isolate, err);
+    }
+}
+
+} // namespace v8_dom

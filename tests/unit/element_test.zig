@@ -2200,12 +2200,13 @@ test "Element delegation - clean WHATWG-compliant API" {
     defer doc.release();
 
     const parent = try doc.createElement("div");
+    defer parent.prototype.release(); // Orphaned node - caller must release
     const child = try doc.createElement("span");
     const text = try doc.createTextNode("Hello");
 
     // NEW API: Clean, WHATWG-compliant (no .prototype needed)
-    _ = try parent.appendChild(&child.prototype);
-    _ = try child.appendChild(&text.prototype);
+    _ = try parent.appendChild(&child.prototype); // Ownership transferred to parent
+    _ = try child.appendChild(&text.prototype); // Ownership transferred to child
 
     // All delegation methods work
     try std.testing.expect(parent.hasChildNodes());

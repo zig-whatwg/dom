@@ -272,10 +272,10 @@ pub const DocumentType = struct {
         return self.prototype.isConnected();
     }
     pub inline fn addEventListener(self: *DocumentType, event_type: []const u8, callback: EventCallback, context: *anyopaque, capture: bool, once: bool, passive: bool, signal: ?*anyopaque) !void {
-        return try self.prototype.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
+        return try self.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
     }
     pub inline fn dispatchEvent(self: *DocumentType, event: *Event) !bool {
-        return try self.prototype.prototype.dispatchEvent(event);
+        return try self.prototype.dispatchEvent(event);
     }
 
     /// Creates a new DocumentType node.

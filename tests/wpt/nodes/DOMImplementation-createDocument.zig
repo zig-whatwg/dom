@@ -42,6 +42,7 @@ test "DOMImplementation.createDocument with doctype" {
 
     const impl = doc.getImplementation();
     const doctype = try impl.createDocumentType("html", "", "");
+    defer doctype.prototype.release();
 
     const newDoc = try impl.createDocument(null, "", doctype);
     defer newDoc.release();

@@ -219,6 +219,54 @@ pub export fn dom_customevent_get_detail(event: *DOMCustomEvent) ?*anyopaque {
     return null;
 }
 
+/// Initialize a custom event (legacy method).
+///
+/// ## WebIDL
+/// ```webidl
+/// undefined initCustomEvent(DOMString type, optional boolean bubbles = false,
+///                          optional boolean cancelable = false, optional any detail = null);
+/// ```
+///
+/// ## Parameters
+/// - `event`: CustomEvent handle
+/// - `type`: Event type string
+/// - `bubbles`: Whether event bubbles (0 = false, non-zero = true)
+/// - `cancelable`: Whether event is cancelable (0 = false, non-zero = true)
+/// - `detail`: Custom data pointer (NULL for none)
+///
+/// ## Spec References
+/// - Method: https://dom.spec.whatwg.org/#dom-customevent-initcustomevent
+/// - WebIDL: dom.idl:71
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/CustomEvent/initCustomEvent
+///
+/// ## Note
+/// This is a legacy method from DOM Level 3. Modern code should use CustomEvent constructors instead.
+/// This method can only be called before the event is dispatched.
+///
+/// ## Example (C)
+/// ```c
+/// DOMCustomEvent* event = dom_customevent_new();
+/// void* data = malloc(sizeof(int));
+/// *(int*)data = 42;
+/// dom_customevent_initcustomevent(event, "custom", 1, 1, data);
+/// // ... dispatch event ...
+/// dom_customevent_release(event);
+/// free(data);
+/// ```
+pub export fn dom_customevent_initcustomevent(
+    event: *DOMCustomEvent,
+    type_str: [*:0]const u8,
+    bubbles: u8,
+    cancelable: u8,
+    detail: ?*anyopaque,
+) void {
+    const evt: *CustomEvent = @ptrCast(@alignCast(event));
+    const event_type = types.cStringToZigString(type_str);
+    const bubbles_bool = (bubbles != 0);
+    const cancelable_bool = (cancelable != 0);
+    evt.initCustomEvent(event_type, bubbles_bool, cancelable_bool, detail);
+}
+
 // ============================================================================
 // Memory Management
 // ============================================================================

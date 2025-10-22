@@ -295,7 +295,7 @@ pub const ProcessingInstruction = struct {
         return try self.prototype.prototype.cloneNode(deep);
     }
 
-    // EventTarget methods (via .prototype.prototype.prototype)
+    // EventTarget methods (via .prototype.prototype - Text.prototype is Node, Node has EventTarget methods)
     pub inline fn addEventListener(
         self: *ProcessingInstruction,
         event_type: []const u8,
@@ -306,14 +306,134 @@ pub const ProcessingInstruction = struct {
         passive: bool,
         signal: ?*anyopaque,
     ) !void {
-        return try self.prototype.prototype.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
+        return try self.prototype.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
     }
     pub inline fn removeEventListener(self: *ProcessingInstruction, event_type: []const u8, callback: EventCallback, capture: bool) void {
-        self.prototype.prototype.prototype.removeEventListener(event_type, callback, capture);
+        self.prototype.prototype.removeEventListener(event_type, callback, capture);
     }
     pub inline fn dispatchEvent(self: *ProcessingInstruction, event: *Event) !bool {
-        return try self.prototype.prototype.prototype.dispatchEvent(event);
+        return try self.prototype.prototype.dispatchEvent(event);
     }
+
+    // ================================================================
+    // ChildNode Mixin (WHATWG DOM §4.2.8)
+    // ================================================================
+    // CharacterData includes ChildNode (WebIDL line 152)
+
+    /// Type for representing either a Node or a DOMString in variadic methods.
+    /// This is an alias to Text.NodeOrString for delegation compatibility.
+    pub const NodeOrString = Text.NodeOrString;
+
+    /// Removes this ProcessingInstruction from its parent.
+    ///
+    /// Implements WHATWG DOM ChildNode.remove() per §4.2.8.
+    /// Delegates to Text.remove() which handles the implementation.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined remove();
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-remove
+    /// - WebIDL: dom.idl:148
+    pub inline fn remove(self: *ProcessingInstruction) !void {
+        return try self.prototype.remove();
+    }
+
+    /// Inserts nodes before this ProcessingInstruction.
+    ///
+    /// Implements WHATWG DOM ChildNode.before() per §4.2.8.
+    /// Delegates to Text.before() which handles the implementation.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined before((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-before
+    /// - WebIDL: dom.idl:145
+    pub inline fn before(self: *ProcessingInstruction, nodes: []const Text.NodeOrString) !void {
+        return try self.prototype.before(nodes);
+    }
+
+    /// Inserts nodes after this ProcessingInstruction.
+    ///
+    /// Implements WHATWG DOM ChildNode.after() per §4.2.8.
+    /// Delegates to Text.after() which handles the implementation.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined after((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-after
+    /// - WebIDL: dom.idl:146
+    pub inline fn after(self: *ProcessingInstruction, nodes: []const Text.NodeOrString) !void {
+        return try self.prototype.after(nodes);
+    }
+
+    /// Replaces this ProcessingInstruction with nodes.
+    ///
+    /// Implements WHATWG DOM ChildNode.replaceWith() per §4.2.8.
+    /// Delegates to Text.replaceWith() which handles the implementation.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// [CEReactions, Unscopable] undefined replaceWith((Node or DOMString)... nodes);
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-childnode-replacewith
+    /// - WebIDL: dom.idl:147
+    pub inline fn replaceWith(self: *ProcessingInstruction, nodes: []const Text.NodeOrString) !void {
+        return try self.prototype.replaceWith(nodes);
+    }
+
+    // ================================================================
+    // NonDocumentTypeChildNode Mixin (WHATWG DOM §4.2.7)
+    // ================================================================
+    // CharacterData includes NonDocumentTypeChildNode (WebIDL line 142)
+
+    /// Returns the previous sibling that is an element.
+    ///
+    /// Implements WHATWG DOM NonDocumentTypeChildNode.previousElementSibling property.
+    /// Delegates to Text.previousElementSibling() which handles the implementation.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute Element? previousElementSibling;
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
+    /// - WebIDL: dom.idl:138
+    pub inline fn previousElementSibling(self: *const ProcessingInstruction) ?*@import("element.zig").Element {
+        return self.prototype.previousElementSibling();
+    }
+
+    /// Returns the next sibling that is an element.
+    ///
+    /// Implements WHATWG DOM NonDocumentTypeChildNode.nextElementSibling property.
+    /// Delegates to Text.nextElementSibling() which handles the implementation.
+    ///
+    /// ## WebIDL
+    /// ```webidl
+    /// readonly attribute Element? nextElementSibling;
+    /// ```
+    ///
+    /// ## Spec References
+    /// - Algorithm: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
+    /// - WebIDL: dom.idl:139
+    pub inline fn nextElementSibling(self: *const ProcessingInstruction) ?*@import("element.zig").Element {
+        return self.prototype.nextElementSibling();
+    }
+
+    // ================================================================
+    // ProcessingInstruction Lifecycle
+    // ================================================================
 
     /// Creates a new ProcessingInstruction node with the specified target and data.
     ///

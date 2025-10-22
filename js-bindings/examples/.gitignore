@@ -1,0 +1,18 @@
+# Compiled examples
+v8_basic_wrapper
+v8_document_wrapper
+v8_wrapper_cache
+test_v8
+
+# V8 data files
+icudtl.dat
+snapshot_blob.bin
+
+# Build artifacts
+*.o
+*.dSYM/
+
+# Editor files
+.vscode/
+.idea/
+*.swp

@@ -29,5 +29,5 @@ pub fn main() !void {
     defer allocator.free(bindings);
 
     // Print to stdout
-    try std.io.getStdOut().writeAll(bindings);
+    std.debug.print("{s}", .{bindings});
 }

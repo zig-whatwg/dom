@@ -125,6 +125,7 @@ const Event = dom.Event;
 const EventInit = dom.EventInit;
 const EventTarget = dom.EventTarget;
 const DOMEvent = types.DOMEvent;
+const DOMEventTarget = types.DOMEventTarget;
 
 // ============================================================================
 // Constructor
@@ -373,6 +374,109 @@ pub export fn dom_event_get_timestamp(event: *DOMEvent) f64 {
     return evt.time_stamp;
 }
 
+/// Gets the event target (original target).
+///
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute EventTarget? target;
+/// ```
+///
+/// ## Parameters
+/// - `event`: Event handle
+///
+/// ## Returns
+/// Event target (EventTarget or Node), or NULL if not set
+/// - Borrowed reference - do NOT release separately
+///
+/// ## Spec References
+/// - Attribute: https://dom.spec.whatwg.org/#dom-event-target
+/// - WebIDL: dom.idl:43
+///
+/// ## Note
+/// The target is the object to which the event was originally dispatched.
+/// It remains constant during propagation, unlike currentTarget.
+///
+/// ## Example (C)
+/// ```c
+/// DOMNode* target = (DOMNode*)dom_event_get_target(event);
+/// if (target) {
+///     const char* name = dom_node_get_nodename(target);
+///     printf("Event target: %s\n", name);
+/// }
+/// ```
+pub export fn dom_event_get_target(event: *DOMEvent) ?*types.DOMEventTarget {
+    const evt: *const Event = @ptrCast(@alignCast(event));
+    return if (evt.target) |t| @ptrCast(t) else null;
+}
+
+/// Gets the current event target (listener being invoked).
+///
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute EventTarget? currentTarget;
+/// ```
+///
+/// ## Parameters
+/// - `event`: Event handle
+///
+/// ## Returns
+/// Current target (where listener is attached), or NULL if not dispatching
+/// - Borrowed reference - do NOT release separately
+///
+/// ## Spec References
+/// - Attribute: https://dom.spec.whatwg.org/#dom-event-currenttarget
+/// - WebIDL: dom.idl:44
+///
+/// ## Note
+/// The currentTarget changes during propagation to reflect the object
+/// whose event listener is currently being invoked.
+///
+/// ## Example (C)
+/// ```c
+/// DOMNode* current = (DOMNode*)dom_event_get_currenttarget(event);
+/// if (current) {
+///     printf("Listener attached to: %s\n", dom_node_get_nodename(current));
+/// }
+/// ```
+pub export fn dom_event_get_currenttarget(event: *DOMEvent) ?*types.DOMEventTarget {
+    const evt: *const Event = @ptrCast(@alignCast(event));
+    return if (evt.current_target) |t| @ptrCast(t) else null;
+}
+
+/// Gets the source element (legacy alias for target).
+///
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute EventTarget? srcElement; // legacy
+/// ```
+///
+/// ## Parameters
+/// - `event`: Event handle
+///
+/// ## Returns
+/// Event target (same as target attribute)
+/// - Borrowed reference - do NOT release separately
+///
+/// ## Spec References
+/// - Attribute: https://dom.spec.whatwg.org/#dom-event-srcelement
+/// - WebIDL: dom.idl:44 (legacy)
+///
+/// ## Note
+/// This is a legacy alias for the target attribute, provided for
+/// compatibility with older code. New code should use target instead.
+///
+/// ## Example (C)
+/// ```c
+/// // srcElement is the same as target
+/// DOMNode* target = (DOMNode*)dom_event_get_target(event);
+/// DOMNode* srcElement = (DOMNode*)dom_event_get_srcelement(event);
+/// // target == srcElement
+/// ```
+pub export fn dom_event_get_srcelement(event: *DOMEvent) ?*types.DOMEventTarget {
+    // srcElement is just an alias for target
+    return dom_event_get_target(event);
+}
+
 // ============================================================================
 // Methods
 // ============================================================================
@@ -432,6 +536,222 @@ pub export fn dom_event_stopimmediatepropagation(event: *DOMEvent) void {
 pub export fn dom_event_preventdefault(event: *DOMEvent) void {
     const evt: *Event = @ptrCast(@alignCast(event));
     evt.preventDefault();
+}
+
+/// Get the event propagation path.
+///
+/// ## WebIDL
+/// ```webidl
+/// sequence<EventTarget> composedPath();
+/// ```
+///
+/// ## Algorithm (WHATWG DOM §2.9)
+/// Returns an array of EventTarget objects representing the path through which
+/// the event will propagate (or has propagated). The path is computed during
+/// event dispatch and respects shadow DOM boundaries.
+///
+/// ## Parameters
+/// - `event`: Event handle
+/// - `count`: Pointer to store the number of targets in the path
+///
+/// ## Returns
+/// Array of EventTarget pointers (caller must free with dom_event_free_composedpath)
+/// Returns NULL if event has not been dispatched or on error.
+///
+/// ## Memory Management
+/// The returned array is allocated and owned by the caller.
+/// You MUST call dom_event_free_composedpath() when done to avoid memory leaks.
+///
+/// ## Spec References
+/// - Method: https://dom.spec.whatwg.org/#dom-event-composedpath
+/// - WebIDL: dom.idl:36
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Event/composedPath
+///
+/// ## Example
+/// ```c
+/// uint32_t count = 0;
+/// DOMEventTarget** path = dom_event_composedpath(event, &count);
+/// if (path) {
+///     for (uint32_t i = 0; i < count; i++) {
+///         // Process each target in the path
+///     }
+///     dom_event_free_composedpath(path);
+/// }
+/// ```
+pub export fn dom_event_composedpath(event: *DOMEvent, count: *u32) ?[*]?*DOMEventTarget {
+    const evt: *const Event = @ptrCast(@alignCast(event));
+    const allocator = std.heap.c_allocator;
+
+    // Get composed path from event
+    var path = evt.composedPath(allocator) catch return null;
+    defer path.deinit(allocator);
+
+    // If no path, return NULL
+    if (path.items.len == 0) {
+        count.* = 0;
+        return null;
+    }
+
+    // Allocate array for C
+    const c_array = allocator.alloc(?*DOMEventTarget, path.items.len) catch return null;
+
+    // Copy event targets to array
+    for (path.items, 0..) |target, i| {
+        c_array[i] = @ptrCast(target);
+    }
+
+    count.* = @intCast(path.items.len);
+    return c_array.ptr;
+}
+
+/// Free composedPath array.
+///
+/// ## Parameters
+/// - `path`: Array returned from dom_event_composedpath()
+/// - `count`: Number of elements in the array (same as returned by composedpath)
+///
+/// ## Example
+/// ```c
+/// uint32_t count = 0;
+/// DOMEventTarget** path = dom_event_composedpath(event, &count);
+/// // ... use path ...
+/// dom_event_free_composedpath(path, count);
+/// ```
+pub export fn dom_event_free_composedpath(path: [*]?*DOMEventTarget, count: u32) void {
+    const allocator = std.heap.c_allocator;
+    if (count > 0) {
+        const slice = path[0..count];
+        allocator.free(slice);
+    }
+}
+
+/// Initialize an event (legacy method).
+///
+/// ## WebIDL
+/// ```webidl
+/// undefined initEvent(DOMString type, optional boolean bubbles = false, optional boolean cancelable = false);
+/// ```
+///
+/// ## Parameters
+/// - `event`: Event handle
+/// - `type`: Event type string
+/// - `bubbles`: Whether event bubbles (0 = false, non-zero = true)
+/// - `cancelable`: Whether event is cancelable (0 = false, non-zero = true)
+///
+/// ## Spec References
+/// - Method: https://dom.spec.whatwg.org/#dom-event-initevent
+/// - WebIDL: dom.idl:58
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Event/initEvent
+///
+/// ## Note
+/// This is a legacy method from DOM Level 2. Modern code should use Event constructors instead.
+/// This method can only be called before the event is dispatched.
+///
+/// ## Example (C)
+/// ```c
+/// DOMEvent* event = dom_event_new();
+/// dom_event_initevent(event, "click", 1, 1);  // bubbles=true, cancelable=true
+/// // ... dispatch event ...
+/// dom_event_release(event);
+/// ```
+pub export fn dom_event_initevent(event: *DOMEvent, type_str: [*:0]const u8, bubbles: u8, cancelable: u8) void {
+    const evt: *Event = @ptrCast(@alignCast(event));
+    const event_type = types.cStringToZigString(type_str);
+    const bubbles_bool = (bubbles != 0);
+    const cancelable_bool = (cancelable != 0);
+    evt.initEvent(event_type, bubbles_bool, cancelable_bool);
+}
+
+/// Get cancelBubble flag (legacy).
+///
+/// ## WebIDL
+/// ```webidl
+/// attribute boolean cancelBubble; // legacy alias of stopPropagation()
+/// ```
+///
+/// ## Parameters
+/// - `event`: Event handle
+///
+/// ## Returns
+/// 1 if propagation stopped, 0 otherwise
+///
+/// ## Spec References
+/// - Attribute: https://dom.spec.whatwg.org/#dom-event-cancelbubble
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Event/cancelBubble
+///
+/// ## Note
+/// This is a legacy attribute. Use stopPropagation() instead.
+pub export fn dom_event_get_cancelbubble(event: *DOMEvent) u8 {
+    const evt: *const Event = @ptrCast(@alignCast(event));
+    return if (evt.getCancelBubble()) 1 else 0;
+}
+
+/// Set cancelBubble flag (legacy).
+///
+/// ## WebIDL
+/// ```webidl
+/// attribute boolean cancelBubble; // legacy alias of stopPropagation()
+/// ```
+///
+/// ## Parameters
+/// - `event`: Event handle
+/// - `value`: Non-zero to stop propagation, 0 to allow
+///
+/// ## Spec References
+/// - Attribute: https://dom.spec.whatwg.org/#dom-event-cancelbubble
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Event/cancelBubble
+///
+/// ## Note
+/// This is a legacy attribute. Setting to true calls stopPropagation().
+pub export fn dom_event_set_cancelbubble(event: *DOMEvent, value: u8) void {
+    const evt: *Event = @ptrCast(@alignCast(event));
+    evt.setCancelBubble(value != 0);
+}
+
+/// Get returnValue flag (legacy).
+///
+/// ## WebIDL
+/// ```webidl
+/// attribute boolean returnValue; // legacy
+/// ```
+///
+/// ## Parameters
+/// - `event`: Event handle
+///
+/// ## Returns
+/// 0 if default prevented, 1 otherwise
+///
+/// ## Spec References
+/// - Attribute: https://dom.spec.whatwg.org/#dom-event-returnvalue
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Event/returnValue
+///
+/// ## Note
+/// This is a legacy attribute. Returns opposite of defaultPrevented.
+pub export fn dom_event_get_returnvalue(event: *DOMEvent) u8 {
+    const evt: *const Event = @ptrCast(@alignCast(event));
+    return if (evt.getReturnValue()) 1 else 0;
+}
+
+/// Set returnValue flag (legacy).
+///
+/// ## WebIDL
+/// ```webidl
+/// attribute boolean returnValue; // legacy
+/// ```
+///
+/// ## Parameters
+/// - `event`: Event handle
+/// - `value`: 0 to prevent default, non-zero to allow
+///
+/// ## Spec References
+/// - Attribute: https://dom.spec.whatwg.org/#dom-event-returnvalue
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Event/returnValue
+///
+/// ## Note
+/// This is a legacy attribute. Setting to false calls preventDefault().
+pub export fn dom_event_set_returnvalue(event: *DOMEvent, value: u8) void {
+    const evt: *Event = @ptrCast(@alignCast(event));
+    evt.setReturnValue(value != 0);
 }
 
 // ============================================================================

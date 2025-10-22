@@ -11,6 +11,7 @@ This directory contains auto-generated C-ABI bindings that allow JavaScript engi
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
+- [V8 Integration Examples](#v8-integration-examples) ⭐ NEW
 - [Generated Files](#generated-files)
 - [Memory Management](#memory-management)
 - [Error Handling](#error-handling)
@@ -40,6 +41,43 @@ This directory contains auto-generated C-ABI bindings that allow JavaScript engi
 - ❌ Callback support (future feature)
 - ❌ Union types (future feature)
 - ❌ Dictionary types (future feature)
+
+---
+
+## V8 Integration Examples ⭐ NEW
+
+**Complete, production-ready examples** showing how to integrate this C-ABI with V8 (Google's JavaScript engine).
+
+**📁 Location:** `examples/` directory
+
+**What's Included:**
+- **`v8_basic_wrapper.cpp`** - Complete Element wrapper with properties, methods, and GC integration
+- **`README.md`** - Architecture overview, build instructions, and troubleshooting
+- **`INSTALL_V8.md`** - Step-by-step V8 installation for macOS, Linux, and Windows
+- **`Makefile`** - Automated build with platform detection
+
+**Quick Start:**
+```bash
+# 1. Install V8 (macOS)
+brew install v8
+
+# 2. Build DOM library
+cd /path/to/dom
+zig build
+
+# 3. Build and run examples
+cd js-bindings/examples
+make run
+```
+
+**What You'll Learn:**
+- Wrapping opaque C pointers in V8 objects
+- Property accessors (getters/setters) and method callbacks
+- Memory management with weak callbacks
+- GC integration patterns
+- Error handling and type conversion
+
+[→ **View Examples README**](examples/README.md)
 
 ---
 
@@ -611,7 +649,7 @@ gcc -o myapp myapp.c zig-out/lib/libdom.a -lpthread
 **See Also:**
 - `dom.h` - C/C++ header file
 - `USAGE.md` - Complete usage guide with examples
-- `test.c` - Comprehensive test suite (9 tests)
+- `tests/` - Test suite directory (20+ C test files)
 - `example_simple.c` - Simple usage example
 
 ---

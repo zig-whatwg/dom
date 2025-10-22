@@ -465,3 +465,96 @@ pub export fn dom_characterdata_replacedata(
     };
     return 0;
 }
+
+// ============================================================================
+// NonDocumentTypeChildNode Mixin
+// ============================================================================
+
+/// Returns the previous sibling element, or NULL if none.
+///
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute Element? previousElementSibling;
+/// ```
+///
+/// ## Spec References
+/// - NonDocumentTypeChildNode: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-previouselementsibling
+/// - WebIDL: dom.idl:126
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/CharacterData
+///
+/// ## Returns
+/// Previous element sibling or NULL (skips text nodes, comments, etc.)
+///
+/// ## Note
+/// CharacterData includes the NonDocumentTypeChildNode mixin, which provides
+/// previousElementSibling and nextElementSibling. This allows navigating to
+/// adjacent Element nodes while skipping non-element siblings.
+///
+/// ## Example (C)
+/// ```c
+/// DOMElement* prev = dom_characterdata_get_previouselementsibling((DOMCharacterData*)text);
+/// if (prev) {
+///     // Process previous element sibling
+/// }
+/// ```
+pub export fn dom_characterdata_get_previouselementsibling(handle: *DOMCharacterData) ?*types.DOMElement {
+    const cdata: *Text = @ptrCast(@alignCast(handle));
+    const node = &cdata.prototype;
+
+    // Walk backwards through siblings looking for an element
+    var current = node.previous_sibling;
+    while (current) |sibling| {
+        if (sibling.node_type == .element) {
+            const Element = @import("dom").Element;
+            const elem: *Element = @fieldParentPtr("prototype", sibling);
+            return @ptrCast(elem);
+        }
+        current = sibling.previous_sibling;
+    }
+    return null;
+}
+
+/// Returns the next sibling element, or NULL if none.
+///
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute Element? nextElementSibling;
+/// ```
+///
+/// ## Spec References
+/// - NonDocumentTypeChildNode: https://dom.spec.whatwg.org/#dom-nondocumenttypechildnode-nextelementsibling
+/// - WebIDL: dom.idl:127
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/CharacterData
+///
+/// ## Returns
+/// Next element sibling or NULL (skips text nodes, comments, etc.)
+///
+/// ## Note
+/// CharacterData includes the NonDocumentTypeChildNode mixin, which provides
+/// previousElementSibling and nextElementSibling. This allows navigating to
+/// adjacent Element nodes while skipping non-element siblings.
+///
+/// ## Example (C)
+/// ```c
+/// DOMElement* next = dom_characterdata_get_nextelementsibling((DOMCharacterData*)text);
+/// while (next != NULL) {
+///     // Process next element sibling
+///     next = dom_element_get_nextelementsibling(next);
+/// }
+/// ```
+pub export fn dom_characterdata_get_nextelementsibling(handle: *DOMCharacterData) ?*types.DOMElement {
+    const cdata: *Text = @ptrCast(@alignCast(handle));
+    const node = &cdata.prototype;
+
+    // Walk forwards through siblings looking for an element
+    var current = node.next_sibling;
+    while (current) |sibling| {
+        if (sibling.node_type == .element) {
+            const Element = @import("dom").Element;
+            const elem: *Element = @fieldParentPtr("prototype", sibling);
+            return @ptrCast(elem);
+        }
+        current = sibling.next_sibling;
+    }
+    return null;
+}

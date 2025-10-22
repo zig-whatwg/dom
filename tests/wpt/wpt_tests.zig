@@ -189,6 +189,7 @@ test {
     _ = @import("nodes/ProcessingInstruction-data.zig");
     _ = @import("nodes/ProcessingInstruction-nodeName.zig");
     _ = @import("nodes/ProcessingInstruction-target.zig");
+    _ = @import("nodes/ProcessingInstruction-childnode.zig");
 }
 
 // DOMTokenList tests

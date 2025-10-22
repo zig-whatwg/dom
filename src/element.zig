@@ -650,7 +650,7 @@ pub const Element = struct {
     // Convenience Methods - EventTarget API Delegation
     // ================================================================
 
-    /// Convenience: elem.addEventListener(...) instead of elem.prototype.prototype.addEventListener(...)
+    /// Convenience: elem.addEventListener(...) instead of elem.prototype.addEventListener(...)
     pub inline fn addEventListener(
         self: *Element,
         event_type: []const u8,
@@ -661,7 +661,7 @@ pub const Element = struct {
         passive: bool,
         signal: ?*anyopaque,
     ) !void {
-        return try self.prototype.prototype.addEventListener(
+        return try self.prototype.addEventListener(
             event_type,
             callback,
             context,
@@ -672,19 +672,19 @@ pub const Element = struct {
         );
     }
 
-    /// Convenience: elem.removeEventListener(...) instead of elem.prototype.prototype.removeEventListener(...)
+    /// Convenience: elem.removeEventListener(...) instead of elem.prototype.removeEventListener(...)
     pub inline fn removeEventListener(
         self: *Element,
         event_type: []const u8,
         callback: EventCallback,
         capture: bool,
     ) void {
-        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+        self.prototype.removeEventListener(event_type, callback, capture);
     }
 
-    /// Convenience: elem.dispatchEvent(event) instead of elem.prototype.prototype.dispatchEvent(event)
+    /// Convenience: elem.dispatchEvent(event) instead of elem.prototype.dispatchEvent(event)
     pub inline fn dispatchEvent(self: *Element, event: *Event) !bool {
-        return try self.prototype.prototype.dispatchEvent(event);
+        return try self.prototype.dispatchEvent(event);
     }
 
     // ================================================================
@@ -993,8 +993,18 @@ pub const Element = struct {
             }
         }
 
+        // Intern value string to ensure null-termination for C-ABI compatibility
+        const interned_value = if (self.prototype.owner_document) |owner| blk: {
+            if (owner.node_type == .document) {
+                const Document = @import("document.zig").Document;
+                const doc: *Document = @fieldParentPtr("prototype", owner);
+                break :blk try doc.string_pool.intern(value);
+            }
+            break :blk value;
+        } else value;
+
         // Set the attribute
-        try self.attributes.set(name, value);
+        try self.attributes.set(name, interned_value);
 
         // Invalidate cached Attr for this name
         self.invalidateCachedAttr(name);

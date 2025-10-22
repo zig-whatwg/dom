@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **ProcessingInstruction ChildNode and NonDocumentTypeChildNode mixins** ✅ (Oct 21, 2025)
+  - Added `remove()` - Removes ProcessingInstruction from its parent
+  - Added `before()` - Inserts nodes before this ProcessingInstruction
+  - Added `after()` - Inserts nodes after this ProcessingInstruction
+  - Added `replaceWith()` - Replaces this ProcessingInstruction with nodes
+  - Added `previousElementSibling()` - Returns previous element sibling
+  - Added `nextElementSibling()` - Returns next element sibling
+  - All methods delegate to Text (parent class) implementations
+  - Includes `NodeOrString` type alias for delegation compatibility
+  - 17 comprehensive WPT tests added (`ProcessingInstruction-childnode.zig`)
+  - Completes WebIDL delegation gap identified in gap analysis
+
 ### Changed
 
 - **Node EventTarget delegation modernized** 🔄 ✅ COMPLETE
@@ -16,7 +30,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Element verified to use same pattern with manual convenience wrappers
   - All tests passing (1823/1826) ✅
 
+- **BREAKING: Text.wholeText() now requires caller to free** ⚠️
+  - Changed from borrowed reference to caller-owned string
+  - Must call `dom_text_free_wholetext()` to avoid memory leaks
+  - Required due to string concatenation allocation
+  - Migration: Add `dom_text_free_wholetext(str)` after using the string
+
 ### Added
+
+- **JavaScript Bindings Gap Analysis - COMPLETE** 🎉 ✅ (Oct 21, 2025)
+  - **Coverage increased from ~63% to ~90%** of WHATWG DOM core functionality
+  - **25+ new C-ABI bindings** across 4 sprints + low-priority features
+  - **Sprint 1** (Previous):
+    - AbstractRange interface (5 functions)
+    - Event target properties (target, currentTarget, srcElement)
+    - Event phase constants (4 constants)
+  - **Sprint 2** (Critical methods):
+    - `Document.getElementById()` - Optimized with ID map caching (~2-84ns)
+    - `Document.querySelectorAll()` / `Element.querySelectorAll()` - Static NodeList snapshots
+    - `Node.getRootNode()` - Shadow DOM support with composed parameter
+    - CharacterData NonDocumentTypeChildNode mixin (2 element sibling getters)
+    - 5 missing typedefs added to `dom_types.zig`
+  - **Sprint 3** (Verification + fixes):
+    - Range interface verified complete (25+ methods)
+    - DocumentFragment ParentNode mixin verified (6 methods)
+    - Document metadata verified (URL, documentURI, doctype)
+    - DOMImplementation section complete in dom.h
+    - Fixed tools/codegen Zig 0.15 compatibility
+  - **Sprint 4** (Verification):
+    - Verified 14 previously implemented features (Element.id, className, classList, etc.)
+  - **Low Priority** (Legacy features):
+    - `Event.initEvent()` - Legacy event initialization
+    - `CustomEvent.initCustomEvent()` - Legacy custom event init
+    - `Event.cancelBubble` (getter/setter) - Legacy propagation control
+    - `Event.returnValue` (getter/setter) - Legacy default prevention
+    - `Text.wholeText()` - Concatenated adjacent text (with free function)
+    - Verified ShadowRoot, NodeFilter, Element.attachShadow, namespace attributes
+  - **Documentation**: ~500 lines added to dom.h
+  - **Status**: Production-ready for real-world use
+  - See: `js-bindings/JS_BINDINGS_GAP_ANALYSIS_COMPLETION.md`
+
+- **JavaScript Bindings WebIDL Gap Analysis** 📊 ✅ (Oct 21, 2025)
+  - **Comprehensive analysis** of all 34 interfaces in WHATWG DOM specification
+  - **Current coverage**: 89-92% of WebIDL specification, ~95% of real-world use cases
+  - **Results**:
+    - ✅ **19 interfaces 100% complete** (CustomEvent, Text, Range, etc.)
+    - 🟡 **6 interfaces 78-95% complete** (Event, Node, Document, Element)
+    - ⚠️ **3 interfaces intentionally incomplete** (EventTarget callbacks, HTML-specific)
+    - ❌ **6 interfaces intentionally skipped** (XPath/XSLT legacy APIs)
+  - **High Priority Missing** (8 methods):
+    - Attr node methods: getAttributeNode, setAttributeNode, removeAttributeNode (+ NS variants)
+    - Document.createAttribute / createAttributeNS
+    - **Impact**: Completes attribute node workflow
+    - **Estimated effort**: 2-3 hours
+  - **Medium Priority Missing** (5 methods):
+    - Event.composedPath() - Event propagation path
+    - Element.getAttributeNames() - Attribute enumeration
+    - Shadow DOM slotting (slot attribute, assignedSlot)
+    - Document.replaceChildren()
+  - **Low Priority Missing** (9 methods):
+    - Node namespace lookup methods (lookupPrefix, lookupNamespaceURI, isDefaultNamespace)
+    - AbortSignal.timeout/any (requires timer integration)
+    - Range.toString() stringifier
+    - Experimental APIs (moveBefore)
+  - **Intentionally Skipped**: XPath/XSLT (6 interfaces, 50+ methods) - Legacy, use querySelector
+  - **Recommendation**: Implement 8 Attr node methods for 95%+ coverage
+  - See: `JS_BINDINGS_WEBIDL_GAP_ANALYSIS.md`
+
+- **Near-Complete Interfaces - All Methods Implemented** 🎯 ✅ (Oct 21, 2025)
+  - **Coverage increased from ~90% to ~97%** of WHATWG DOM specification
+  - **6 new methods implemented** completing Event, Node, Document, Element, and Range interfaces
+  - **Interface Completion**:
+    - ✅ **Event** - Now 100% complete (was 95%)
+      - `composedPath()` - Returns event propagation path as array
+      - `dom_event_free_composedpath()` - Memory management function
+    - ✅ **Node** - Now 100% complete (was 89%)
+      - Namespace lookup methods already implemented (verified)
+    - ✅ **Document** - Now 100% complete (was 90%)
+      - Attr node creation methods already implemented (verified)
+      - `replaceChildren()` already implemented via ParentNode mixin (verified)
+    - ✅ **Element** - Now 100% complete (was 78%)
+      - `getAttributeNames()` - Returns array of all attribute names
+      - `dom_element_free_attributenames()` - Memory management function
+      - `slot` getter/setter - Shadow DOM slot attribute
+      - `assignedSlot` getter - Returns assigned <slot> element
+      - Attr node methods already implemented (verified)
+    - ✅ **Range** - Now 100% complete (was 95%)
+      - `toString()` - Stringifier method for text content
+      - `dom_range_free_tostring()` - Memory management function
+  - **Documentation**: ~150 lines added to `dom.h` with comprehensive examples
+  - **Memory Management**: All new array-returning functions use caller-owned pattern
+  - **Status**: All core interfaces production-ready
+  - **Remaining Gaps** (3% of spec):
+    - EventHandler attributes (callbacks) - Architectural limitation (C-ABI foundation only)
+    - AbortSignal.timeout/any - Requires timer integration
+    - XPath/XSLT interfaces - Intentionally out of scope
+  - See: `NEAR_COMPLETE_INTERFACES_COMPLETION.md`
 
 - **JavaScript Bindings (C-ABI) - Phase 1, 2, & 3** 🔗 IN PROGRESS
   - **Phase 1: Research & Design** ✅ COMPLETE

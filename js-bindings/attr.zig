@@ -350,6 +350,46 @@ pub export fn dom_attr_get_specified(attr: *DOMAttr) u8 {
 }
 
 // ============================================================================
+// Node API Delegation (Convenience Methods)
+// ============================================================================
+// These methods delegate to the Node interface for convenience, avoiding the
+// need to cast Attr to Node in C code.
+
+/// Get the owner document of this attribute
+///
+/// WebIDL: `readonly attribute Document? ownerDocument;` (inherited from Node)
+pub export fn dom_attr_get_ownerdocument(handle: *DOMAttr) ?*types.DOMDocument {
+    const attr: *const Attr = @ptrCast(@alignCast(handle));
+    const owner_doc = attr.ownerDocument() orelse return null;
+    return @ptrCast(owner_doc);
+}
+
+/// Get the node name (returns attribute name)
+///
+/// WebIDL: `readonly attribute DOMString nodeName;` (inherited from Node)
+pub export fn dom_attr_get_nodename(handle: *DOMAttr) [*:0]const u8 {
+    const attr: *const Attr = @ptrCast(@alignCast(handle));
+    return zigStringToCString(attr.nodeName());
+}
+
+/// Get the node value (returns attribute value)
+///
+/// WebIDL: `attribute DOMString? nodeValue;` (inherited from Node)
+pub export fn dom_attr_get_nodevalue(handle: *DOMAttr) ?[*:0]const u8 {
+    const attr: *const Attr = @ptrCast(@alignCast(handle));
+    return zigStringToCStringOptional(attr.nodeValue());
+}
+
+/// Clone this attribute node
+///
+/// WebIDL: `Node cloneNode(optional boolean deep = false);` (inherited from Node)
+pub export fn dom_attr_clonenode(handle: *DOMAttr, deep: u8) ?*types.DOMNode {
+    const attr: *const Attr = @ptrCast(@alignCast(handle));
+    const cloned = attr.cloneNode(deep != 0) catch return null;
+    return @ptrCast(cloned);
+}
+
+// ============================================================================
 // Memory Management
 // ============================================================================
 

@@ -140,20 +140,95 @@ pub export fn dom_element_get_classlist(handle: *DOMElement) *DOMDOMTokenList {
 /// Get slot attribute
 ///
 /// WebIDL: `attribute DOMString slot;`
+/// Get slot attribute.
+///
+/// ## WebIDL
+/// ```webidl
+/// [CEReactions, Unscopable] attribute DOMString slot;
+/// ```
+///
+/// ## Returns
+/// The slot attribute value, or empty string if not set (do NOT free)
+///
+/// ## Spec References
+/// - Attribute: https://dom.spec.whatwg.org/#dom-element-slot
+/// - WebIDL: dom.idl:371
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Element/slot
+///
+/// ## Note
+/// The slot attribute specifies which <slot> element in a shadow tree this element should be assigned to.
 pub export fn dom_element_get_slot(handle: *DOMElement) [*:0]const u8 {
-    _ = handle;
-    // TODO: Implement getter
-    return "";
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const slot_value = element.getAttribute("slot") orelse return "";
+    return zigStringToCString(slot_value);
 }
 
-/// Set slot attribute
+/// Set slot attribute.
 ///
-/// WebIDL: `attribute DOMString slot;`
+/// ## WebIDL
+/// ```webidl
+/// [CEReactions, Unscopable] attribute DOMString slot;
+/// ```
+///
+/// ## Parameters
+/// - `handle`: Element handle
+/// - `value`: Slot name to assign
+///
+/// ## Returns
+/// 0 on success, error code on failure
+///
+/// ## Spec References
+/// - Attribute: https://dom.spec.whatwg.org/#dom-element-slot
+/// - WebIDL: dom.idl:371
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Element/slot
+///
+/// ## Example
+/// ```c
+/// // Assign element to slot named "header"
+/// dom_element_set_slot(elem, "header");
+/// ```
 pub export fn dom_element_set_slot(handle: *DOMElement, value: [*:0]const u8) c_int {
-    _ = handle;
-    _ = value;
-    // TODO: Implement setter
+    const element: *Element = @ptrCast(@alignCast(handle));
+    const slot_name = cStringToZigString(value);
+    element.setAttribute("slot", slot_name) catch |err| {
+        return @intFromEnum(zigErrorToDOMError(err));
+    };
     return 0; // Success
+}
+
+/// Get the assigned slot element (Slottable mixin).
+///
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute HTMLSlotElement? assignedSlot;
+/// ```
+///
+/// ## Returns
+/// The slot element this element is assigned to, or NULL if not assigned
+/// (borrowed reference - do NOT release)
+///
+/// ## Spec References
+/// - Attribute: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
+/// - WebIDL: dom.idl:155 (Slottable mixin)
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Element/assignedSlot
+///
+/// ## Note
+/// The assignedSlot is the <slot> element in a shadow tree that this element
+/// is distributed to. Only meaningful for elements in light DOM that are
+/// children of a shadow host.
+///
+/// ## Example
+/// ```c
+/// // Check if element is assigned to a slot
+/// DOMElement* slot = dom_element_get_assignedslot(elem);
+/// if (slot) {
+///     printf("Element is in slot: %s\n", dom_element_get_tagname(slot));
+/// }
+/// ```
+pub export fn dom_element_get_assignedslot(handle: *DOMElement) ?*DOMElement {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const slot = element.assignedSlot();
+    return if (slot) |s| @ptrCast(s) else null;
 }
 
 /// Get attributes as NamedNodeMap.
@@ -221,10 +296,89 @@ pub export fn dom_element_hasattributes(handle: *DOMElement) u8 {
 /// getAttributeNames method
 ///
 /// WebIDL: `DOMString getAttributeNames();`
-pub export fn dom_element_getattributenames(handle: *DOMElement) [*:0]const u8 {
-    _ = handle;
-    // TODO: Implement method
-    return "";
+/// Get sequence of all attribute names.
+///
+/// ## WebIDL
+/// ```webidl
+/// sequence<DOMString> getAttributeNames();
+/// ```
+///
+/// ## Algorithm
+/// Returns an array of all attribute names on this element.
+///
+/// ## Parameters
+/// - `handle`: Element handle
+/// - `count`: Pointer to store the number of attribute names
+///
+/// ## Returns
+/// Array of attribute name strings (caller must free with dom_element_free_attributenames)
+/// Returns NULL if no attributes or on error.
+///
+/// ## Memory Management
+/// The returned array is allocated and owned by the caller.
+/// You MUST call dom_element_free_attributenames() when done to avoid memory leaks.
+///
+/// ## Spec References
+/// - Method: https://dom.spec.whatwg.org/#dom-element-getattributenames
+/// - WebIDL: dom.idl:375
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Element/getAttributeNames
+///
+/// ## Example
+/// ```c
+/// uint32_t count = 0;
+/// const char** names = dom_element_getattributenames(elem, &count);
+/// if (names) {
+///     for (uint32_t i = 0; i < count; i++) {
+///         printf("Attribute: %s\n", names[i]);
+///     }
+///     dom_element_free_attributenames(names, count);
+/// }
+/// ```
+pub export fn dom_element_getattributenames(handle: *DOMElement, count: *u32) ?[*]const [*:0]const u8 {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const allocator = std.heap.c_allocator;
+
+    // Get attribute names from element
+    const names = element.getAttributeNames(allocator) catch return null;
+    defer allocator.free(names);
+
+    // If no attributes, return NULL
+    if (names.len == 0) {
+        count.* = 0;
+        return null;
+    }
+
+    // Allocate array for C (array of string pointers)
+    const c_array = allocator.alloc([*:0]const u8, names.len) catch return null;
+
+    // Copy name pointers to array (names are borrowed from attributes)
+    for (names, 0..) |name, i| {
+        c_array[i] = zigStringToCString(name);
+    }
+
+    count.* = @intCast(names.len);
+    return c_array.ptr;
+}
+
+/// Free getAttributeNames array.
+///
+/// ## Parameters
+/// - `names`: Array returned from dom_element_getattributenames()
+/// - `count`: Number of elements in the array
+///
+/// ## Example
+/// ```c
+/// uint32_t count = 0;
+/// const char** names = dom_element_getattributenames(elem, &count);
+/// // ... use names ...
+/// dom_element_free_attributenames(names, count);
+/// ```
+pub export fn dom_element_free_attributenames(names: [*]const [*:0]const u8, count: u32) void {
+    const allocator = std.heap.c_allocator;
+    if (count > 0) {
+        const slice = names[0..count];
+        allocator.free(slice);
+    }
 }
 
 /// getAttribute method
@@ -974,6 +1128,164 @@ pub export fn dom_element_attachshadow(handle: *DOMElement, mode: c_int, delegat
     }) catch return null;
 
     return @ptrCast(shadow);
+}
+
+// ============================================================================
+// Node API Delegation (Convenience Methods)
+// ============================================================================
+// These methods delegate to the Node interface for convenience, avoiding the
+// need to cast Element to Node in C code. They mirror the JavaScript behavior
+// where Element inherits from Node.
+
+/// Append a child node to this element
+///
+/// WebIDL: `Node appendChild(Node node);` (inherited from Node)
+pub export fn dom_element_appendchild(handle: *DOMElement, child: *dom_types.DOMNode) ?*dom_types.DOMNode {
+    const element: *Element = @ptrCast(@alignCast(handle));
+    const child_node: *Node = @ptrCast(@alignCast(child));
+    const result = element.appendChild(child_node) catch return null;
+    return @ptrCast(result);
+}
+
+/// Insert a node before a reference child
+///
+/// WebIDL: `Node insertBefore(Node node, Node? child);` (inherited from Node)
+pub export fn dom_element_insertbefore(handle: *DOMElement, node: *dom_types.DOMNode, child: ?*dom_types.DOMNode) ?*dom_types.DOMNode {
+    const element: *Element = @ptrCast(@alignCast(handle));
+    const new_node: *Node = @ptrCast(@alignCast(node));
+    const child_node: ?*Node = if (child) |c| @as(*Node, @ptrCast(@alignCast(c))) else null;
+    const result = element.insertBefore(new_node, child_node) catch return null;
+    return @ptrCast(result);
+}
+
+/// Remove a child node from this element
+///
+/// WebIDL: `Node removeChild(Node child);` (inherited from Node)
+pub export fn dom_element_removechild(handle: *DOMElement, child: *dom_types.DOMNode) ?*dom_types.DOMNode {
+    const element: *Element = @ptrCast(@alignCast(handle));
+    const child_node: *Node = @ptrCast(@alignCast(child));
+    const result = element.removeChild(child_node) catch return null;
+    return @ptrCast(result);
+}
+
+/// Replace a child node with a new node
+///
+/// WebIDL: `Node replaceChild(Node node, Node child);` (inherited from Node)
+pub export fn dom_element_replacechild(handle: *DOMElement, node: *dom_types.DOMNode, child: *dom_types.DOMNode) ?*dom_types.DOMNode {
+    const element: *Element = @ptrCast(@alignCast(handle));
+    const new_node: *Node = @ptrCast(@alignCast(node));
+    const old_child: *Node = @ptrCast(@alignCast(child));
+    const result = element.replaceChild(new_node, old_child) catch return null;
+    return @ptrCast(result);
+}
+
+/// Check if this element has any child nodes
+///
+/// WebIDL: `boolean hasChildNodes();` (inherited from Node)
+pub export fn dom_element_haschildnodes(handle: *DOMElement) u8 {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    return if (element.hasChildNodes()) 1 else 0;
+}
+
+/// Get the first child node
+///
+/// WebIDL: `readonly attribute Node? firstChild;` (inherited from Node)
+pub export fn dom_element_get_firstchild(handle: *DOMElement) ?*dom_types.DOMNode {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const child = element.firstChild() orelse return null;
+    return @ptrCast(child);
+}
+
+/// Get the last child node
+///
+/// WebIDL: `readonly attribute Node? lastChild;` (inherited from Node)
+pub export fn dom_element_get_lastchild(handle: *DOMElement) ?*dom_types.DOMNode {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const child = element.lastChild() orelse return null;
+    return @ptrCast(child);
+}
+
+/// Get the parent node
+///
+/// WebIDL: `readonly attribute Node? parentNode;` (inherited from Node)
+pub export fn dom_element_get_parentnode(handle: *DOMElement) ?*dom_types.DOMNode {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const parent = element.parentNode() orelse return null;
+    return @ptrCast(parent);
+}
+
+/// Get the next sibling node
+///
+/// WebIDL: `readonly attribute Node? nextSibling;` (inherited from Node)
+pub export fn dom_element_get_nextsibling(handle: *DOMElement) ?*dom_types.DOMNode {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const sibling = element.nextSibling() orelse return null;
+    return @ptrCast(sibling);
+}
+
+/// Get the previous sibling node
+///
+/// WebIDL: `readonly attribute Node? previousSibling;` (inherited from Node)
+pub export fn dom_element_get_previoussibling(handle: *DOMElement) ?*dom_types.DOMNode {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const sibling = element.previousSibling() orelse return null;
+    return @ptrCast(sibling);
+}
+
+/// Get the node name (returns tag name for elements)
+///
+/// WebIDL: `readonly attribute DOMString nodeName;` (inherited from Node)
+pub export fn dom_element_get_nodename(handle: *DOMElement) [*:0]const u8 {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    return zigStringToCString(element.nodeName());
+}
+
+/// Get the text content of this element and its descendants
+///
+/// WebIDL: `attribute DOMString? textContent;` (inherited from Node)
+pub export fn dom_element_get_textcontent(handle: *DOMElement) ?[*:0]const u8 {
+    const allocator = std.heap.page_allocator;
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const content = element.textContent(allocator) catch return null;
+    return zigStringToCStringOptional(content);
+}
+
+/// Set the text content of this element (removes all children)
+///
+/// WebIDL: `attribute DOMString? textContent;` (inherited from Node)
+pub export fn dom_element_set_textcontent(handle: *DOMElement, value: ?[*:0]const u8) c_int {
+    const element: *Element = @ptrCast(@alignCast(handle));
+    const zig_value = cStringToZigStringOptional(value);
+    element.setTextContent(zig_value) catch |err| {
+        return @intFromEnum(zigErrorToDOMError(err));
+    };
+    return 0; // Success
+}
+
+/// Clone this element node
+///
+/// WebIDL: `Node cloneNode(optional boolean deep = false);` (inherited from Node)
+pub export fn dom_element_clonenode(handle: *DOMElement, deep: u8) ?*dom_types.DOMNode {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const cloned = element.cloneNode(deep != 0) catch return null;
+    return @ptrCast(cloned);
+}
+
+/// Check if this element contains another node
+///
+/// WebIDL: `boolean contains(Node? other);` (inherited from Node)
+pub export fn dom_element_contains(handle: *DOMElement, other: ?*dom_types.DOMNode) u8 {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    const other_node: ?*const Node = if (other) |o| @as(*const Node, @ptrCast(@alignCast(o))) else null;
+    return if (element.contains(other_node)) 1 else 0;
+}
+
+/// Check if this element is connected to a document
+///
+/// WebIDL: `readonly attribute boolean isConnected;` (inherited from Node)
+pub export fn dom_element_get_isconnected(handle: *DOMElement) u8 {
+    const element: *const Element = @ptrCast(@alignCast(handle));
+    return if (element.isConnected()) 1 else 0;
 }
 
 // ============================================================================

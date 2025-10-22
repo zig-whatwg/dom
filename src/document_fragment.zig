@@ -361,13 +361,13 @@ pub const DocumentFragment = struct {
         passive: bool,
         signal: ?*anyopaque,
     ) !void {
-        return try self.prototype.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
+        return try self.prototype.addEventListener(event_type, callback, context, capture, once, passive, signal);
     }
     pub inline fn removeEventListener(self: *DocumentFragment, event_type: []const u8, callback: EventCallback, capture: bool) void {
-        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+        self.prototype.removeEventListener(event_type, callback, capture);
     }
     pub inline fn dispatchEvent(self: *DocumentFragment, event: *Event) !bool {
-        return try self.prototype.prototype.dispatchEvent(event);
+        return try self.prototype.dispatchEvent(event);
     }
 
     /// Creates a new DocumentFragment node.

@@ -1,6 +1,6 @@
 //! Zig Code Generator
 //!
-//! Generates Zig delegation methods from WebIDL AST.
+//! Generates Zig delegation methods from WebIDL AST or Zig source files.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -8,27 +8,19 @@ const Allocator = std.mem.Allocator;
 // Import standalone WebIDL parser library
 const webidl = @import("webidl-parser");
 
+// Import source parser for generating from Zig files
+const SourceParser = @import("source_parser.zig").SourceParser;
+const MethodSignature = @import("source_parser.zig").MethodSignature;
+
 pub const Generator = struct {
     allocator: Allocator,
     output: std.ArrayList(u8),
-    overrides: std.StringHashMap(std.StringHashMap([]const u8)), // interface -> method -> reason
 
     pub fn init(allocator: Allocator) Generator {
         return .{
             .allocator = allocator,
             .output = std.ArrayList(u8){},
-            .overrides = std.StringHashMap(std.StringHashMap([]const u8)).init(allocator),
         };
-    }
-
-    /// Load overrides from overrides.json
-    pub fn loadOverrides(self: *Generator) !void {
-        // For now, hardcode known overrides
-        // TODO: Parse JSON file
-
-        var node_overrides = std.StringHashMap([]const u8).init(self.allocator);
-        try node_overrides.put("dispatchEvent", "Full DOM event propagation with capture/target/bubble phases");
-        try self.overrides.put("Node", node_overrides);
     }
 
     fn getWriter(self: *Generator) std.ArrayList(u8).Writer {
@@ -37,13 +29,6 @@ pub const Generator = struct {
 
     pub fn deinit(self: *Generator) void {
         self.output.deinit(self.allocator);
-
-        // Clean up overrides map
-        var it = self.overrides.valueIterator();
-        while (it.next()) |methods_map| {
-            methods_map.deinit();
-        }
-        self.overrides.deinit();
     }
 
     pub fn getOutput(self: *Generator) []const u8 {
@@ -115,23 +100,12 @@ pub const Generator = struct {
             \\
         , .{ ancestor.name, depth, ancestor.name });
 
-        // Generate method delegations (skip if overridden by current interface)
+        // Generate method delegations (skip if overridden by current interface in WebIDL)
         for (ancestor.methods) |method| {
             const is_overridden_webidl = self.isMethodOverridden(current_interface, method.name);
-            const is_overridden_custom = self.isCustomOverride(current_interface.name, method.name);
             const can_generate = self.canGenerateMethod(method);
 
-            if (is_overridden_custom) {
-                // Custom implementation in overrides.json
-                const reason = self.getOverrideReason(current_interface.name, method.name) orelse "Custom implementation";
-                try self.getWriter().print(
-                    \\    // NOTE: {s}.{s}() has custom implementation - not generated
-                    \\    // Reason: {s}
-                    \\    // See: overrides.json
-                    \\
-                    \\
-                , .{ ancestor.name, method.name, reason });
-            } else if (is_overridden_webidl) {
+            if (is_overridden_webidl) {
                 // Overridden in WebIDL
                 try self.getWriter().print(
                     \\    // NOTE: {s}.{s}() is overridden by {s} - not delegated
@@ -209,22 +183,6 @@ pub const Generator = struct {
         }
 
         return true;
-    }
-
-    /// Check if a method has a custom override in overrides.json
-    fn isCustomOverride(self: *Generator, interface_name: []const u8, method_name: []const u8) bool {
-        if (self.overrides.get(interface_name)) |methods| {
-            return methods.contains(method_name);
-        }
-        return false;
-    }
-
-    /// Get override reason from overrides.json
-    fn getOverrideReason(self: *Generator, interface_name: []const u8, method_name: []const u8) ?[]const u8 {
-        if (self.overrides.get(interface_name)) |methods| {
-            return methods.get(method_name);
-        }
-        return null;
     }
 
     fn generateMethodDelegation(self: *Generator, method: webidl.Method, interface_name: []const u8, depth: usize, is_overridden: bool) !void {
@@ -432,5 +390,156 @@ pub const Generator = struct {
             \\    // ========================================================================
             \\
         );
+    }
+
+    // ============================================================================
+    // Source-Based Generation (NEW: Generate from Zig source instead of WebIDL)
+    // ============================================================================
+
+    /// Generate delegation code from parent Zig source file
+    /// This is the RECOMMENDED approach as it:
+    /// 1. Delegates to parent's actual implementation (e.g., Node's custom dispatchEvent)
+    /// 2. Sees complete API (not just WebIDL methods)
+    /// 3. Always delegates to direct parent (single level: self.prototype)
+    /// 4. Automatically works with delegation chains (parent handles ancestors)
+    /// 5. No need to track overrides - just delegate to what parent has
+    pub fn generateFromSource(
+        self: *Generator,
+        child_interface: []const u8,
+        parent_source_path: []const u8,
+        parent_struct_name: []const u8,
+    ) !void {
+        // Parse parent source file
+        var parser = SourceParser.init(self.allocator);
+        var methods = try parser.parseFile(parent_source_path, parent_struct_name);
+        defer {
+            for (methods.items) |*method| {
+                method.deinit(self.allocator);
+            }
+            methods.deinit(self.allocator);
+        }
+
+        // Write header
+        try self.writeSourceHeader(child_interface, parent_struct_name, parent_source_path, methods.items.len);
+
+        // Generate delegation for each method
+        for (methods.items) |method| {
+            // Skip special methods that shouldn't be delegated
+            if (self.shouldSkipMethod(method.name)) {
+                try self.getWriter().print(
+                    \\    // NOTE: {s}() is structural (init/acquire/release) - not delegated
+                    \\
+                    \\
+                , .{method.name});
+                continue;
+            }
+
+            // Generate delegation
+            try self.generateSourceMethodDelegation(method);
+        }
+
+        // Write footer
+        try self.writeFooter();
+    }
+
+    fn writeSourceHeader(
+        self: *Generator,
+        child_interface: []const u8,
+        parent_struct: []const u8,
+        parent_source: []const u8,
+        method_count: usize,
+    ) !void {
+        try self.getWriter().writeAll(
+            \\    // ========================================================================
+            \\    // GENERATED CODE - DO NOT EDIT
+            \\
+        );
+
+        try self.getWriter().print(
+            \\    // Generated from: {s}
+            \\    // Interface: {s} delegates to {s} ({d} methods)
+            \\
+        , .{ parent_source, child_interface, parent_struct, method_count });
+
+        const ts = std.time.timestamp();
+        try self.getWriter().print("    // Generated: {d}\n", .{ts});
+        try self.getWriter().writeAll(
+            \\    // 
+            \\    // This code delegates to the direct parent (self.prototype).
+            \\    // The parent handles further delegation to its ancestors automatically.
+            \\    // ========================================================================
+            \\
+            \\
+        );
+    }
+
+    fn generateSourceMethodDelegation(self: *Generator, method: MethodSignature) !void {
+        // Write documentation
+        try self.getWriter().print(
+            \\    /// {s}() - Delegated to parent prototype
+            \\    ///
+            \\    /// This method is automatically delegated to the parent implementation.
+            \\    /// All parameters are forwarded without modification.
+            \\    ///
+            \\
+        , .{method.name});
+
+        // Write method signature
+        // Always use `anytype` for self to support both *T and *const T
+        try self.getWriter().print("    pub inline fn {s}(self: anytype", .{method.name});
+
+        // Write parameters (skip first parameter which is self)
+        for (method.parameters.items[1..]) |param| {
+            try self.getWriter().print(", {s}: {s}", .{ param.name, param.type });
+        }
+
+        // Write return type
+        if (std.mem.eql(u8, method.return_type, "void")) {
+            try self.getWriter().writeAll(") void ");
+        } else {
+            try self.getWriter().print(") {s} ", .{method.return_type});
+        }
+
+        // Write delegation body
+        try self.getWriter().writeAll("{\n        ");
+        if (!std.mem.eql(u8, method.return_type, "void")) {
+            if (method.is_error_union) {
+                try self.getWriter().writeAll("return try ");
+            } else {
+                try self.getWriter().writeAll("return ");
+            }
+        } else if (method.is_error_union) {
+            try self.getWriter().writeAll("return try ");
+        }
+
+        // Always delegate to self.prototype (single level)
+        try self.getWriter().print("self.prototype.{s}(", .{method.name});
+
+        // Pass parameters (skip first parameter which is self)
+        for (method.parameters.items[1..], 0..) |param, i| {
+            if (i > 0) try self.getWriter().writeAll(", ");
+            try self.getWriter().print("{s}", .{param.name});
+        }
+
+        try self.getWriter().writeAll(");\n    }\n\n");
+    }
+
+    /// Check if a method should be skipped (structural methods)
+    fn shouldSkipMethod(self: *Generator, method_name: []const u8) bool {
+        _ = self;
+        const skip_list = [_][]const u8{
+            "init", // Constructor
+            "acquire", // Reference counting
+            "release", // Reference counting
+            "deinit", // Destructor
+        };
+
+        for (skip_list) |skip_name| {
+            if (std.mem.eql(u8, method_name, skip_name)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 };

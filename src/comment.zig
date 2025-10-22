@@ -335,7 +335,7 @@ pub const Comment = struct {
         passive: bool,
         signal: ?*anyopaque,
     ) !void {
-        return try self.prototype.prototype.addEventListener(
+        return try self.prototype.addEventListener(
             event_type,
             callback,
             context,
@@ -352,11 +352,11 @@ pub const Comment = struct {
         callback: EventCallback,
         capture: bool,
     ) void {
-        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+        self.prototype.removeEventListener(event_type, callback, capture);
     }
 
     pub inline fn dispatchEvent(self: *Comment, event: *Event) !bool {
-        return try self.prototype.prototype.dispatchEvent(event);
+        return try self.prototype.dispatchEvent(event);
     }
 
     /// Creates a new Comment node with the specified content.

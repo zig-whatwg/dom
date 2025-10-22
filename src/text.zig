@@ -356,7 +356,7 @@ pub const Text = struct {
     // Convenience Methods - EventTarget API Delegation
     // ================================================================
 
-    /// Convenience: text.addEventListener(...) instead of text.prototype.prototype.addEventListener(...)
+    /// Convenience: text.addEventListener(...) instead of text.prototype.addEventListener(...)
     pub inline fn addEventListener(
         self: *Text,
         event_type: []const u8,
@@ -367,7 +367,7 @@ pub const Text = struct {
         passive: bool,
         signal: ?*anyopaque,
     ) !void {
-        return try self.prototype.prototype.addEventListener(
+        return try self.prototype.addEventListener(
             event_type,
             callback,
             context,
@@ -378,19 +378,19 @@ pub const Text = struct {
         );
     }
 
-    /// Convenience: text.removeEventListener(...) instead of text.prototype.prototype.removeEventListener(...)
+    /// Convenience: text.removeEventListener(...) instead of text.prototype.removeEventListener(...)
     pub inline fn removeEventListener(
         self: *Text,
         event_type: []const u8,
         callback: EventCallback,
         capture: bool,
     ) void {
-        self.prototype.prototype.removeEventListener(event_type, callback, capture);
+        self.prototype.removeEventListener(event_type, callback, capture);
     }
 
-    /// Convenience: text.dispatchEvent(event) instead of text.prototype.prototype.dispatchEvent(event)
+    /// Convenience: text.dispatchEvent(event) instead of text.prototype.dispatchEvent(event)
     pub inline fn dispatchEvent(self: *Text, event: *Event) !bool {
-        return try self.prototype.prototype.dispatchEvent(event);
+        return try self.prototype.dispatchEvent(event);
     }
 
     /// Creates a new Text node with the specified content.

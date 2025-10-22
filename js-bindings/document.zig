@@ -76,22 +76,50 @@ pub export fn dom_document_get_implementation(handle: *DOMDocument) *dom_types.D
     return @ptrCast(doc.getImplementation());
 }
 
-/// Get URL attribute
+/// Get URL attribute.
 ///
-/// WebIDL: `readonly attribute USVString URL;`
-export fn dom_document_get_url(handle: *DOMDocument) [*:0]const u8 {
-    _ = handle;
-    // TODO: Implement getter
-    return "";
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute USVString URL;
+/// ```
+///
+/// ## Returns
+/// Document URL (empty string for generic DOM without browsing context)
+///
+/// ## Spec References
+/// - https://dom.spec.whatwg.org/#dom-document-url
+/// - https://developer.mozilla.org/en-US/docs/Web/API/Document/URL
+///
+/// ## Note
+/// This is a generic DOM library without browser context. Returns empty string
+/// by default. Applications can provide custom URL via document subclassing.
+pub export fn dom_document_get_url(handle: *DOMDocument) [*:0]const u8 {
+    const doc: *const Document = @ptrCast(@alignCast(handle));
+    const url = doc.getURL();
+    return zigStringToCString(url);
 }
 
-/// Get documentURI attribute
+/// Get documentURI attribute (alias for URL).
 ///
-/// WebIDL: `readonly attribute USVString documentURI;`
-export fn dom_document_get_documenturi(handle: *DOMDocument) [*:0]const u8 {
-    _ = handle;
-    // TODO: Implement getter
-    return "";
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute USVString documentURI;
+/// ```
+///
+/// ## Returns
+/// Document URI (same as URL, empty string for generic DOM)
+///
+/// ## Spec References
+/// - https://dom.spec.whatwg.org/#dom-document-documenturi
+/// - https://developer.mozilla.org/en-US/docs/Web/API/Document/documentURI
+///
+/// ## Note
+/// This property is functionally equivalent to URL. It exists for
+/// historical reasons and compatibility.
+pub export fn dom_document_get_documenturi(handle: *DOMDocument) [*:0]const u8 {
+    const doc: *const Document = @ptrCast(@alignCast(handle));
+    const uri = doc.getDocumentURI();
+    return zigStringToCString(uri);
 }
 
 /// Get compatMode attribute.
@@ -195,13 +223,32 @@ pub export fn dom_document_get_contenttype(handle: *DOMDocument) [*:0]const u8 {
     return zigStringToCString(content_type);
 }
 
-/// Get doctype attribute
+/// Get doctype attribute.
 ///
-/// WebIDL: `readonly attribute DocumentType? doctype;`
-export fn dom_document_get_doctype(handle: *DOMDocument) ?*DOMDocumentType {
-    _ = handle;
-    // TODO: Implement getter
-    return null;
+/// ## WebIDL
+/// ```webidl
+/// readonly attribute DocumentType? doctype;
+/// ```
+///
+/// ## Returns
+/// DocumentType node or NULL if none exists
+///
+/// ## Spec References
+/// - https://dom.spec.whatwg.org/#dom-document-doctype
+/// - https://developer.mozilla.org/en-US/docs/Web/API/Document/doctype
+///
+/// ## Example (C)
+/// ```c
+/// DOMDocumentType* doctype = dom_document_get_doctype(doc);
+/// if (doctype) {
+///     const char* name = dom_documenttype_get_name(doctype);
+///     printf("DOCTYPE: %s\n", name);
+/// }
+/// ```
+pub export fn dom_document_get_doctype(handle: *DOMDocument) ?*DOMDocumentType {
+    const doc: *const Document = @ptrCast(@alignCast(handle));
+    const dt = doc.doctype() orelse return null;
+    return @ptrCast(dt);
 }
 
 /// Get documentElement attribute
@@ -373,6 +420,50 @@ pub export fn dom_document_getelementsbyclassname(handle: *DOMDocument, classNam
     collection_ptr.* = collection;
 
     return @ptrCast(collection_ptr);
+}
+
+/// Get element by ID.
+///
+/// ## WebIDL
+/// ```webidl
+/// Element? getElementById(DOMString elementId);
+/// ```
+///
+/// ## Parameters
+/// - `handle`: Document handle
+/// - `elementId`: ID value to search for
+///
+/// ## Returns
+/// Element with matching ID, or NULL if not found
+///
+/// ## Spec References
+/// - Algorithm: https://dom.spec.whatwg.org/#dom-document-getelementbyid
+/// - WebIDL: dom.idl:295
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Document/getElementById
+///
+/// ## Performance
+/// - Uses optimized ID map with caching (~2-84ns typical)
+/// - Faster than querySelector for ID lookups
+///
+/// ## Note
+/// Only searches connected elements (attached to document tree).
+/// Returns first match if multiple elements share same ID (invalid but handled).
+///
+/// ## Example
+/// ```c
+/// DOMElement* elem = dom_document_getelementbyid(doc, "my-element");
+/// if (elem) {
+///     // Process element
+/// }
+/// ```
+pub export fn dom_document_getelementbyid(handle: *DOMDocument, elementId: [*:0]const u8) ?*DOMElement {
+    const doc: *Document = @ptrCast(@alignCast(handle));
+    const id = cStringToZigString(elementId);
+    const elem_opt = doc.getElementById(id);
+    if (elem_opt) |elem| {
+        return @ptrCast(elem);
+    }
+    return null;
 }
 
 // SKIPPED: createElement() - Contains complex types not supported in C-ABI v1
@@ -711,17 +802,208 @@ pub export fn dom_document_queryselector(handle: *DOMDocument, selectors: [*:0]c
     return if (result) |elem| @ptrCast(elem) else null;
 }
 
-/// querySelectorAll method
+/// Query all matching elements with CSS selector.
 ///
-/// Note: This returns the first element only for now (C-ABI limitation).
-/// Full implementation requires NodeList binding.
+/// ## WebIDL
+/// ```webidl
+/// [NewObject] NodeList querySelectorAll(DOMString selectors);
+/// ```
 ///
-/// WebIDL: `NodeList querySelectorAll(DOMString selectors);`
-pub export fn dom_document_queryselectorall_first(handle: *DOMDocument, selectors: [*:0]const u8) ?*DOMElement {
-    // For now, just return the first match (same as querySelector)
-    // Full implementation needs NodeList binding
-    return dom_document_queryselector(handle, selectors);
+/// ## Parameters
+/// - `handle`: Document handle
+/// - `selectors`: CSS selector string
+///
+/// ## Returns
+/// Static NodeList of matching elements (caller must free with dom_nodelist_static_release)
+/// Returns NULL on error or empty result
+///
+/// ## Spec References
+/// - Algorithm: https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall
+/// - WebIDL: dom.idl:171
+/// - MDN: https://developer.mozilla.org/en-US/docs/Web/API/Document/querySelectorAll
+///
+/// ## Note
+/// Returns a static snapshot (not live) of matching elements at query time.
+/// Use dom_nodelist_static_get_length() and dom_nodelist_static_item() to access results.
+///
+/// ## Example
+/// ```c
+/// DOMNodeList* results = dom_document_queryselectorall(doc, ".button");
+/// if (results) {
+///     uint32_t count = dom_nodelist_static_get_length(results);
+///     for (uint32_t i = 0; i < count; i++) {
+///         DOMNode* node = dom_nodelist_static_item(results, i);
+///         DOMElement* elem = (DOMElement*)node;
+///         // Process element
+///     }
+///     dom_nodelist_static_release(results);
+/// }
+/// ```
+pub export fn dom_document_queryselectorall(handle: *DOMDocument, selectors: [*:0]const u8) ?*dom_types.DOMNodeList {
+    const doc: *Document = @ptrCast(@alignCast(handle));
+    const selector_string = cStringToZigString(selectors);
+
+    const results = doc.querySelectorAll(selector_string) catch {
+        return null;
+    };
+
+    if (results.len == 0) {
+        return null;
+    }
+
+    // For C-ABI, create a static snapshot wrapper
+    const allocator = std.heap.c_allocator;
+
+    // Duplicate the slice so it persists
+    const heap_results = allocator.dupe(*Element, results) catch {
+        return null;
+    };
+
+    // Create wrapper
+    const wrapper = allocator.create(StaticNodeList) catch {
+        allocator.free(heap_results);
+        return null;
+    };
+
+    wrapper.* = StaticNodeList{
+        .elements = heap_results.ptr,
+        .count = heap_results.len,
+    };
+
+    return @ptrCast(wrapper);
 }
+
+// ============================================================================
+// Static NodeList structure (for querySelectorAll results)
+// ============================================================================
+
+/// Static NodeList wrapper for querySelectorAll results
+const StaticNodeList = struct {
+    elements: [*]*Element,
+    count: usize,
+
+    pub fn length(self: *const StaticNodeList) u32 {
+        return @intCast(self.count);
+    }
+
+    pub fn item(self: *const StaticNodeList, index: u32) ?*Node {
+        if (index >= self.count) {
+            return null;
+        }
+        return &self.elements[index].prototype;
+    }
+};
+
+/// Get length of static NodeList from querySelectorAll.
+///
+/// ## Parameters
+/// - `list`: NodeList handle from querySelectorAll
+///
+/// ## Returns
+/// Number of elements in the static snapshot
+pub export fn dom_nodelist_static_get_length(list: *dom_types.DOMNodeList) u32 {
+    const static_list: *StaticNodeList = @ptrCast(@alignCast(list));
+    return static_list.length();
+}
+
+/// Get element at index from static NodeList.
+///
+/// ## Parameters
+/// - `list`: NodeList handle from querySelectorAll
+/// - `index`: Zero-based index
+///
+/// ## Returns
+/// Node at index, or NULL if out of bounds
+pub export fn dom_nodelist_static_item(list: *dom_types.DOMNodeList, index: u32) ?*DOMNode {
+    const static_list: *StaticNodeList = @ptrCast(@alignCast(list));
+    const node_opt = static_list.item(index);
+    if (node_opt) |n| {
+        return @ptrCast(n);
+    }
+    return null;
+}
+
+/// Release static NodeList from querySelectorAll.
+///
+/// ## Parameters
+/// - `list`: NodeList handle to release
+///
+/// ## Note
+/// This frees the static snapshot array and wrapper, not the elements themselves.
+pub export fn dom_nodelist_static_release(list: *dom_types.DOMNodeList) void {
+    const allocator = std.heap.c_allocator;
+    const static_list: *StaticNodeList = @ptrCast(@alignCast(list));
+    const slice = static_list.elements[0..static_list.count];
+    allocator.free(slice);
+    allocator.destroy(static_list);
+}
+
+// ============================================================================
+// Node API Delegation (Convenience Methods)
+// ============================================================================
+// These methods delegate to the Node interface for convenience, avoiding the
+// need to cast Document to Node in C code.
+
+/// Append a child node to this document
+///
+/// WebIDL: `Node appendChild(Node node);` (inherited from Node)
+pub export fn dom_document_appendchild(handle: *DOMDocument, child: *DOMNode) ?*DOMNode {
+    const doc: *Document = @ptrCast(@alignCast(handle));
+    const child_node: *Node = @ptrCast(@alignCast(child));
+    const result = doc.appendChild(child_node) catch return null;
+    return @ptrCast(result);
+}
+
+/// Insert a node before a reference child
+///
+/// WebIDL: `Node insertBefore(Node node, Node? child);` (inherited from Node)
+pub export fn dom_document_insertbefore(handle: *DOMDocument, node: *DOMNode, child: ?*DOMNode) ?*DOMNode {
+    const doc: *Document = @ptrCast(@alignCast(handle));
+    const new_node: *Node = @ptrCast(@alignCast(node));
+    const child_node: ?*Node = if (child) |c| @as(*Node, @ptrCast(@alignCast(c))) else null;
+    const result = doc.insertBefore(new_node, child_node) catch return null;
+    return @ptrCast(result);
+}
+
+/// Remove a child node from this document
+///
+/// WebIDL: `Node removeChild(Node child);` (inherited from Node)
+pub export fn dom_document_removechild(handle: *DOMDocument, child: *DOMNode) ?*DOMNode {
+    const doc: *Document = @ptrCast(@alignCast(handle));
+    const child_node: *Node = @ptrCast(@alignCast(child));
+    const result = doc.removeChild(child_node) catch return null;
+    return @ptrCast(result);
+}
+
+/// Check if this document has any child nodes
+///
+/// WebIDL: `boolean hasChildNodes();` (inherited from Node)
+pub export fn dom_document_haschildnodes(handle: *DOMDocument) u8 {
+    const doc: *const Document = @ptrCast(@alignCast(handle));
+    return if (doc.hasChildNodes()) 1 else 0;
+}
+
+/// Get the first child node
+///
+/// WebIDL: `readonly attribute Node? firstChild;` (inherited from Node)
+pub export fn dom_document_get_firstchild(handle: *DOMDocument) ?*DOMNode {
+    const doc: *const Document = @ptrCast(@alignCast(handle));
+    const child = doc.firstChild() orelse return null;
+    return @ptrCast(child);
+}
+
+/// Get the last child node
+///
+/// WebIDL: `readonly attribute Node? lastChild;` (inherited from Node)
+pub export fn dom_document_get_lastchild(handle: *DOMDocument) ?*DOMNode {
+    const doc: *const Document = @ptrCast(@alignCast(handle));
+    const child = doc.lastChild() orelse return null;
+    return @ptrCast(child);
+}
+
+// ============================================================================
+// Document Lifecycle
+// ============================================================================
 
 /// Create a new Document (not in WebIDL - C-ABI specific)
 ///

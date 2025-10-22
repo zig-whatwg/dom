@@ -98,14 +98,23 @@ pub const DOMDocumentType = opaque {};
 /// Opaque handle for DOM DOMImplementation
 pub const DOMDOMImplementation = opaque {};
 
+/// Opaque handle for DOM EventTarget
+pub const DOMEventTarget = opaque {};
+
 /// Opaque handle for DOM Event
 pub const DOMEvent = opaque {};
 
 /// Opaque handle for DOM CustomEvent
 pub const DOMCustomEvent = opaque {};
 
+/// Opaque handle for DOM AbstractRange
+pub const DOMAbstractRange = opaque {};
+
 /// Opaque handle for DOM Range
 pub const DOMRange = opaque {};
+
+/// Opaque handle for DOM StaticRange
+pub const DOMStaticRange = opaque {};
 
 /// Opaque handle for DOM MutationObserver
 pub const DOMMutationObserver = opaque {};

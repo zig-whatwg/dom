@@ -2,10 +2,16 @@
 //!
 //! Usage:
 //!   zig run tools/codegen/main.zig -- [interface_name]
+//!   zig run tools/codegen/main.zig -- [interface_name] --from-source [parent_source] [parent_struct]
 //!
 //! Examples:
+//!   # WebIDL-based generation (old approach)
 //!   zig run tools/codegen/main.zig -- Element
 //!   zig run tools/codegen/main.zig -- all
+//!
+//!   # Source-based generation (RECOMMENDED)
+//!   zig run tools/codegen/main.zig -- Element --from-source src/node.zig Node
+//!   zig run tools/codegen/main.zig -- Document --from-source src/node.zig Node
 
 const std = @import("std");
 
@@ -31,6 +37,15 @@ pub fn main() !void {
 
     const interface_name = args[1];
 
+    // Check for --from-source flag (RECOMMENDED approach)
+    if (args.len >= 5 and std.mem.eql(u8, args[2], "--from-source")) {
+        const parent_source = args[3];
+        const parent_struct = args[4];
+        try generateFromSource(interface_name, parent_source, parent_struct, allocator);
+        return;
+    }
+
+    // WebIDL-based generation (old approach)
     // Read dom.idl
     const idl_path = "skills/whatwg_compliance/dom.idl";
     const idl_source = try std.fs.cwd().readFileAlloc(allocator, idl_path, 10 * 1024 * 1024);
@@ -90,9 +105,6 @@ fn generateInterface(name: []const u8, doc: *webidl.Document, allocator: std.mem
     var gen = generator.Generator.init(allocator);
     defer gen.deinit();
 
-    // Load overrides from overrides.json
-    try gen.loadOverrides();
-
     try gen.generate(interface, doc);
 
     const output = gen.getOutput();
@@ -101,6 +113,38 @@ fn generateInterface(name: []const u8, doc: *webidl.Document, allocator: std.mem
     std.debug.print("{s}\n", .{output});
 
     std.debug.print("\n✓ Generated successfully!\n", .{});
+}
+
+/// Generate delegation code from Zig source file (RECOMMENDED)
+fn generateFromSource(
+    interface_name: []const u8,
+    parent_source: []const u8,
+    parent_struct: []const u8,
+    allocator: std.mem.Allocator,
+) !void {
+    std.debug.print("\n🔧 Source-Based Code Generation\n", .{});
+    std.debug.print("Interface: {s}\n", .{interface_name});
+    std.debug.print("Parent: {s} from {s}\n\n", .{ parent_struct, parent_source });
+
+    // Generate code
+    var gen = generator.Generator.init(allocator);
+    defer gen.deinit();
+
+    try gen.generateFromSource(interface_name, parent_source, parent_struct);
+
+    const output = gen.getOutput();
+
+    // Output generated code
+    std.debug.print("{s}\n", .{output});
+
+    std.debug.print("\n✓ Generated successfully!\n", .{});
+
+    // Create lowercase version of interface name for tip
+    const lower_name = try allocator.alloc(u8, interface_name.len);
+    defer allocator.free(lower_name);
+    _ = std.ascii.lowerString(lower_name, interface_name);
+
+    std.debug.print("\n💡 Tip: Copy the generated code to src/{s}.zig\n", .{lower_name});
 }
 
 fn generateAll(doc: *webidl.Document, allocator: std.mem.Allocator) !void {
@@ -120,12 +164,23 @@ fn generateAll(doc: *webidl.Document, allocator: std.mem.Allocator) !void {
 
 fn printUsage() !void {
     std.debug.print(
-        \\Usage: zig run tools/codegen/main.zig -- [interface_name | all]
+        \\Usage: 
+        \\  zig run tools/codegen/main.zig -- [interface_name] [options]
+        \\  zig build codegen -- [interface_name] [options]
+        \\
+        \\Source-Based Generation (RECOMMENDED):
+        \\  --from-source [parent_source] [parent_struct]
         \\
         \\Examples:
-        \\  zig run tools/codegen/main.zig -- Element
-        \\  zig run tools/codegen/main.zig -- Document
-        \\  zig run tools/codegen/main.zig -- all
+        \\  # Source-based generation (RECOMMENDED)
+        \\  zig build codegen -- Element --from-source src/node.zig Node
+        \\  zig build codegen -- Document --from-source src/node.zig Node
+        \\  zig build codegen -- Text --from-source src/character_data.zig CharacterData
+        \\
+        \\  # WebIDL-based generation (old approach)
+        \\  zig build codegen -- Element
+        \\  zig build codegen -- Document
+        \\  zig build codegen -- all
         \\
         \\This generates Zig delegation methods for the specified interface
         \\from the WebIDL definitions in skills/whatwg_compliance/dom.idl.

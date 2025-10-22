@@ -31,24 +31,30 @@ extern "C" {
 typedef struct DOMDocument DOMDocument;
 typedef struct DOMElement DOMElement;
 typedef struct DOMNode DOMNode;
+typedef struct DOMCharacterData DOMCharacterData;
 typedef struct DOMText DOMText;
 typedef struct DOMComment DOMComment;
 typedef struct DOMCDATASection DOMCDATASection;
 typedef struct DOMProcessingInstruction DOMProcessingInstruction;
 typedef struct DOMDocumentFragment DOMDocumentFragment;
+typedef struct DOMDocumentType DOMDocumentType;
+typedef struct DOMDOMImplementation DOMDOMImplementation;
 typedef struct DOMAttr DOMAttr;
 typedef struct DOMDOMTokenList DOMDOMTokenList;
 typedef struct DOMNamedNodeMap DOMNamedNodeMap;
 typedef struct DOMShadowRoot DOMShadowRoot;
 typedef struct DOMEventTarget DOMEventTarget;
 typedef struct DOMEvent DOMEvent;
+typedef struct DOMCustomEvent DOMCustomEvent;
+typedef struct DOMAbstractRange DOMAbstractRange;
 typedef struct DOMRange DOMRange;
+typedef struct DOMStaticRange DOMStaticRange;
 typedef struct DOMTreeWalker DOMTreeWalker;
 typedef struct DOMNodeIterator DOMNodeIterator;
 typedef struct DOMHTMLCollection DOMHTMLCollection;
+typedef struct DOMNodeList DOMNodeList;
 typedef struct DOMAbortController DOMAbortController;
 typedef struct DOMAbortSignal DOMAbortSignal;
-typedef struct DOMStaticRange DOMStaticRange;
 
 /* ============================================================================
  * Constants
@@ -90,6 +96,12 @@ typedef struct DOMStaticRange DOMStaticRange;
 #define DOM_RANGE_START_TO_END   1
 #define DOM_RANGE_END_TO_END     2
 #define DOM_RANGE_END_TO_START   3
+
+/* Event Phase Constants */
+#define DOM_EVENT_NONE              0
+#define DOM_EVENT_CAPTURING_PHASE   1
+#define DOM_EVENT_AT_TARGET         2
+#define DOM_EVENT_BUBBLING_PHASE    3
 
 /* ============================================================================
  * Error Handling
@@ -196,6 +208,52 @@ const char* dom_document_get_inputencoding(DOMDocument* doc);
 const char* dom_document_get_contenttype(DOMDocument* doc);
 
 /**
+ * Get document URL.
+ * 
+ * Returns the document's URL. For a generic DOM without browsing context,
+ * this returns an empty string by default.
+ * 
+ * @param doc Document
+ * @return Document URL (empty string for generic DOM)
+ * 
+ * Example:
+ *   const char* url = dom_document_get_url(doc);
+ *   printf("Document URL: %s\n", url);
+ */
+const char* dom_document_get_url(DOMDocument* doc);
+
+/**
+ * Get document URI (alias for URL).
+ * 
+ * This property is functionally equivalent to URL. It exists for
+ * historical reasons and compatibility.
+ * 
+ * @param doc Document
+ * @return Document URI (same as URL, empty string for generic DOM)
+ * 
+ * Example:
+ *   const char* uri = dom_document_get_documenturi(doc);
+ */
+const char* dom_document_get_documenturi(DOMDocument* doc);
+
+/**
+ * Get document type declaration.
+ * 
+ * Returns the DocumentType node (<!DOCTYPE ...>) if present.
+ * 
+ * @param doc Document
+ * @return DocumentType node or NULL if none exists
+ * 
+ * Example:
+ *   DOMDocumentType* doctype = dom_document_get_doctype(doc);
+ *   if (doctype) {
+ *       const char* name = dom_documenttype_get_name(doctype);
+ *       printf("DOCTYPE: %s\n", name);
+ *   }
+ */
+DOMDocumentType* dom_document_get_doctype(DOMDocument* doc);
+
+/**
  * Create an element.
  * 
  * @param doc Document
@@ -296,16 +354,27 @@ DOMNode* dom_document_adoptnode(DOMDocument* doc, DOMNode* node);
 DOMElement* dom_document_queryselector(DOMDocument* doc, const char* selectors);
 
 /**
- * Find first element matching a CSS selector (temporary).
+ * Find all elements matching a CSS selector.
  * 
- * Note: This currently returns only the first match.
- * Full querySelectorAll will be added when NodeList binding is complete.
+ * Returns a static snapshot of all elements matching the selector at query time.
+ * The list does NOT update when the DOM changes (unlike getElementsByClassName).
  * 
  * @param doc Document
  * @param selectors CSS selector string
- * @return First matching element or NULL
+ * @return Static NodeList or NULL if no matches or error
+ * 
+ * Example:
+ *   DOMNodeList* results = dom_document_queryselectorall(doc, ".button");
+ *   if (results) {
+ *       uint32_t count = dom_nodelist_static_get_length(results);
+ *       for (uint32_t i = 0; i < count; i++) {
+ *           DOMNode* node = dom_nodelist_static_item(results, i);
+ *           // Process node (can cast to DOMElement*)
+ *       }
+ *       dom_nodelist_static_release(results);
+ *   }
  */
-DOMElement* dom_document_queryselectorall_first(DOMDocument* doc, const char* selectors);
+DOMNodeList* dom_document_queryselectorall(DOMDocument* doc, const char* selectors);
 
 /**
  * Get all elements with the specified tag name.
@@ -348,9 +417,9 @@ DOMHTMLCollection* dom_document_getelementsbytagname(DOMDocument* doc, const cha
 DOMHTMLCollection* dom_document_getelementsbytagnamens(DOMDocument* doc, const char* ns, const char* localName);
 
 /**
- * Get all elements with the specified class name(s).
+ * Get elements by class name(s).
  * 
- * Returns a live HTMLCollection of elements that have all the specified classes.
+ * Returns a live HTMLCollection of all elements with the specified class name(s).
  * Multiple class names should be space-separated.
  * 
  * @param doc Document
@@ -364,6 +433,24 @@ DOMHTMLCollection* dom_document_getelementsbytagnamens(DOMDocument* doc, const c
  *   dom_htmlcollection_release(buttons);
  */
 DOMHTMLCollection* dom_document_getelementsbyclassname(DOMDocument* doc, const char* classNames);
+
+/**
+ * Get element by ID.
+ * 
+ * Returns the first element with the specified ID attribute value.
+ * Uses optimized ID map with caching for fast lookups (~2-84ns).
+ * 
+ * @param doc Document
+ * @param elementId ID value to search for
+ * @return Element with matching ID, or NULL if not found
+ * 
+ * Example:
+ *   DOMElement* elem = dom_document_getelementbyid(doc, "my-element");
+ *   if (elem) {
+ *       // Process element
+ *   }
+ */
+DOMElement* dom_document_getelementbyid(DOMDocument* doc, const char* elementId);
 
 /**
  * Create a new Range.
@@ -426,6 +513,136 @@ DOMTreeWalker* dom_document_createtreewalker(DOMDocument* doc, DOMNode* root, ui
  *   dom_nodeiterator_release(iterator);
  */
 DOMNodeIterator* dom_document_createnodeiterator(DOMDocument* doc, DOMNode* root, uint32_t whatToShow, void* filter);
+
+/* ============================================================================
+ * DOMImplementation Interface
+ * ========================================================================= */
+
+/**
+ * Create a DocumentType node.
+ * 
+ * Creates a DocumentType node (<!DOCTYPE>) with the specified properties.
+ * 
+ * @param impl DOMImplementation handle
+ * @param qualifiedName Document type name (e.g., "html")
+ * @param publicId Public identifier (empty string for none)
+ * @param systemId System identifier (empty string for none)
+ * @return DocumentType node (must be released), or NULL on error
+ * 
+ * Example:
+ *   DOMDOMImplementation* impl = dom_document_get_implementation(doc);
+ *   DOMDocumentType* doctype = dom_domimplementation_createdocumenttype(
+ *       impl, "html", "", ""
+ *   );
+ *   // Use doctype...
+ *   dom_documenttype_release(doctype);
+ */
+DOMDocumentType* dom_domimplementation_createdocumenttype(
+    DOMDOMImplementation* impl,
+    const char* qualifiedName,
+    const char* publicId,
+    const char* systemId
+);
+
+/**
+ * Create a Document.
+ * 
+ * Creates a new Document with optional namespace, qualified name, and doctype.
+ * 
+ * @param impl DOMImplementation handle
+ * @param namespace_ Namespace URI (NULL for none)
+ * @param qualifiedName Qualified element name for document element (NULL for none)
+ * @param doctype DocumentType to associate (NULL for none)
+ * @return New Document (must be released), or NULL on error
+ * 
+ * Example:
+ *   DOMDOMImplementation* impl = dom_document_get_implementation(doc);
+ *   DOMDocument* newDoc = dom_domimplementation_createdocument(
+ *       impl, NULL, "root", NULL
+ *   );
+ *   // Use newDoc...
+ *   dom_document_release(newDoc);
+ */
+DOMDocument* dom_domimplementation_createdocument(
+    DOMDOMImplementation* impl,
+    const char* namespace_,
+    const char* qualifiedName,
+    DOMDocumentType* doctype
+);
+
+/**
+ * Check if feature is supported (legacy, always returns 1).
+ * 
+ * This is a legacy method from DOM Level 1. Modern code should not use it.
+ * Always returns 1 (true) for compatibility.
+ * 
+ * @param impl DOMImplementation handle
+ * @return 1 (always returns true for compatibility)
+ */
+int32_t dom_domimplementation_hasfeature(DOMDOMImplementation* impl);
+
+/**
+ * Increment reference count.
+ * 
+ * @param impl DOMImplementation handle
+ */
+void dom_domimplementation_addref(DOMDOMImplementation* impl);
+
+/**
+ * Decrement reference count.
+ * 
+ * @param impl DOMImplementation handle
+ */
+void dom_domimplementation_release(DOMDOMImplementation* impl);
+
+/* ============================================================================
+ * AbstractRange Interface
+ * ========================================================================= */
+
+/**
+ * Get the start container node (AbstractRange).
+ * 
+ * AbstractRange is the base interface for Range and StaticRange.
+ * All Range and StaticRange pointers can be cast to AbstractRange.
+ * 
+ * @param range AbstractRange (or Range/StaticRange cast to AbstractRange)
+ * @return Start container node (do NOT release)
+ */
+DOMNode* dom_abstractrange_get_startcontainer(DOMAbstractRange* range);
+
+/**
+ * Get the start offset (AbstractRange).
+ * 
+ * @param range AbstractRange
+ * @return Offset within start container
+ */
+uint32_t dom_abstractrange_get_startoffset(DOMAbstractRange* range);
+
+/**
+ * Get the end container node (AbstractRange).
+ * 
+ * @param range AbstractRange
+ * @return End container node (do NOT release)
+ */
+DOMNode* dom_abstractrange_get_endcontainer(DOMAbstractRange* range);
+
+/**
+ * Get the end offset (AbstractRange).
+ * 
+ * @param range AbstractRange
+ * @return Offset within end container
+ */
+uint32_t dom_abstractrange_get_endoffset(DOMAbstractRange* range);
+
+/**
+ * Check if range is collapsed (AbstractRange).
+ * 
+ * A range is collapsed when start == end.
+ * 
+ * @param range AbstractRange
+ * @return 1 if collapsed, 0 otherwise
+ */
+uint8_t dom_abstractrange_get_collapsed(DOMAbstractRange* range);
 
 /* ============================================================================
  * Range Interface
@@ -658,6 +875,64 @@ DOMRange* dom_range_clonerange(DOMRange* range);
 void dom_range_detach(DOMRange* range);
 
 /**
+ * Convert range to string (stringifier).
+ * 
+ * Returns the text content of the range. For text nodes and elements,
+ * this concatenates all text within the range boundaries.
+ * 
+ * The returned string is owned by the caller and MUST be freed using
+ * dom_range_free_tostring().
+ * 
+ * @param range Range handle
+ * @return Null-terminated string (NULL on error)
+ * 
+ * Example:
+ *   DOMRange* range = dom_document_createrange(doc);
+ *   dom_range_setstart(range, textNode, 0);
+ *   dom_range_setend(range, textNode, 5);
+ *   
+ *   const char* text = dom_range_tostring(range);
+ *   if (text) {
+ *       printf("Range text: %s\n", text);
+ *       dom_range_free_tostring(text);
+ *   }
+ *   
+ *   dom_range_release(range);
+ */
+const char* dom_range_tostring(DOMRange* range);
+
+/**
+ * Free string returned by dom_range_tostring().
+ * 
+ * Frees the string returned by dom_range_tostring().
+ * MUST be called to avoid memory leaks.
+ * 
+ * @param str String returned by dom_range_tostring()
+ * 
+ * Example:
+ *   const char* text = dom_range_tostring(range);
+ *   if (text) {
+ *       printf("Text: %s\n", text);
+ *       dom_range_free_tostring(text);
+ *   }
+ */
+void dom_range_free_tostring(const char* str);
+
+/**
+ * Increment range reference count.
+ * 
+ * @param range Range handle
+ */
+void dom_range_addref(DOMRange* range);
+
+/**
+ * Decrement range reference count.
+ * 
+ * @param range Range handle
+ */
+void dom_range_release(DOMRange* range);
+
+/**
  * Release a reference to an element.
  * 
  * @param elem Element
@@ -879,6 +1154,107 @@ uint8_t dom_element_hasattributens(DOMElement* elem, const char* ns, const char*
 uint8_t dom_element_hasattributes(DOMElement* elem);
 
 /**
+ * Get array of all attribute names.
+ * 
+ * Returns an array of all qualified attribute names on the element.
+ * The returned array is owned by the caller and MUST be freed using
+ * dom_element_free_attributenames().
+ * 
+ * @param elem Element handle
+ * @param count Pointer to store the number of attribute names
+ * @return Array of null-terminated attribute name strings (NULL if no attributes or error)
+ * 
+ * Example:
+ *   uint32_t count;
+ *   const char** names = dom_element_getattributenames(elem, &count);
+ *   if (names) {
+ *       printf("Element has %u attributes:\n", count);
+ *       for (uint32_t i = 0; i < count; i++) {
+ *           printf("  - %s\n", names[i]);
+ *       }
+ *       dom_element_free_attributenames(names, count);
+ *   }
+ */
+const char** dom_element_getattributenames(DOMElement* elem, uint32_t* count);
+
+/**
+ * Free attribute names array.
+ * 
+ * Frees the array returned by dom_element_getattributenames().
+ * MUST be called to avoid memory leaks.
+ * 
+ * @param names Array of attribute names (from dom_element_getattributenames)
+ * @param count Number of names in array
+ * 
+ * Example:
+ *   uint32_t count;
+ *   const char** names = dom_element_getattributenames(elem, &count);
+ *   if (names) {
+ *       // ... use names ...
+ *       dom_element_free_attributenames(names, count);
+ *   }
+ */
+void dom_element_free_attributenames(const char** names, uint32_t count);
+
+/**
+ * Get the slot attribute (Slottable mixin).
+ * 
+ * Returns the value of the "slot" attribute, which specifies which slot
+ * in a shadow tree this element should be assigned to.
+ * 
+ * @param elem Element handle
+ * @return Slot name (empty string if not set, do NOT free)
+ * 
+ * Example:
+ *   const char* slot_name = dom_element_get_slot(elem);
+ *   printf("Element slot: %s\n", slot_name);
+ */
+const char* dom_element_get_slot(DOMElement* elem);
+
+/**
+ * Set the slot attribute (Slottable mixin).
+ * 
+ * Sets the "slot" attribute, which specifies which slot in a shadow tree
+ * this element should be assigned to. Setting the slot attribute reassigns
+ * the element to the new slot.
+ * 
+ * @param elem Element handle
+ * @param value Slot name (use "" to remove slot attribute)
+ * @return 0 on success, error code on failure
+ * 
+ * Example:
+ *   // Assign element to "header" slot
+ *   int err = dom_element_set_slot(elem, "header");
+ *   if (err != 0) {
+ *       fprintf(stderr, "Error: %s\n", dom_error_code_message(err));
+ *   }
+ *   
+ *   // Remove slot assignment
+ *   dom_element_set_slot(elem, "");
+ */
+int32_t dom_element_set_slot(DOMElement* elem, const char* value);
+
+/**
+ * Get the assigned slot element (Slottable mixin).
+ * 
+ * Returns the <slot> element that this element is assigned to in a shadow tree.
+ * Returns NULL if the element is not assigned to any slot.
+ * 
+ * @param elem Element handle
+ * @return Slot element or NULL (do NOT release)
+ * 
+ * Example:
+ *   DOMElement* slot = dom_element_get_assignedslot(elem);
+ *   if (slot) {
+ *       const char* name = dom_element_getattribute(slot, "name");
+ *       printf("Assigned to slot: %s\n", name ? name : "(default)");
+ *   } else {
+ *       printf("Not assigned to any slot\n");
+ *   }
+ */
+DOMElement* dom_element_get_assignedslot(DOMElement* elem);
+
+/**
  * Test if element matches a CSS selector.
  * 
  * Returns true if the element would be selected by the specified selector string.
@@ -939,16 +1315,27 @@ uint8_t dom_element_webkitmatchesselector(DOMElement* elem, const char* selector
 DOMElement* dom_element_queryselector(DOMElement* elem, const char* selectors);
 
 /**
- * Find first descendant element matching a CSS selector (temporary).
+ * Find all descendant elements matching a CSS selector.
  * 
- * Note: This currently returns only the first match.
- * Full querySelectorAll will be added when NodeList binding is complete.
+ * Returns a static snapshot of all descendant elements matching the selector.
+ * The list does NOT update when the DOM changes (not live).
  * 
  * @param elem Element to search within
  * @param selectors CSS selector string
- * @return First matching descendant or NULL
+ * @return Static NodeList or NULL if no matches or error
+ * 
+ * Example:
+ *   DOMNodeList* items = dom_element_queryselectorall(list, ".list-item");
+ *   if (items) {
+ *       uint32_t count = dom_nodelist_static_get_length(items);
+ *       for (uint32_t i = 0; i < count; i++) {
+ *           DOMNode* node = dom_nodelist_static_item(items, i);
+ *           // Process item
+ *       }
+ *       dom_nodelist_static_release(items);
+ *   }
  */
-DOMElement* dom_element_queryselectorall_first(DOMElement* elem, const char* selectors);
+DOMNodeList* dom_element_queryselectorall(DOMElement* elem, const char* selectors);
 
 /**
  * Increment element reference count.
@@ -1223,6 +1610,58 @@ DOMNode* dom_node_get_nextsibling(DOMNode* node);
  * @return Owner document or NULL (do NOT release)
  */
 DOMDocument* dom_node_get_ownerdocument(DOMNode* node);
+
+/**
+ * Check if node is connected to a document.
+ * 
+ * Returns true if the node is in a document tree (has a document ancestor).
+ * 
+ * @param node Node
+ * @return 1 if connected, 0 if not
+ */
+uint8_t dom_node_get_isconnected(DOMNode* node);
+
+/**
+ * Get the text content of the node and its descendants.
+ * 
+ * Returns all text contained in the node's subtree, concatenated together.
+ * For text nodes, returns the data. For elements, returns concatenated text
+ * of all descendant text nodes.
+ * 
+ * @param node Node
+ * @return Text content (borrowed reference, may be empty string), never NULL
+ */
+const char* dom_node_get_textcontent(DOMNode* node);
+
+/**
+ * Set the text content of the node.
+ * 
+ * Removes all children and replaces with a single text node containing the value,
+ * or removes all children if value is NULL.
+ * 
+ * @param node Node
+ * @param value Text content to set (NULL to remove all children)
+ * @return 0 on success, error code on failure
+ */
+int32_t dom_node_set_textcontent(DOMNode* node, const char* value);
+
+/**
+ * Get the root node of the tree.
+ * 
+ * Returns the root of the tree containing this node.
+ * 
+ * @param node Node
+ * @param composed If non-zero, pierces shadow boundaries; if zero, stops at shadow root
+ * @return Root node (never NULL, borrowed reference)
+ * 
+ * Example:
+ *   // Get root without piercing shadow boundaries (default)
+ *   DOMNode* root = dom_node_getrootnode(node, 0);
+ *   
+ *   // Get root, traversing through shadow boundaries
+ *   DOMNode* doc = dom_node_getrootnode(shadow_child, 1);
+ */
+DOMNode* dom_node_getrootnode(DOMNode* node, uint8_t composed);
 
 /**
  * Check if node has child nodes.
@@ -2316,6 +2755,492 @@ uint8_t dom_staticrange_get_collapsed(DOMStaticRange* range);
  *   dom_staticrange_release(range);
  */
 void dom_staticrange_release(DOMStaticRange* range);
+
+/* ============================================================================
+ * DocumentFragment Interface (ParentNode mixin)
+ * ========================================================================= */
+
+/**
+ * Get live collection of element children.
+ * 
+ * Returns an HTMLCollection of all element children (skips text nodes, etc.).
+ * The collection is live and updates when the DOM changes.
+ * 
+ * @param fragment DocumentFragment handle
+ * @return HTMLCollection of element children (must be released)
+ * 
+ * Example:
+ *   DOMHTMLCollection* elements = dom_documentfragment_get_children(fragment);
+ *   uint32_t count = dom_htmlcollection_get_length(elements);
+ *   for (uint32_t i = 0; i < count; i++) {
+ *       DOMElement* elem = dom_htmlcollection_item(elements, i);
+ *   }
+ *   dom_htmlcollection_release(elements);
+ */
+DOMHTMLCollection* dom_documentfragment_get_children(DOMDocumentFragment* fragment);
+
+/**
+ * Get first element child.
+ * 
+ * @param fragment DocumentFragment handle
+ * @return First element child or NULL
+ * 
+ * Example:
+ *   DOMElement* first = dom_documentfragment_get_firstelementchild(fragment);
+ */
+DOMElement* dom_documentfragment_get_firstelementchild(DOMDocumentFragment* fragment);
+
+/**
+ * Get last element child.
+ * 
+ * @param fragment DocumentFragment handle
+ * @return Last element child or NULL
+ * 
+ * Example:
+ *   DOMElement* last = dom_documentfragment_get_lastelementchild(fragment);
+ */
+DOMElement* dom_documentfragment_get_lastelementchild(DOMDocumentFragment* fragment);
+
+/**
+ * Get count of element children.
+ * 
+ * Returns number of element children (text nodes, comments, etc. not counted).
+ * 
+ * @param fragment DocumentFragment handle
+ * @return Number of element children
+ * 
+ * Example:
+ *   uint32_t count = dom_documentfragment_get_childelementcount(fragment);
+ */
+uint32_t dom_documentfragment_get_childelementcount(DOMDocumentFragment* fragment);
+
+/**
+ * Find first element matching CSS selector.
+ * 
+ * @param fragment DocumentFragment handle
+ * @param selectors CSS selector string
+ * @return First matching element or NULL
+ * 
+ * Example:
+ *   DOMElement* button = dom_documentfragment_queryselector(fragment, ".primary");
+ */
+DOMElement* dom_documentfragment_queryselector(DOMDocumentFragment* fragment, const char* selectors);
+
+/**
+ * Find all elements matching CSS selector.
+ * 
+ * Returns a static snapshot (not live) of matching elements.
+ * 
+ * @param fragment DocumentFragment handle
+ * @param selectors CSS selector string
+ * @return Static NodeList or NULL (must be released with dom_nodelist_static_release)
+ * 
+ * Example:
+ *   DOMNodeList* items = dom_documentfragment_queryselectorall(fragment, ".item");
+ *   if (items) {
+ *       uint32_t count = dom_nodelist_static_get_length(items);
+ *       for (uint32_t i = 0; i < count; i++) {
+ *           DOMNode* node = dom_nodelist_static_item(items, i);
+ *       }
+ *       dom_nodelist_static_release(items);
+ *   }
+ */
+DOMNodeList* dom_documentfragment_queryselectorall(DOMDocumentFragment* fragment, const char* selectors);
+
+/**
+ * Increment reference count.
+ * 
+ * @param fragment DocumentFragment handle
+ */
+void dom_documentfragment_addref(DOMDocumentFragment* fragment);
+
+/**
+ * Decrement reference count.
+ * 
+ * @param fragment DocumentFragment handle
+ */
+void dom_documentfragment_release(DOMDocumentFragment* fragment);
+
+/* ============================================================================
+ * Text Interface
+ * ========================================================================= */
+
+/**
+ * Split text node at offset.
+ * 
+ * Splits this Text node into two nodes at the specified offset,
+ * keeping the first part in this node and returning the second part.
+ * 
+ * @param text Text node to split
+ * @param offset Character offset where to split (0-based)
+ * @return New Text node containing text after offset, or NULL on error
+ * 
+ * Example:
+ *   DOMText* text = dom_document_createtextnode(doc, "Hello World");
+ *   DOMText* second = dom_text_splittext(text, 6);
+ *   // text.data = "Hello "
+ *   // second.data = "World"
+ */
+DOMText* dom_text_splittext(DOMText* text, uint32_t offset);
+
+/**
+ * Get concatenated text of this and adjacent Text nodes.
+ * 
+ * Returns the text of this node and all logically adjacent Text nodes
+ * (siblings with no intervening element nodes).
+ * 
+ * @param text Text node
+ * @return Concatenated text (caller-owned - MUST free with dom_text_free_wholetext)
+ * 
+ * Note: The returned string is allocated and owned by the caller.
+ * You MUST call dom_text_free_wholetext() when done to avoid memory leaks.
+ * 
+ * Example:
+ *   // parent has: Text("Hello "), Text("World")
+ *   const char* whole = dom_text_get_wholetext(firstText);
+ *   printf("Whole text: %s\n", whole);  // "Hello World"
+ *   dom_text_free_wholetext(whole);  // Must free!
+ */
+const char* dom_text_get_wholetext(DOMText* text);
+
+/**
+ * Free wholeText string allocated by dom_text_get_wholetext.
+ * 
+ * @param str String returned from dom_text_get_wholetext()
+ * 
+ * Example:
+ *   const char* whole = dom_text_get_wholetext(text);
+ *   // ... use whole ...
+ *   dom_text_free_wholetext(whole);
+ */
+void dom_text_free_wholetext(const char* str);
+
+/* ============================================================================
+ * CharacterData Interface (NonDocumentTypeChildNode mixin)
+ * ========================================================================= */
+
+/**
+ * Get previous element sibling (CharacterData).
+ * 
+ * Returns the previous sibling that is an Element, skipping text nodes,
+ * comments, and other non-element siblings.
+ * 
+ * @param cdata CharacterData handle (Text, Comment, or CDATASection)
+ * @return Previous element sibling or NULL
+ * 
+ * Note: CharacterData includes the NonDocumentTypeChildNode mixin per WHATWG spec.
+ * 
+ * Example:
+ *   // <div><span>A</span>text<span>B</span></div>
+ *   DOMText* text = ...;  // "text" node
+ *   DOMElement* prev = dom_characterdata_get_previouselementsibling((DOMCharacterData*)text);
+ *   // Returns <span>A</span>
+ */
+DOMElement* dom_characterdata_get_previouselementsibling(DOMCharacterData* cdata);
+
+/**
+ * Get next element sibling (CharacterData).
+ * 
+ * Returns the next sibling that is an Element, skipping text nodes,
+ * comments, and other non-element siblings.
+ * 
+ * @param cdata CharacterData handle (Text, Comment, or CDATASection)
+ * @return Next element sibling or NULL
+ * 
+ * Note: CharacterData includes the NonDocumentTypeChildNode mixin per WHATWG spec.
+ * 
+ * Example:
+ *   // <div><span>A</span>text<span>B</span></div>
+ *   DOMText* text = ...;  // "text" node
+ *   DOMElement* next = dom_characterdata_get_nextelementsibling((DOMCharacterData*)text);
+ *   // Returns <span>B</span>
+ */
+DOMElement* dom_characterdata_get_nextelementsibling(DOMCharacterData* cdata);
+
+/* ============================================================================
+ * Static NodeList (querySelectorAll results)
+ * ========================================================================= */
+
+/**
+ * Get length of static NodeList from querySelectorAll.
+ * 
+ * @param list NodeList handle from querySelectorAll
+ * @return Number of elements in the snapshot
+ * 
+ * Example:
+ *   DOMNodeList* results = dom_document_queryselectorall(doc, ".item");
+ *   uint32_t count = dom_nodelist_static_get_length(results);
+ */
+uint32_t dom_nodelist_static_get_length(DOMNodeList* list);
+
+/**
+ * Get element at index from static NodeList.
+ * 
+ * @param list NodeList handle from querySelectorAll
+ * @param index Zero-based index
+ * @return Node at index, or NULL if out of bounds
+ * 
+ * Example:
+ *   DOMNode* node = dom_nodelist_static_item(results, 0);
+ *   if (node) {
+ *       DOMElement* elem = (DOMElement*)node;  // Safe cast for querySelectorAll results
+ *   }
+ */
+DOMNode* dom_nodelist_static_item(DOMNodeList* list, uint32_t index);
+
+/**
+ * Release static NodeList from querySelectorAll.
+ * 
+ * Frees the snapshot array (but not the elements themselves).
+ * 
+ * @param list NodeList handle to release
+ * 
+ * Example:
+ *   DOMNodeList* results = dom_document_queryselectorall(doc, ".item");
+ *   // ... process results ...
+ *   dom_nodelist_static_release(results);
+ */
+void dom_nodelist_static_release(DOMNodeList* list);
+
+/* ============================================================================
+ * Event Interface
+ * ========================================================================= */
+
+/**
+ * Get event target.
+ * 
+ * Returns the object to which the event was originally dispatched.
+ * 
+ * @param event Event handle
+ * @return Event target or NULL
+ * 
+ * Example:
+ *   DOMEventTarget* target = dom_event_get_target(event);
+ *   if (target) {
+ *       DOMNode* node = (DOMNode*)target;  // EventTarget can be cast to Node
+ *   }
+ */
+DOMEventTarget* dom_event_get_target(DOMEvent* event);
+
+/**
+ * Get current event target.
+ * 
+ * Returns the object whose event listener is currently being invoked.
+ * Changes during event propagation.
+ * 
+ * @param event Event handle
+ * @return Current target or NULL
+ */
+DOMEventTarget* dom_event_get_currenttarget(DOMEvent* event);
+
+/**
+ * Get source element (legacy alias for target).
+ * 
+ * @param event Event handle
+ * @return Event target or NULL
+ */
+DOMEventTarget* dom_event_get_srcelement(DOMEvent* event);
+
+/**
+ * Stop event propagation.
+ * 
+ * Prevents the event from propagating to other listeners.
+ * 
+ * @param event Event handle
+ */
+void dom_event_stoppropagation(DOMEvent* event);
+
+/**
+ * Stop event propagation immediately.
+ * 
+ * Prevents all other listeners from being invoked, even on current target.
+ * 
+ * @param event Event handle
+ */
+void dom_event_stopimmediatepropagation(DOMEvent* event);
+
+/**
+ * Prevent default action.
+ * 
+ * Prevents the browser's default action for this event.
+ * Only works if event is cancelable.
+ * 
+ * @param event Event handle
+ */
+void dom_event_preventdefault(DOMEvent* event);
+
+/**
+ * Initialize event (legacy method).
+ * 
+ * This is a legacy method from DOM Level 2. Modern code should use
+ * Event constructors instead. Can only be called before dispatch.
+ * 
+ * @param event Event handle
+ * @param type Event type string
+ * @param bubbles Non-zero if event should bubble
+ * @param cancelable Non-zero if event is cancelable
+ * 
+ * Example:
+ *   DOMEvent* event = dom_event_new();
+ *   dom_event_initevent(event, "click", 1, 1);
+ */
+void dom_event_initevent(DOMEvent* event, const char* type, uint8_t bubbles, uint8_t cancelable);
+
+/**
+ * Get cancelBubble flag (legacy).
+ * 
+ * Legacy attribute - use stopPropagation() instead.
+ * 
+ * @param event Event handle
+ * @return 1 if propagation stopped, 0 otherwise
+ */
+uint8_t dom_event_get_cancelbubble(DOMEvent* event);
+
+/**
+ * Set cancelBubble flag (legacy).
+ * 
+ * Legacy attribute - setting to true calls stopPropagation().
+ * 
+ * @param event Event handle
+ * @param value Non-zero to stop propagation
+ */
+void dom_event_set_cancelbubble(DOMEvent* event, uint8_t value);
+
+/**
+ * Get returnValue flag (legacy).
+ * 
+ * Legacy attribute - returns opposite of defaultPrevented.
+ * 
+ * @param event Event handle
+ * @return 0 if default prevented, 1 otherwise
+ */
+uint8_t dom_event_get_returnvalue(DOMEvent* event);
+
+/**
+ * Set returnValue flag (legacy).
+ * 
+ * Legacy attribute - setting to false calls preventDefault().
+ * 
+ * @param event Event handle
+ * @param value 0 to prevent default, non-zero to allow
+ */
+void dom_event_set_returnvalue(DOMEvent* event, uint8_t value);
+
+/**
+ * Get the event's composed path.
+ * 
+ * Returns the event's path, which is an array of event targets that the event
+ * will visit during propagation (capture, target, and bubble phases).
+ * 
+ * The returned array is owned by the caller and MUST be freed using
+ * dom_event_free_composedpath().
+ * 
+ * @param event Event handle
+ * @param count Pointer to store the number of targets in the path
+ * @return Array of event target pointers (NULL if no path or error)
+ * 
+ * Example:
+ *   uint32_t count;
+ *   DOMEventTarget** path = dom_event_composedpath(event, &count);
+ *   if (path) {
+ *       printf("Path has %u targets\n", count);
+ *       for (uint32_t i = 0; i < count; i++) {
+ *           if (path[i]) {
+ *               // Process target (can cast to DOMNode*)
+ *           }
+ *       }
+ *       dom_event_free_composedpath(path, count);
+ *   }
+ */
+DOMEventTarget** dom_event_composedpath(DOMEvent* event, uint32_t* count);
+
+/**
+ * Free composed path array.
+ * 
+ * Frees the array returned by dom_event_composedpath().
+ * MUST be called to avoid memory leaks.
+ * 
+ * @param path Array of event targets (from dom_event_composedpath)
+ * @param count Number of targets in array
+ * 
+ * Example:
+ *   uint32_t count;
+ *   DOMEventTarget** path = dom_event_composedpath(event, &count);
+ *   if (path) {
+ *       // ... use path ...
+ *       dom_event_free_composedpath(path, count);
+ *   }
+ */
+void dom_event_free_composedpath(DOMEventTarget** path, uint32_t count);
+
+/**
+ * Increment event reference count.
+ * 
+ * @param event Event handle
+ */
+void dom_event_addref(DOMEvent* event);
+
+/**
+ * Decrement event reference count.
+ * 
+ * @param event Event handle
+ */
+void dom_event_release(DOMEvent* event);
+
+/* ============================================================================
+ * CustomEvent Interface
+ * ========================================================================= */
+
+/**
+ * Get custom event detail.
+ * 
+ * Returns custom data associated with the event.
+ * 
+ * @param event CustomEvent handle
+ * @return Custom data pointer or NULL
+ * 
+ * Example:
+ *   void* detail = dom_customevent_get_detail(event);
+ *   if (detail) {
+ *       int* value = (int*)detail;
+ *       printf("Custom value: %d\n", *value);
+ *   }
+ */
+void* dom_customevent_get_detail(DOMCustomEvent* event);
+
+/**
+ * Initialize custom event (legacy method).
+ * 
+ * This is a legacy method from DOM Level 3. Modern code should use
+ * CustomEvent constructors instead. Can only be called before dispatch.
+ * 
+ * @param event CustomEvent handle
+ * @param type Event type string
+ * @param bubbles Non-zero if event should bubble
+ * @param cancelable Non-zero if event is cancelable
+ * @param detail Custom data pointer
+ * 
+ * Example:
+ *   DOMCustomEvent* event = dom_customevent_new();
+ *   void* data = malloc(sizeof(int));
+ *   *(int*)data = 42;
+ *   dom_customevent_initcustomevent(event, "custom", 1, 1, data);
+ */
+void dom_customevent_initcustomevent(DOMCustomEvent* event, const char* type, uint8_t bubbles, uint8_t cancelable, void* detail);
+
+/**
+ * Increment custom event reference count.
+ * 
+ * @param event CustomEvent handle
+ */
+void dom_customevent_addref(DOMCustomEvent* event);
+
+/**
+ * Decrement custom event reference count.
+ * 
+ * @param event CustomEvent handle
+ */
+void dom_customevent_release(DOMCustomEvent* event);
 
 #ifdef __cplusplus
 }
