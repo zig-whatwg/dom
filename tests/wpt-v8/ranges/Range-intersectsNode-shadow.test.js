@@ -1,0 +1,15 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/ranges/Range-intersectsNode-shadow.html
+
+test(() => {
+  const host = document.getElementById("host");
+  host.attachShadow({ mode: "open" }).innerHTML = `<span>ABC</span>`;
+
+  const range = document.createRange();
+  range.selectNode(document.body);
+
+  assert_true(range.intersectsNode(host), "Should intersect host");
+  assert_false(range.intersectsNode(host.shadowRoot), "Should not intersect shadow root");
+  assert_false(range.intersectsNode(host.shadowRoot.firstElementChild), "Should not intersect shadow span");
+}, "Range.intersectsNode() doesn't return true for shadow children in other trees");
+

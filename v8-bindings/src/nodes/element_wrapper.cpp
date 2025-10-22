@@ -5,6 +5,7 @@
 #include "../collections/nodelist_wrapper.h"
 #include "../collections/domtokenlist_wrapper.h"
 #include "../shadow/shadowroot_wrapper.h"
+#include <cstdio>
 
 namespace v8_dom {
 
@@ -86,7 +87,9 @@ void ElementWrapper::InstallTemplate(v8::Isolate* isolate) {
     
     // Read/write properties
     proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "id"),
-                      IdGetter, IdSetter);
+                      IdGetter, IdSetter,
+                      v8::Local<v8::Value>(),
+                      v8::PropertyAttribute::DontDelete);
     proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "className"),
                       ClassNameGetter, ClassNameSetter);
     proto->SetNativeDataProperty(v8::String::NewFromUtf8Literal(isolate, "slot"),
@@ -296,7 +299,9 @@ void ElementWrapper::IdGetter(v8::Local<v8::Name> property,
         return;
     }
     
+    std::fprintf(stderr, "[DEBUG] IdGetter: elem=%p\n", (void*)elem);
     const char* id = dom_element_get_id(elem);
+    std::fprintf(stderr, "[DEBUG] IdGetter result: id='%s'\n", id);
     info.GetReturnValue().Set(CStringToV8String(isolate, id));
 }
 
@@ -312,7 +317,9 @@ void ElementWrapper::IdSetter(v8::Local<v8::Name> property,
     }
     
     CStringFromV8 id(isolate, value);
+    std::fprintf(stderr, "[DEBUG] IdSetter: elem=%p, id='%s'\n", (void*)elem, id.get());
     int32_t err = dom_element_set_id(elem, id.get());
+    std::fprintf(stderr, "[DEBUG] IdSetter result: err=%d\n", err);
     if (err != 0) {
         ThrowDOMException(isolate, err);
     }

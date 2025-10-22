@@ -294,6 +294,25 @@ DOMText* dom_document_createtextnode(DOMDocument* doc, const char* data);
 DOMComment* dom_document_createcomment(DOMDocument* doc, const char* data);
 
 /**
+ * Create an attribute node.
+ * 
+ * @param doc Document
+ * @param localName Attribute name
+ * @return New attribute node (never NULL, panics on error)
+ */
+DOMAttr* dom_document_createattribute(DOMDocument* doc, const char* localName);
+
+/**
+ * Create a namespaced attribute node.
+ * 
+ * @param doc Document
+ * @param ns Namespace URI (can be NULL)
+ * @param qualifiedName Qualified name (e.g., "xml:lang")
+ * @return New attribute node (never NULL, panics on error)
+ */
+DOMAttr* dom_document_createattributens(DOMDocument* doc, const char* ns, const char* qualifiedName);
+
+/**
  * Import a node from another document.
  * 
  * Creates a copy of a node from another document that can be inserted into this document.
@@ -1768,6 +1787,29 @@ uint8_t dom_node_isequalnode(DOMNode* node, DOMNode* other);
  * @return 0 on success, error code on failure
  */
 int32_t dom_node_normalize(DOMNode* node);
+
+// ============================================================================
+// Attr Reference Counting
+// ============================================================================
+
+/**
+ * Increment attribute reference count.
+ * 
+ * @param attr Attribute node
+ */
+void dom_attr_addref(DOMAttr* attr);
+
+/**
+ * Decrement attribute reference count.
+ * Frees the attribute if reference count reaches zero.
+ * 
+ * @param attr Attribute node
+ */
+void dom_attr_release(DOMAttr* attr);
+
+// ============================================================================
+// Node Reference Counting
+// ============================================================================
 
 /**
  * Increment node reference count.

@@ -1,0 +1,62 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/nodes/Document-importNode.html
+
+test(function() {
+  var doc = document.implementation.createHTMLDocument("Title");
+  var div = doc.body.appendChild(doc.createElement("div"));
+  div.appendChild(doc.createElement("span"));
+  assert_equals(div.ownerDocument, doc);
+  assert_equals(div.firstChild.ownerDocument, doc);
+  var newDiv = document.importNode(div);
+  assert_equals(div.ownerDocument, doc);
+  assert_equals(div.firstChild.ownerDocument, doc);
+  assert_equals(newDiv.ownerDocument, document);
+  assert_equals(newDiv.firstChild, null);
+}, "No 'deep' argument.")
+test(function() {
+  var doc = document.implementation.createHTMLDocument("Title");
+  var div = doc.body.appendChild(doc.createElement("div"));
+  div.appendChild(doc.createElement("span"));
+  assert_equals(div.ownerDocument, doc);
+  assert_equals(div.firstChild.ownerDocument, doc);
+  var newDiv = document.importNode(div, undefined);
+  assert_equals(div.ownerDocument, doc);
+  assert_equals(div.firstChild.ownerDocument, doc);
+  assert_equals(newDiv.ownerDocument, document);
+  assert_equals(newDiv.firstChild, null);
+}, "Undefined 'deep' argument.")
+test(function() {
+  var doc = document.implementation.createHTMLDocument("Title");
+  var div = doc.body.appendChild(doc.createElement("div"));
+  div.appendChild(doc.createElement("span"));
+  assert_equals(div.ownerDocument, doc);
+  assert_equals(div.firstChild.ownerDocument, doc);
+  var newDiv = document.importNode(div, true);
+  assert_equals(div.ownerDocument, doc);
+  assert_equals(div.firstChild.ownerDocument, doc);
+  assert_equals(newDiv.ownerDocument, document);
+  assert_equals(newDiv.firstChild.ownerDocument, document);
+}, "True 'deep' argument.")
+test(function() {
+  var doc = document.implementation.createHTMLDocument("Title");
+  var div = doc.body.appendChild(doc.createElement("div"));
+  div.appendChild(doc.createElement("span"));
+  assert_equals(div.ownerDocument, doc);
+  assert_equals(div.firstChild.ownerDocument, doc);
+  var newDiv = document.importNode(div, false);
+  assert_equals(div.ownerDocument, doc);
+  assert_equals(div.firstChild.ownerDocument, doc);
+  assert_equals(newDiv.ownerDocument, document);
+  assert_equals(newDiv.firstChild, null);
+}, "False 'deep' argument.")
+
+test(function() {
+  let doc = document.implementation.createHTMLDocument("Title");
+  doc.body.setAttributeNS("http://example.com/", "p:name", "value");
+  let originalAttr = doc.body.getAttributeNodeNS("http://example.com/", "name");
+  let imported = document.importNode(originalAttr, true);
+  assert_equals(imported.prefix, originalAttr.prefix);
+  assert_equals(imported.namespaceURI, originalAttr.namespaceURI);
+  assert_equals(imported.localName, originalAttr.localName);
+}, "Import an Attr node with namespace/prefix correctly.");
+

@@ -1,0 +1,36 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/ranges/Range-stringifier.html
+
+test(function() {
+  var r = new Range();
+  var testDiv = document.getElementById("test");
+  test(function() {
+    r.selectNodeContents(testDiv);
+    assert_equals(r.collapsed, false);
+    assert_equals(r.toString(), testDiv.textContent);
+  }, "Node contents of a single div");
+
+  var textNode = testDiv.childNodes[0];
+  test(function() {
+    r.setStart(textNode, 5);
+    r.setEnd(textNode, 7);
+    assert_equals(r.collapsed, false);
+    assert_equals(r.toString(), "di");
+  }, "Text node with offsets");
+
+  var anotherDiv = document.getElementById("another");
+  test(function() {
+    r.setStart(testDiv, 0);
+    r.setEnd(anotherDiv, 0);
+    assert_equals(r.toString(), "Test div\n");
+  }, "Two nodes, each with a text node");
+
+  var lastDiv = document.getElementById("last");
+  var lastText = lastDiv.childNodes[0];
+  test(function() {
+    r.setStart(textNode, 5);
+    r.setEnd(lastText, 4);
+    assert_equals(r.toString(), "div\nAnother div\nLast");
+  }, "Three nodes with start offset and end offset on text nodes");
+});
+

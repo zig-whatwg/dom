@@ -1,0 +1,50 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/traversal/TreeWalker-acceptNode-filter-cross-realm-null-browsing-context.html
+
+// Setup HTML structure
+document.body.innerHTML = `
+<div></div>
+
+<script>
+const t = async_test();
+
+const iframe = document.createElement("iframe");
+iframe.src = "support/TreeWalker-acceptNode-filter-cross-realm-null-browsing-context-subframe.html";
+iframe.onload = t.step_func_done(() => {
+    const nodeIterator = iframe.contentWindow.createNodeIterator();
+    iframe.remove();
+
+    assert_equals(iframe.contentWindow, null);
+
+    let errorWasThrown = false;
+    try { nodeIterator.nextNode(); }
+    catch { errorWasThrown = true; }
+
+    assert_true(errorWasThrown);
+    assert_false(nodeIterator.dummyFilterCalled);
+});
+
+document.body.append(iframe);
+</script>
+`;
+
+const t = async_test();
+
+const iframe = document.createElement("iframe");
+iframe.src = "support/TreeWalker-acceptNode-filter-cross-realm-null-browsing-context-subframe.html";
+iframe.onload = t.step_func_done(() => {
+    const nodeIterator = iframe.contentWindow.createNodeIterator();
+    iframe.remove();
+
+    assert_equals(iframe.contentWindow, null);
+
+    let errorWasThrown = false;
+    try { nodeIterator.nextNode(); }
+    catch { errorWasThrown = true; }
+
+    assert_true(errorWasThrown);
+    assert_false(nodeIterator.dummyFilterCalled);
+});
+
+document.body.append(iframe);
+

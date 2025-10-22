@@ -62,6 +62,8 @@ private:
     static void CreateElementNS(const v8::FunctionCallbackInfo<v8::Value>& args);
     static void CreateTextNode(const v8::FunctionCallbackInfo<v8::Value>& args);
     static void CreateComment(const v8::FunctionCallbackInfo<v8::Value>& args);
+    static void CreateAttribute(const v8::FunctionCallbackInfo<v8::Value>& args);
+    static void CreateAttributeNS(const v8::FunctionCallbackInfo<v8::Value>& args);
     
     // Node manipulation
     static void ImportNode(const v8::FunctionCallbackInfo<v8::Value>& args);

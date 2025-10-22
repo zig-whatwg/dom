@@ -344,13 +344,43 @@ The design explicitly supports your HTML library extending these wrappers withou
 
 ## Testing
 
-```bash
-# Run all tests
-make test
+### C++ Unit Tests
 
-# Run specific test
-./tests/test_element
+```bash
+# Build and run existing C++ tests
+./test_simple
+./test_simple_attr
+# etc.
 ```
+
+### WPT JavaScript Tests
+
+A test runner has been created to run WPT JavaScript tests with DOM bindings.
+
+**Status**: Partially working. The runner works but needs additional DOM API wrappers (getElementById, querySelector, etc.) to support full WPT testharness.js.
+
+See `WPTV8_INTEGRATION_STATUS.md` for details on what's missing and how to fix it.
+
+**Quick Start**:
+```bash
+# Build the test runner
+cd v8-bindings
+clang++ -std=c++20 wpt_test_runner.cpp \
+  -I./include -I../js-bindings -I/opt/homebrew/Cellar/v8/13.5.212.10/libexec/include \
+  -DV8_COMPRESS_POINTERS -DV8_31BIT_SMIS_ON_64BIT_ARCH -DV8_ENABLE_SANDBOX \
+  -L./lib -lv8dom -L../zig-out/lib -ldom \
+  -L/opt/homebrew/lib -lv8 -lv8_libplatform \
+  -lpthread -Wl,-undefined,dynamic_lookup \
+  -o wpt_test_runner
+
+# Run a test (currently fails due to missing DOM wrappers)
+./wpt_test_runner \
+  ../tests/wpt-v8/runner_bootstrap.js \
+  ../tests/wpt-v8/resources/testharness.js \
+  ../tests/wpt-v8/attributes-are-nodes.test.js
+```
+
+**To fix**: Add wrappers for `getElementById`, `querySelector`, `nodeType`, `nodeName`, etc. in `src/nodes/document_wrapper.cpp` and `src/nodes/element_wrapper.cpp`. See `WPTV8_INTEGRATION_STATUS.md` for complete instructions.
 
 ## Contributing
 

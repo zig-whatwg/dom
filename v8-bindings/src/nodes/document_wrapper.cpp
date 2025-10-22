@@ -4,6 +4,10 @@
 #include "../core/utilities.h"
 #include "element_wrapper.h"
 #include "text_wrapper.h"
+#include "attr_wrapper.h"
+#include "../collections/htmlcollection_wrapper.h"
+#include "../collections/nodelist_wrapper.h"
+#include <cstdio>
 
 namespace v8_dom {
 
@@ -87,6 +91,10 @@ void DocumentWrapper::InstallTemplate(v8::Isolate* isolate) {
                v8::FunctionTemplate::New(isolate, CreateTextNode));
     proto->Set(v8::String::NewFromUtf8Literal(isolate, "createComment"),
                v8::FunctionTemplate::New(isolate, CreateComment));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "createAttribute"),
+               v8::FunctionTemplate::New(isolate, CreateAttribute));
+    proto->Set(v8::String::NewFromUtf8Literal(isolate, "createAttributeNS"),
+               v8::FunctionTemplate::New(isolate, CreateAttributeNS));
     
     // Node manipulation
     proto->Set(v8::String::NewFromUtf8Literal(isolate, "importNode"),
@@ -344,6 +352,73 @@ void DocumentWrapper::CreateComment(const v8::FunctionCallbackInfo<v8::Value>& a
     args.GetReturnValue().SetNull();
 }
 
+void DocumentWrapper::CreateAttribute(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    
+    DOMDocument* doc = Unwrap(args.This());
+    if (!doc) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Document object")));
+        return;
+    }
+    
+    if (args.Length() < 1 || !args[0]->IsString()) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "First argument must be a string")));
+        return;
+    }
+    
+    v8::String::Utf8Value localName(isolate, args[0]);
+    DOMAttr* attr = dom_document_createattribute(doc, *localName);
+    
+    if (!attr) {
+        isolate->ThrowException(v8::Exception::Error(
+            v8::String::NewFromUtf8Literal(isolate, "Failed to create attribute")));
+        return;
+    }
+    
+    v8::Local<v8::Object> wrapper = AttrWrapper::Wrap(isolate, context, attr);
+    args.GetReturnValue().Set(wrapper);
+}
+
+void DocumentWrapper::CreateAttributeNS(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    
+    DOMDocument* doc = Unwrap(args.This());
+    if (!doc) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Invalid Document object")));
+        return;
+    }
+    
+    if (args.Length() < 2 || !args[1]->IsString()) {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Two string arguments required (namespace, qualifiedName)")));
+        return;
+    }
+    
+    // Namespace can be null
+    const char* ns = nullptr;
+    v8::String::Utf8Value nsValue(isolate, args[0]);
+    if (!args[0]->IsNull() && !args[0]->IsUndefined()) {
+        ns = *nsValue;
+    }
+    
+    v8::String::Utf8Value qualifiedName(isolate, args[1]);
+    DOMAttr* attr = dom_document_createattributens(doc, ns, *qualifiedName);
+    
+    if (!attr) {
+        isolate->ThrowException(v8::Exception::Error(
+            v8::String::NewFromUtf8Literal(isolate, "Failed to create attribute")));
+        return;
+    }
+    
+    v8::Local<v8::Object> wrapper = AttrWrapper::Wrap(isolate, context, attr);
+    args.GetReturnValue().Set(wrapper);
+}
+
 // ===== Node Manipulation =====
 
 void DocumentWrapper::ImportNode(const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -450,8 +525,8 @@ void DocumentWrapper::QuerySelectorAll(const v8::FunctionCallbackInfo<v8::Value>
         return;
     }
     
-    // TODO: Use NodeListWrapper::Wrap when available
-    args.GetReturnValue().SetNull();
+    v8::Local<v8::Object> wrapper = NodeListWrapper::Wrap(isolate, context, results);
+    args.GetReturnValue().Set(wrapper);
 }
 
 void DocumentWrapper::GetElementsByTagName(const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -479,8 +554,8 @@ void DocumentWrapper::GetElementsByTagName(const v8::FunctionCallbackInfo<v8::Va
         return;
     }
     
-    // TODO: Use HTMLCollectionWrapper::Wrap when available
-    args.GetReturnValue().SetNull();
+    v8::Local<v8::Object> wrapper = HTMLCollectionWrapper::Wrap(isolate, context, results);
+    args.GetReturnValue().Set(wrapper);
 }
 
 void DocumentWrapper::GetElementsByTagNameNS(const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -514,8 +589,8 @@ void DocumentWrapper::GetElementsByTagNameNS(const v8::FunctionCallbackInfo<v8::
         return;
     }
     
-    // TODO: Use HTMLCollectionWrapper::Wrap when available
-    args.GetReturnValue().SetNull();
+    v8::Local<v8::Object> wrapper = HTMLCollectionWrapper::Wrap(isolate, context, results);
+    args.GetReturnValue().Set(wrapper);
 }
 
 void DocumentWrapper::GetElementsByClassName(const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -543,8 +618,8 @@ void DocumentWrapper::GetElementsByClassName(const v8::FunctionCallbackInfo<v8::
         return;
     }
     
-    // TODO: Use HTMLCollectionWrapper::Wrap when available
-    args.GetReturnValue().SetNull();
+    v8::Local<v8::Object> wrapper = HTMLCollectionWrapper::Wrap(isolate, context, results);
+    args.GetReturnValue().Set(wrapper);
 }
 
 void DocumentWrapper::GetElementById(const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -565,7 +640,14 @@ void DocumentWrapper::GetElementById(const v8::FunctionCallbackInfo<v8::Value>& 
     }
     
     v8::String::Utf8Value elementId(isolate, args[0]);
+    
+    // DEBUG: Print document pointer and ID being searched
+    std::fprintf(stderr, "[DEBUG] getElementById: doc=%p, id='%s'\n", (void*)doc, *elementId);
+    
     DOMElement* result = dom_document_getelementbyid(doc, *elementId);
+    
+    // DEBUG: Print result
+    std::fprintf(stderr, "[DEBUG] getElementById result: %p\n", (void*)result);
     
     if (!result) {
         args.GetReturnValue().SetNull();

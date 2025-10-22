@@ -1,0 +1,44 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/nodes/insertion-removing-steps/later-script-removed-by-earlier-script.html
+
+// Setup HTML structure
+document.body.innerHTML = `
+
+`;
+
+test(t => {
+  const fragment = document.createDocumentFragment();
+  // Global so they can be more easily accessed by the inner script blocks.
+  window.script1 = fragment.appendChild(document.createElement("script"));
+  window.script2 = fragment.appendChild(document.createElement("script"));
+
+  window.script2Run = false;
+  t.add_cleanup(() => { window.script2Run = false; });
+  script1.textContent = `
+    assert_true(script2.isConnected, 'script2 is connected when script2 runs');
+    script2.remove();
+  `;
+  script2.textContent = "window.script2Run = true;";
+
+  document.body.append(fragment);
+  assert_false(window.script2Run, "script2 did not run");
+}, "A later-inserted script removed by an earlier-inserted script in the " +
+   "same document fragment should not run");
+
+test(t => {
+  window.script1 = document.createElement("script");
+  window.script2 = document.createElement("script");
+
+  window.script2Run = false;
+  t.add_cleanup(() => { window.script2Run = false; });
+  script1.textContent = `
+    assert_true(script2.isConnected, 'script2 is connected when script2 runs');
+    script2.remove();
+  `;
+  script2.textContent = "window.script2Run = true;";
+
+  document.body.append(script1, script2);
+  assert_false(window.script2Run, "script2 did not run");
+}, "A later-inserted script removed by an earlier-inserted script in the " +
+   "same append() call should not run");
+

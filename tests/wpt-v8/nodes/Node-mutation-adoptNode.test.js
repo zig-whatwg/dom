@@ -1,0 +1,30 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/nodes/Node-mutation-adoptNode.html
+
+"use strict";
+
+test(() => {
+  const old = document.implementation.createHTMLDocument("");
+  const div = old.createElement("div");
+  div.appendChild(old.createTextNode("text"));
+  assert_equals(div.ownerDocument, old);
+  assert_equals(div.firstChild.ownerDocument, old);
+  document.body.appendChild(div);
+  assert_equals(div.ownerDocument, document);
+  assert_equals(div.firstChild.ownerDocument, document);
+}, "simple append of foreign div with text");
+
+test(function() {
+  var div = document.createElement("div");
+  div.id = "foobar";
+
+  assert_equals(div.ownerDocument, document);
+  assert_equals(div.attributes[0].ownerDocument, document);
+
+  var other_doc = document.implementation.createHTMLDocument();
+  other_doc.body.appendChild(div);
+
+  assert_equals(div.ownerDocument, other_doc);
+  assert_equals(div.attributes[0].ownerDocument, other_doc);
+}, "Adopting an element into a different document update's the element's owner doc as well as the owner docs of it's attributes")
+

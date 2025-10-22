@@ -366,4 +366,20 @@ pub fn build(b: *std.Build) void {
     // Build step for library
     const lib_step = b.step("lib-js-bindings", "Build JavaScript bindings as static library");
     lib_step.dependOn(&b.addInstallArtifact(js_bindings_lib, .{}).step);
+
+    // WPT to V8 test converter
+    const wpt_converter = b.addExecutable(.{
+        .name = "wpt-convert",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/wpt_converter/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    b.installArtifact(wpt_converter);
+
+    const run_wpt_converter = b.addRunArtifact(wpt_converter);
+    const wpt_convert_step = b.step("wpt-convert", "Convert WPT HTML tests to V8 JavaScript tests");
+    wpt_convert_step.dependOn(&run_wpt_converter.step);
 }

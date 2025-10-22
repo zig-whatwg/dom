@@ -44,8 +44,16 @@ public:
     static constexpr int kTemplateIndex = 13;
     
 private:
-    // Property getters/setters and methods will be added here
-    // TODO: Parse dom.h to auto-generate these declarations
+    // Readonly properties
+    static void LengthGetter(v8::Local<v8::Name> property,
+                            const v8::PropertyCallbackInfo<v8::Value>& info);
+    
+    // Methods
+    static void Item(const v8::FunctionCallbackInfo<v8::Value>& args);
+    
+    // Indexed property handler
+    static v8::Intercepted IndexedPropertyGetter(uint32_t index,
+                                                 const v8::PropertyCallbackInfo<v8::Value>& info);
 };
 
 } // namespace v8_dom

@@ -1,0 +1,21 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/events/EventListener-incumbent-global-subsubframe.sub.html
+
+function getTheListener() {
+    return postMessage.bind(this, "respond", "*", undefined)
+  }
+  document.domain = "{{host}}";
+  onmessage = function (e) {
+    if (e.data == "sendclick") {
+      document.body.click();
+    } else {
+      parent.postMessage(
+        {
+          actual: e.origin,
+          expected: parent.location.origin,
+          reason: "Incumbent should have been the caller of addEventListener()"
+        },
+        "*")
+    };
+  }
+

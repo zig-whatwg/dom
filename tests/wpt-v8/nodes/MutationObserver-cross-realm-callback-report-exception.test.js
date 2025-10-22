@@ -1,0 +1,26 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/nodes/MutationObserver-cross-realm-callback-report-exception.html
+
+setup({ allow_uncaught_exception: true });
+
+const onerrorCalls = [];
+window.onerror = () => { onerrorCalls.push("top"); };
+frames[0].onerror = () => { onerrorCalls.push("frame0"); };
+frames[1].onerror = () => { onerrorCalls.push("frame1"); };
+frames[2].onerror = () => { onerrorCalls.push("frame2"); };
+
+async_test(t => {
+  window.onload = t.step_func(() => {
+    const target = frames[0].document.body;
+    const mo = new frames[0].MutationObserver(new frames[1].Function(`throw new parent.frames[2].Error("PASS");`));
+
+    mo.observe(target, { childList: true, subtree: true });
+    target.append("foo");
+
+    t.step_timeout(() => {
+      assert_array_equals(onerrorCalls, ["frame1"]);
+      t.done();
+    }, 4);
+  });
+});
+

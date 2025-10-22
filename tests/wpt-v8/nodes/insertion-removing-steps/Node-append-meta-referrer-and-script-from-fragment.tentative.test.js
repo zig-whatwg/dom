@@ -1,0 +1,38 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/nodes/insertion-removing-steps/Node-append-meta-referrer-and-script-from-fragment.tentative.html
+
+promise_test(async t => {
+  const preMetaScript = document.createElement("script");
+  preMetaScript.textContent = `
+    window.preMetaScriptPromise = fetch('/html/infrastructure/urls/terminology-0/resources/echo-referrer-text.py')
+      .then(response => response.text());
+  `;
+
+  const meta = document.createElement("meta");
+  meta.name = "referrer";
+  meta.content = "no-referrer";
+
+  const postMetaScript = document.createElement("script");
+  postMetaScript.textContent = `
+    window.postMetaScriptPromise = fetch('/html/infrastructure/urls/terminology-0/resources/echo-referrer-text.py')
+      .then(response => response.text());
+  `;
+
+  const fragment = new DocumentFragment();
+  fragment.append(preMetaScript, meta, postMetaScript);
+  document.head.append(fragment);
+
+  const preMetaReferrer = await window.preMetaScriptPromise;
+  assert_equals(preMetaReferrer, location.href,
+      "preMetaReferrer is the full URL; by the time the first script runs in " +
+      "its post-insertion steps, the later-inserted meta tag has not run its " +
+      "post-insertion steps, which is where meta tags are processed");
+
+  const postMetaReferrer = await window.postMetaScriptPromise;
+  assert_equals(postMetaReferrer, "",
+      "postMetaReferrer is empty; by the time the second script runs in " +
+      "its post-insertion steps, the later-inserted meta tag has run its " +
+      "post-insertion steps, and observes the meta tag's effect");
+}, "<meta name=referrer> gets processed and applied in the post-insertion " +
+   "steps");
+

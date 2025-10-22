@@ -1,0 +1,40 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/collections/HTMLCollection-delete.html
+
+let c, expected;
+setup(() => {
+  // These might be cached anyway, so explicitly use a single object.
+  c = document.getElementsByTagName("i");
+  expected = document.getElementById("foo");
+});
+
+test(() => {
+  assert_equals(c[0], expected, "before");
+  delete c[0];
+  assert_equals(c[0], expected, "after");
+}, "Loose id");
+
+test(() => {
+  assert_equals(c[0], expected, "before");
+  assert_throws_js(TypeError, function() {
+    "use strict";
+    delete c[0];
+  });
+  assert_equals(c[0], expected, "after");
+}, "Strict id");
+
+test(() => {
+  assert_equals(c.foo, expected, "before");
+  delete c.foo;
+  assert_equals(c.foo, expected, "after");
+}, "Loose name");
+
+test(() => {
+  assert_equals(c.foo, expected, "before");
+  assert_throws_js(TypeError, function() {
+    "use strict";
+    delete c.foo;
+  });
+  assert_equals(c.foo, expected, "after");
+}, "Strict name");
+

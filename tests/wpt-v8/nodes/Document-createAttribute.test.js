@@ -1,0 +1,49 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/nodes/Document-createAttribute.html
+
+var xml_document;
+setup(function() {
+  xml_document = document.implementation.createDocument(null, null, null);
+});
+
+invalid_names.forEach(function(name) {
+  test(function() {
+    assert_throws_dom("INVALID_CHARACTER_ERR", function() {
+      document.createAttribute(name, "test");
+    });
+  }, "HTML document.createAttribute(" + format_value(name) + ") should throw");
+
+  test(function() {
+    assert_throws_dom("INVALID_CHARACTER_ERR", function() {
+      xml_document.createAttribute(name, "test");
+    });
+  }, "XML document.createAttribute(" + format_value(name) + ") should throw");
+});
+
+valid_names.forEach(name => {
+  test(() => {
+    let attr = document.createAttribute(name);
+    attr_is(attr, "", name.toLowerCase(), null, null, name.toLowerCase());
+  }, `HTML document.createAttribute(${format_value(name)})`);
+
+  test(() => {
+    let attr = xml_document.createAttribute(name);
+    attr_is(attr, "", name, null, null, name);
+  }, `XML document.createAttribute(${format_value(name)})`);
+});
+
+var tests = ["title", "TITLE", null, undefined];
+tests.forEach(function(name) {
+  test(function() {
+    var attribute = document.createAttribute(name);
+    attr_is(attribute, "", String(name).toLowerCase(), null, null, String(name).toLowerCase());
+    assert_equals(attribute.ownerElement, null);
+  }, "HTML document.createAttribute(" + format_value(name) + ")");
+
+  test(function() {
+    var attribute = xml_document.createAttribute(name);
+    attr_is(attribute, "", String(name), null, null, String(name));
+    assert_equals(attribute.ownerElement, null);
+  }, "XML document.createAttribute(" + format_value(name) + ")");
+});
+

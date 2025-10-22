@@ -1,0 +1,41 @@
+// Converted from WPT HTML test
+// Original: /Users/bcardarella/projects/wpt/dom/traversal/TreeWalker-realm.html
+
+// Setup HTML structure
+document.body.innerHTML = `
+
+`;
+
+test(t => {
+  const i = document.createElement("iframe");
+  i.srcdoc = "<!DOCTYPE html>";
+  document.body.appendChild(i);
+  t.add_cleanup(() => i.remove());
+
+  const walker = document.createTreeWalker(i.contentDocument,
+                                           NodeFilter.SHOW_ELEMENT);
+  walker.nextNode();
+  assert_true(walker.currentNode instanceof i.contentWindow.Node);
+}, "Node returned by TreeWalker from different realm");
+
+test(t => {
+  const i = document.createElement("iframe");
+  i.srcdoc = "<!DOCTYPE html>";
+  document.body.appendChild(i);
+  t.add_cleanup(() => i.remove());
+
+  let acceptNode_node;
+  const walker = document.createTreeWalker(
+      i.contentDocument, NodeFilter.SHOW_ELEMENT,
+      {
+          acceptNode(node) {
+              acceptNode_node = node;
+              return NodeFilter.FILTER_ACCEPT;
+          }
+      });
+
+  walker.nextNode();
+  assert_true(acceptNode_node instanceof i.contentWindow.Node);
+  assert_true(walker.currentNode instanceof i.contentWindow.Node);
+}, "Node returned by TreeWalker from different realm with acceptNode");
+
