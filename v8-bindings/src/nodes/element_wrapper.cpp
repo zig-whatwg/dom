@@ -58,10 +58,48 @@ DOMElement* ElementWrapper::Unwrap(v8::Local<v8::Object> obj) {
     return static_cast<DOMElement*>(v8::Local<v8::External>::Cast(ptr)->Value());
 }
 
+// Named property setter interceptor to prevent instance property shadowing
+// This ensures elem.id = "value" calls the prototype setter instead of creating an instance property
+v8::Intercepted ElementWrapper::NamedPropertySetter(v8::Local<v8::Name> property,
+                                                    v8::Local<v8::Value> value,
+                                                    const v8::PropertyCallbackInfo<void>& info) {
+    v8::Isolate* isolate = info.GetIsolate();
+    
+    // Check if this is one of our special properties that should be handled by prototype setters
+    if (property->IsString()) {
+        v8::String::Utf8Value prop_name(isolate, property);
+        
+        // For id, className, and slot properties, explicitly call our setter
+        if (strcmp(*prop_name, "id") == 0) {
+            IdSetter(property, value, info);
+            return v8::Intercepted::kYes;  // We handled it
+        } else if (strcmp(*prop_name, "className") == 0) {
+            ClassNameSetter(property, value, info);
+            return v8::Intercepted::kYes;
+        } else if (strcmp(*prop_name, "slot") == 0) {
+            SlotSetter(property, value, info);
+            return v8::Intercepted::kYes;
+        }
+    }
+    
+    // For other properties, let V8 handle them normally
+    return v8::Intercepted::kNo;
+}
+
 void ElementWrapper::InstallTemplate(v8::Isolate* isolate) {
     v8::Local<v8::FunctionTemplate> tmpl = v8::FunctionTemplate::New(isolate);
     tmpl->SetClassName(v8::String::NewFromUtf8Literal(isolate, "Element"));
-    tmpl->InstanceTemplate()->SetInternalFieldCount(1);
+    
+    v8::Local<v8::ObjectTemplate> instance = tmpl->InstanceTemplate();
+    instance->SetInternalFieldCount(1);
+    
+    // Add named property interceptor to prevent property shadowing
+    // This ensures that setting elem.id calls our IdSetter instead of creating an instance property
+    // Note: We only intercept setters, getters continue to use the prototype
+    instance->SetHandler(v8::NamedPropertyHandlerConfiguration(
+        nullptr,  // getter (use prototype chain)
+        NamedPropertySetter  // setter (intercept all property sets)
+    ));
     
     // Inherit from Node
     tmpl->Inherit(NodeWrapper::GetTemplate(isolate));
@@ -299,9 +337,7 @@ void ElementWrapper::IdGetter(v8::Local<v8::Name> property,
         return;
     }
     
-    std::fprintf(stderr, "[DEBUG] IdGetter: elem=%p\n", (void*)elem);
     const char* id = dom_element_get_id(elem);
-    std::fprintf(stderr, "[DEBUG] IdGetter result: id='%s'\n", id);
     info.GetReturnValue().Set(CStringToV8String(isolate, id));
 }
 
@@ -317,9 +353,7 @@ void ElementWrapper::IdSetter(v8::Local<v8::Name> property,
     }
     
     CStringFromV8 id(isolate, value);
-    std::fprintf(stderr, "[DEBUG] IdSetter: elem=%p, id='%s'\n", (void*)elem, id.get());
     int32_t err = dom_element_set_id(elem, id.get());
-    std::fprintf(stderr, "[DEBUG] IdSetter result: err=%d\n", err);
     if (err != 0) {
         ThrowDOMException(isolate, err);
     }

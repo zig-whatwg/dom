@@ -45,6 +45,11 @@ public:
     static constexpr int kTemplateIndex = 2;
     
 private:
+    // Property interceptor to prevent shadowing
+    static v8::Intercepted NamedPropertySetter(v8::Local<v8::Name> property,
+                                               v8::Local<v8::Value> value,
+                                               const v8::PropertyCallbackInfo<void>& info);
+    
     // Readonly properties
     static void TagNameGetter(v8::Local<v8::Name> property,
                              const v8::PropertyCallbackInfo<v8::Value>& info);
